@@ -1,0 +1,3 @@
+/home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles/LookOnceMore.dir
+/home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles/edit_cache.dir
+/home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles/rebuild_cache.dir

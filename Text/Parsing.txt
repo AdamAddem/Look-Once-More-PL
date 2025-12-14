@@ -1,0 +1,102 @@
+Parsing Passes:
+  0. Lexer provides keywords, identifiers, literals, and symbols in order
+  1. Register global definitions (functions, variables, etc)
+    1a. If function, take all tokens between until matching {} and store inside function structure.
+
+  2. For each function, follow steps:
+      2a. For each statement identify statement type, and store any remaining information (including sub statements) 
+      2b. Store all top-level statements in function structure
+  
+  3. Profit? 
+
+Below is the EBNF specification for the Look Once More grammar.
+EBNF has been modified to include metadata using the : symbol.
+<identifier: mutable> is identical to <identifier>, but includes mutable which is not able to be specified 
+purely using  EBNF.
+
+/* Statements */
+
+<statement> :=
+    <var-declaration> := <type> <identifier> '=' ( <expression> | 'junk') ';'
+    <var-assignment> := <identifier> '=' <expression> ';'
+    <if-statement> := 'if' '(' <condition> ')' ( <statement> | '{' { <statement> } '}' ) ['else' <statement>]
+    <for-loop> := 'for' '(' ( <var-declaration> | <expression-statement> ) [<condition>]';' <expression> ')' <scoped-statement>
+    <while-loop> := 'while' '(' <condition> ')' <scoped-statement>
+    <do-while-loop> := 'do' <scoped-statement> 'while' '(' <condition> ')' ';'
+    <scoped-statement> := '{' { <statement> } '}'
+    <return-statement> := 'return' [<value>] ';'
+    <switch-case> := /* To Be Determined */
+    <expression-statement> := [<expression>] ';'
+
+/* Statements */
+
+/* Expressions */
+
+<expression> :=
+    <unary-expression>
+    <binary-expression>
+    <calling-expression>
+    <cast-expression>
+    <identifier>
+    <temporary>
+    '(' <expression> ')'
+
+<unary-expression> := 
+    <prefix-expression>
+    <postfix-expression>
+
+<prefix-expression> :=
+    ('++' | '--') <expression: mutable>
+    ({'*'} | '@' | {'not'} | '-') <expression>
+
+<postfix-expression> :=
+    <expression: mutable> ('++' | '--')
+
+<binary-expression> :=
+    <expression: arithmetic> ('+' | '-' | '*' | '/' | '^' | '%') <expression: arithmetic>
+    <condition>
+    <identifier: mutable> '_=' <expression>
+
+<calling-expression> := <expression: callable> '(' [<expression-list>] ')'
+<expression-list> := <expression> {',' <expression> }
+    
+
+<condition> := <expression> ('>' | '<' | '>=' | '<=') <expression>
+
+
+/* Expressions */
+
+/* Expression Precedence :( */
+
+1: Parenthesis
+2: Operators changing identity, ex: @a is fundamentally different from a
+  -Casts, Calls, [], Dereference, Address of, Member Access, etc
+3: Exponent 
+4: Multiplication, Division, Modulus
+5: Addition, Subtraction
+6: Bitwise Operators
+7: Logical Operators
+8: Assignment
+
+
+
+/* Expression Precedence :( */
+
+/* Type */
+
+<type> := <strict-type> | <variant-type>
+<variant-type> := '<' (<strict-type> | 'devoid') {',' <strict-type>} '>'
+<strict-type> := /* primitives or custom type */
+
+/* Type */
+
+/* Functions */
+
+<function-definition> := <function-signature> '{' { <statement> } '}'
+<function-signature> := <return-type> <identifier: function> '('  ')' <function-specifiers>
+<return-type> := <type> | 'devoid'
+<parameter-list> := { <strict-type> <identifier> { ',' <strict-type> <identifier> } } | 'devoid'
+<function-specifiers> := /* To Be Determined */
+
+
+/* Functions */

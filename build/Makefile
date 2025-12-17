@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/ggtgd/Desktop/Code/LookOnceMore
+CMAKE_SOURCE_DIR = /home/boggy/Desktop/Code/Look-Once-More-PL
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/ggtgd/Desktop/Code/LookOnceMore/build
+CMAKE_BINARY_DIR = /home/boggy/Desktop/Code/Look-Once-More-PL/build
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -87,16 +87,16 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles /home/ggtgd/Desktop/Code/LookOnceMore/build//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles /home/boggy/Desktop/Code/Look-Once-More-PL/build//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles 0
 .PHONY : all
 
 # The main codegen target
 codegen: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles /home/ggtgd/Desktop/Code/LookOnceMore/build//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles /home/boggy/Desktop/Code/Look-Once-More-PL/build//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 codegen
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles 0
 .PHONY : codegen
 
 # The main clean target
@@ -160,6 +160,30 @@ main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LookOnceMore.dir/build.make CMakeFiles/LookOnceMore.dir/main.cpp.s
 .PHONY : main.cpp.s
 
+src/firstparse.o: src/firstparse.cpp.o
+.PHONY : src/firstparse.o
+
+# target to build an object file
+src/firstparse.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LookOnceMore.dir/build.make CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o
+.PHONY : src/firstparse.cpp.o
+
+src/firstparse.i: src/firstparse.cpp.i
+.PHONY : src/firstparse.i
+
+# target to preprocess a source file
+src/firstparse.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LookOnceMore.dir/build.make CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.i
+.PHONY : src/firstparse.cpp.i
+
+src/firstparse.s: src/firstparse.cpp.s
+.PHONY : src/firstparse.s
+
+# target to generate assembly for a file
+src/firstparse.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/LookOnceMore.dir/build.make CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.s
+.PHONY : src/firstparse.cpp.s
+
 src/lex.o: src/lex.cpp.o
 .PHONY : src/lex.o
 
@@ -184,30 +208,6 @@ src/lex.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/LookOnceMore.dir/build.make CMakeFiles/LookOnceMore.dir/src/lex.cpp.s
 .PHONY : src/lex.cpp.s
 
-src/parse.o: src/parse.cpp.o
-.PHONY : src/parse.o
-
-# target to build an object file
-src/parse.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LookOnceMore.dir/build.make CMakeFiles/LookOnceMore.dir/src/parse.cpp.o
-.PHONY : src/parse.cpp.o
-
-src/parse.i: src/parse.cpp.i
-.PHONY : src/parse.i
-
-# target to preprocess a source file
-src/parse.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LookOnceMore.dir/build.make CMakeFiles/LookOnceMore.dir/src/parse.cpp.i
-.PHONY : src/parse.cpp.i
-
-src/parse.s: src/parse.cpp.s
-.PHONY : src/parse.s
-
-# target to generate assembly for a file
-src/parse.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/LookOnceMore.dir/build.make CMakeFiles/LookOnceMore.dir/src/parse.cpp.s
-.PHONY : src/parse.cpp.s
-
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -221,12 +221,12 @@ help:
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
+	@echo "... src/firstparse.o"
+	@echo "... src/firstparse.i"
+	@echo "... src/firstparse.s"
 	@echo "... src/lex.o"
 	@echo "... src/lex.i"
 	@echo "... src/lex.s"
-	@echo "... src/parse.o"
-	@echo "... src/parse.i"
-	@echo "... src/parse.s"
 .PHONY : help
 
 

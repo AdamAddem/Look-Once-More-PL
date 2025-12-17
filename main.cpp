@@ -1,7 +1,8 @@
-#include "src/lex.hpp"
-#include "src/parse.hpp"
+#include "src/firstparse.hpp"
+#include "src/secondparse.hpp"
 int main() {
-  std::vector<Lexer::Token> token_list = Lexer::tokenizeFile("Code.lom");
-  Parser::beginParsing(std::move(token_list));
+
+  Parser::secondPassParsing(
+      Parser::firstPassParsing(Lexer::tokenizeFile("Code.lom")));
   return 0;
 }

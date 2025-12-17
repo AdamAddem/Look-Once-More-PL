@@ -8,9 +8,9 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/ggtgd/Desktop/Code/LookOnceMore/main.cpp" "CMakeFiles/LookOnceMore.dir/main.cpp.o" "gcc" "CMakeFiles/LookOnceMore.dir/main.cpp.o.d"
-  "/home/ggtgd/Desktop/Code/LookOnceMore/src/lex.cpp" "CMakeFiles/LookOnceMore.dir/src/lex.cpp.o" "gcc" "CMakeFiles/LookOnceMore.dir/src/lex.cpp.o.d"
-  "/home/ggtgd/Desktop/Code/LookOnceMore/src/parse.cpp" "CMakeFiles/LookOnceMore.dir/src/parse.cpp.o" "gcc" "CMakeFiles/LookOnceMore.dir/src/parse.cpp.o.d"
+  "/home/boggy/Desktop/Code/Look-Once-More-PL/main.cpp" "CMakeFiles/LookOnceMore.dir/main.cpp.o" "gcc" "CMakeFiles/LookOnceMore.dir/main.cpp.o.d"
+  "/home/boggy/Desktop/Code/Look-Once-More-PL/src/firstparse.cpp" "CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o" "gcc" "CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o.d"
+  "/home/boggy/Desktop/Code/Look-Once-More-PL/src/lex.cpp" "CMakeFiles/LookOnceMore.dir/src/lex.cpp.o" "gcc" "CMakeFiles/LookOnceMore.dir/src/lex.cpp.o.d"
   "" "LookOnceMore" "gcc" "CMakeFiles/LookOnceMore.dir/link.d"
   )
 

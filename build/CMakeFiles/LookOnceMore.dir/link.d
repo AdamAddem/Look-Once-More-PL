@@ -4,7 +4,7 @@ LookOnceMore: \
   /usr/lib/gcc/x86_64-redhat-linux/15/crtbegin.o \
   CMakeFiles/LookOnceMore.dir/main.cpp.o \
   CMakeFiles/LookOnceMore.dir/src/lex.cpp.o \
-  CMakeFiles/LookOnceMore.dir/src/parse.cpp.o \
+  CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o \
   /usr/lib/gcc/x86_64-redhat-linux/15/libstdc++.so \
   /usr/lib/gcc/x86_64-redhat-linux/15/../../../../lib64/libm.so \
   /usr/lib/gcc/x86_64-redhat-linux/15/../../../../lib64/libm.so \
@@ -43,7 +43,7 @@ CMakeFiles/LookOnceMore.dir/main.cpp.o:
 
 CMakeFiles/LookOnceMore.dir/src/lex.cpp.o:
 
-CMakeFiles/LookOnceMore.dir/src/parse.cpp.o:
+CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o:
 
 /usr/lib/gcc/x86_64-redhat-linux/15/libstdc++.so:
 

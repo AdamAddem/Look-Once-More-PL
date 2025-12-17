@@ -1,4 +1,5 @@
 #pragma once
+#include <iostream>
 #include <string>
 #include <variant>
 #include <vector>
@@ -103,6 +104,8 @@ enum TokenType {
   KEYWORD_FALSE,
   KEYWORD_FROM,
   KEYWORD_AS,
+  KEYWORD_GLOBAL,
+  KEYWORD_GLOBALS,
 };
 
 // this is so stupid dude
@@ -134,7 +137,8 @@ enum TokenType {
       {"auto", KEYWORD_AUTO}, {"const", KEYWORD_CONST},                        \
       {"except", KEYWORD_EXCEPT}, {"static", KEYWORD_STATIC},                  \
       {"extern", KEYWORD_EXTERN}, {"true", KEYWORD_TRUE},                      \
-      {"false", KEYWORD_FALSE}, {"from", KEYWORD_FROM}, {"as", KEYWORD_AS},
+      {"false", KEYWORD_FALSE}, {"from", KEYWORD_FROM}, {"as", KEYWORD_AS},    \
+      {"global", KEYWORD_GLOBAL}, {"globals", KEYWORD_GLOBALS},
 
 #define KEYWORDS_TO_STRING_MAPPING                                             \
   {KEYWORD_AND, "and"}, {KEYWORD_OR, "or"}, {KEYWORD_XOR, "xor"},              \
@@ -163,7 +167,8 @@ enum TokenType {
       {KEYWORD_AUTO, "auto"}, {KEYWORD_CONST, "const"},                        \
       {KEYWORD_EXCEPT, "except"}, {KEYWORD_STATIC, "static"},                  \
       {KEYWORD_EXTERN, "extern"}, {KEYWORD_TRUE, "true"},                      \
-      {KEYWORD_FALSE, "false"}, {KEYWORD_FROM, "from"}, {KEYWORD_AS, "as"},
+      {KEYWORD_FALSE, "false"}, {KEYWORD_FROM, "from"}, {KEYWORD_AS, "as"},    \
+      {KEYWORD_GLOBAL, "global"}, {KEYWORD_GLOBALS, "globals"},
 
 #define STRING_TO_SYMBOLS_MAPPING                                              \
   {"+", PLUS}, {"-", MINUS}, {"/", DIV}, {"*", MULT}, {"^", POW}, {"%", MOD},  \
@@ -203,12 +208,80 @@ struct Token {
   TokenType type;
   TokenValue value;
 
+  bool is(TokenType _type) const { return type == _type; }
+
   bool isPrimitive() const;
   bool isLiteral() const;
   std::string toString();
+
+  int getInt() const;
+  float getFloat() const;
+  double getDouble() const;
+  bool getBool() const;
+  std::string takeString();
 };
 
+class TokenHandler {
+  std::vector<Lexer::Token> token_list;
+
+public:
+  explicit TokenHandler(std::vector<Lexer::Token> &&_tokens)
+      : token_list(std::move(_tokens)) {};
+
+  TokenHandler() = default;
+  TokenHandler(TokenHandler &&other) noexcept
+      : token_list(std::move(other.token_list)) {}
+
+  void operator=(TokenHandler &&other) noexcept {
+    token_list = std::move(other.token_list);
+  }
+
+  const Lexer::Token &peek() const { return token_list.back(); };
+  bool peek_is(Lexer::TokenType _type) const {
+    return token_list.back().type == _type;
+  }
+
+  const Lexer::Token &peek_ahead(std::size_t distance) {
+    return token_list.at(token_list.size() - distance - 1);
+  }
+
+  Lexer::Token eat() {
+    Lexer::Token t = std::move(token_list.back());
+    token_list.pop_back();
+    return t;
+  }
+
+  void pop() { token_list.pop_back(); }
+
+  bool pop_if(Lexer::TokenType _type) {
+    if (token_list.back().type == _type) {
+      token_list.pop_back();
+      return true;
+    }
+    return false;
+  }
+
+  bool check(Lexer::TokenType _type) const {
+    return token_list.back().type == _type;
+  }
+
+  bool empty() const { return token_list.empty(); }
+  unsigned size() const { return token_list.size(); }
+
+  void print() {
+    int back = token_list.size() - 1;
+
+    for (; back >= 0; --back) {
+
+      std::cout << token_list[back].toString() << std::endl;
+    }
+  }
+
+  TokenHandler getTokensBetweenBraces();
+  TokenHandler getTokensBetweenParenthesis();
+  TokenHandler getTokensBetweenBrackets();
+};
 // Vector organized as stack, back is top is first token
-[[nodiscard]] std::vector<Token> tokenizeFile(const std::string &file_path);
+[[nodiscard]] TokenHandler tokenizeFile(const std::string &file_path);
 
 } // namespace Lexer

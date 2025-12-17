@@ -1,5 +1,8 @@
+#pragma once
+#include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -9,22 +12,46 @@ struct StrictType {
       : type_name(std::move(_type_name)) {}
 
   StrictType(const StrictType &) = default;
+  StrictType &operator=(const StrictType &) = default;
 
   StrictType(StrictType &&other) noexcept
       : type_name(std::move(other.type_name)) {}
 };
 
 struct VariantType {
-
   std::vector<StrictType> types;
+  std::string type_name;
   bool devoid;
+
   explicit VariantType(std::vector<StrictType> &&_types, bool _devoid)
-      : types(std::move(_types)), devoid(_devoid) {}
+      : types(std::move(_types)), type_name("<"), devoid(_devoid) {
+    std::unordered_set<std::string> seen;
+
+    // should make types unique
+    std::erase_if(types, [&seen](StrictType &type) {
+      return !seen.insert(type.type_name).second;
+    });
+
+    int d = devoid ? 1 : 0;
+    if ((types.size() + d) < 2)
+      throw std::runtime_error("Expected two or more unique types");
+
+    if (devoid)
+      type_name += "devoid";
+
+    for (auto &type : types) {
+      type_name += ", ";
+      type_name += type.type_name;
+    }
+
+    type_name.push_back('>');
+  }
 
   VariantType(const VariantType &) = default;
 
   VariantType(VariantType &&other) noexcept
-      : types(std::move(other.types)), devoid(other.devoid) {}
+      : types(std::move(other.types)), type_name(std::move(other.type_name)),
+        devoid(other.devoid) {}
 };
 using Type = std::variant<StrictType, VariantType>;
 

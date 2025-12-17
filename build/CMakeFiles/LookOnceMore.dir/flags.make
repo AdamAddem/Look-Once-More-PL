@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/home/ggtgd/Desktop/Code/LookOnceMore/src
+CXX_INCLUDES = -I/home/boggy/Desktop/Code/Look-Once-More-PL/src
 
-CXX_FLAGS = -std=gnu++23
+CXX_FLAGS = -g -std=gnu++23
 

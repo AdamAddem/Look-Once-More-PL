@@ -1,6 +1,11 @@
 
+int x = global;
 
-int fib(int y, float b)
+globals{
+  x = 5;
+  }
+
+float fib(float y)
 {
   int x = junk;
 }

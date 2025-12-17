@@ -1,7 +1,9 @@
+#pragma once
 #include "expressions.hpp"
 
 struct Statement {
   virtual ~Statement() = default;
+  virtual void print() = 0;
 };
 
 struct VarDeclaration : Statement {
@@ -15,6 +17,16 @@ struct VarDeclaration : Statement {
 
   VarDeclaration(VarDeclaration &&other) noexcept
       : type(std::move(other.type)), ident(std::move(other.ident)) {}
+
+  virtual void print() override {
+    std::string type_name;
+    if (std::holds_alternative<StrictType>(type))
+      type_name = std::get<StrictType>(type).type_name;
+    else
+      type_name = std::get<VariantType>(type).type_name;
+
+    std::cout << type_name << " " << ident << "expr;\n";
+  }
 };
 
 struct VarAssignment : Statement {
@@ -23,6 +35,8 @@ struct VarAssignment : Statement {
   Expression *expr; // cannot be nullptr
   VarAssignment(std::string &&_ident, Expression *_expr)
       : ident(std::move(_ident)), expr(_expr) {}
+
+  virtual void print() override { std::cout << ident << "expr;\n"; }
 };
 
 struct FunctionCall : Statement {
@@ -32,6 +46,8 @@ struct FunctionCall : Statement {
                std::vector<std::string> &&_parameters)
       : function_name(std::move(_function_name)),
         parameters(std::move(_parameters)) {}
+
+  virtual void print() override;
 };
 
 struct IfStatement : Statement {
@@ -43,6 +59,8 @@ struct IfStatement : Statement {
               Statement *_false_path = nullptr)
       : condition(_condition), true_path(_true_path),
         false_path(std::move(_false_path)) {}
+
+  virtual void print() override;
 };
 
 struct ForLoop : Statement {
@@ -56,6 +74,8 @@ struct ForLoop : Statement {
           std::vector<Statement *> &&_loop_body)
       : decl_statement(_decl), condition(_condition), iteration(_iteration),
         loop_body(std::move(_loop_body)) {}
+
+  virtual void print() override;
 };
 
 struct WhileLoop : Statement {
@@ -65,12 +85,16 @@ struct WhileLoop : Statement {
   WhileLoop(Expression *_condition, bool _doWhile,
             std::vector<Statement *> &&_loop_body)
       : condition(_condition), doWhile(_doWhile), loop_body(_loop_body) {}
+
+  virtual void print() override;
 };
 
 struct ReturnStatement : Statement {
   Expression *return_value;
   explicit ReturnStatement(Expression *_return_value)
       : return_value(_return_value) {}
+
+  virtual void print() override;
 };
 
 struct SwitchCase : Statement {}; // TBD

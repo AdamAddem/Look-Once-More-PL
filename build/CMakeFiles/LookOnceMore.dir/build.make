@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/ggtgd/Desktop/Code/LookOnceMore
+CMAKE_SOURCE_DIR = /home/boggy/Desktop/Code/Look-Once-More-PL
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/ggtgd/Desktop/Code/LookOnceMore/build
+CMAKE_BINARY_DIR = /home/boggy/Desktop/Code/Look-Once-More-PL/build
 
 # Include any dependencies generated for this target.
 include CMakeFiles/LookOnceMore.dir/depend.make
@@ -73,63 +73,63 @@ CMakeFiles/LookOnceMore.dir/codegen:
 .PHONY : CMakeFiles/LookOnceMore.dir/codegen
 
 CMakeFiles/LookOnceMore.dir/main.cpp.o: CMakeFiles/LookOnceMore.dir/flags.make
-CMakeFiles/LookOnceMore.dir/main.cpp.o: /home/ggtgd/Desktop/Code/LookOnceMore/main.cpp
+CMakeFiles/LookOnceMore.dir/main.cpp.o: /home/boggy/Desktop/Code/Look-Once-More-PL/main.cpp
 CMakeFiles/LookOnceMore.dir/main.cpp.o: CMakeFiles/LookOnceMore.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/LookOnceMore.dir/main.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LookOnceMore.dir/main.cpp.o -MF CMakeFiles/LookOnceMore.dir/main.cpp.o.d -o CMakeFiles/LookOnceMore.dir/main.cpp.o -c /home/ggtgd/Desktop/Code/LookOnceMore/main.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/LookOnceMore.dir/main.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LookOnceMore.dir/main.cpp.o -MF CMakeFiles/LookOnceMore.dir/main.cpp.o.d -o CMakeFiles/LookOnceMore.dir/main.cpp.o -c /home/boggy/Desktop/Code/Look-Once-More-PL/main.cpp
 
 CMakeFiles/LookOnceMore.dir/main.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/LookOnceMore.dir/main.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ggtgd/Desktop/Code/LookOnceMore/main.cpp > CMakeFiles/LookOnceMore.dir/main.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/boggy/Desktop/Code/Look-Once-More-PL/main.cpp > CMakeFiles/LookOnceMore.dir/main.cpp.i
 
 CMakeFiles/LookOnceMore.dir/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/LookOnceMore.dir/main.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ggtgd/Desktop/Code/LookOnceMore/main.cpp -o CMakeFiles/LookOnceMore.dir/main.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/boggy/Desktop/Code/Look-Once-More-PL/main.cpp -o CMakeFiles/LookOnceMore.dir/main.cpp.s
 
 CMakeFiles/LookOnceMore.dir/src/lex.cpp.o: CMakeFiles/LookOnceMore.dir/flags.make
-CMakeFiles/LookOnceMore.dir/src/lex.cpp.o: /home/ggtgd/Desktop/Code/LookOnceMore/src/lex.cpp
+CMakeFiles/LookOnceMore.dir/src/lex.cpp.o: /home/boggy/Desktop/Code/Look-Once-More-PL/src/lex.cpp
 CMakeFiles/LookOnceMore.dir/src/lex.cpp.o: CMakeFiles/LookOnceMore.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/LookOnceMore.dir/src/lex.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LookOnceMore.dir/src/lex.cpp.o -MF CMakeFiles/LookOnceMore.dir/src/lex.cpp.o.d -o CMakeFiles/LookOnceMore.dir/src/lex.cpp.o -c /home/ggtgd/Desktop/Code/LookOnceMore/src/lex.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/LookOnceMore.dir/src/lex.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LookOnceMore.dir/src/lex.cpp.o -MF CMakeFiles/LookOnceMore.dir/src/lex.cpp.o.d -o CMakeFiles/LookOnceMore.dir/src/lex.cpp.o -c /home/boggy/Desktop/Code/Look-Once-More-PL/src/lex.cpp
 
 CMakeFiles/LookOnceMore.dir/src/lex.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/LookOnceMore.dir/src/lex.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ggtgd/Desktop/Code/LookOnceMore/src/lex.cpp > CMakeFiles/LookOnceMore.dir/src/lex.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/boggy/Desktop/Code/Look-Once-More-PL/src/lex.cpp > CMakeFiles/LookOnceMore.dir/src/lex.cpp.i
 
 CMakeFiles/LookOnceMore.dir/src/lex.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/LookOnceMore.dir/src/lex.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ggtgd/Desktop/Code/LookOnceMore/src/lex.cpp -o CMakeFiles/LookOnceMore.dir/src/lex.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/boggy/Desktop/Code/Look-Once-More-PL/src/lex.cpp -o CMakeFiles/LookOnceMore.dir/src/lex.cpp.s
 
-CMakeFiles/LookOnceMore.dir/src/parse.cpp.o: CMakeFiles/LookOnceMore.dir/flags.make
-CMakeFiles/LookOnceMore.dir/src/parse.cpp.o: /home/ggtgd/Desktop/Code/LookOnceMore/src/parse.cpp
-CMakeFiles/LookOnceMore.dir/src/parse.cpp.o: CMakeFiles/LookOnceMore.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/LookOnceMore.dir/src/parse.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LookOnceMore.dir/src/parse.cpp.o -MF CMakeFiles/LookOnceMore.dir/src/parse.cpp.o.d -o CMakeFiles/LookOnceMore.dir/src/parse.cpp.o -c /home/ggtgd/Desktop/Code/LookOnceMore/src/parse.cpp
+CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o: CMakeFiles/LookOnceMore.dir/flags.make
+CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o: /home/boggy/Desktop/Code/Look-Once-More-PL/src/firstparse.cpp
+CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o: CMakeFiles/LookOnceMore.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o -MF CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o.d -o CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o -c /home/boggy/Desktop/Code/Look-Once-More-PL/src/firstparse.cpp
 
-CMakeFiles/LookOnceMore.dir/src/parse.cpp.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/LookOnceMore.dir/src/parse.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/ggtgd/Desktop/Code/LookOnceMore/src/parse.cpp > CMakeFiles/LookOnceMore.dir/src/parse.cpp.i
+CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/boggy/Desktop/Code/Look-Once-More-PL/src/firstparse.cpp > CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.i
 
-CMakeFiles/LookOnceMore.dir/src/parse.cpp.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/LookOnceMore.dir/src/parse.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/ggtgd/Desktop/Code/LookOnceMore/src/parse.cpp -o CMakeFiles/LookOnceMore.dir/src/parse.cpp.s
+CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/boggy/Desktop/Code/Look-Once-More-PL/src/firstparse.cpp -o CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.s
 
 # Object files for target LookOnceMore
 LookOnceMore_OBJECTS = \
 "CMakeFiles/LookOnceMore.dir/main.cpp.o" \
 "CMakeFiles/LookOnceMore.dir/src/lex.cpp.o" \
-"CMakeFiles/LookOnceMore.dir/src/parse.cpp.o"
+"CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o"
 
 # External object files for target LookOnceMore
 LookOnceMore_EXTERNAL_OBJECTS =
 
 LookOnceMore: CMakeFiles/LookOnceMore.dir/main.cpp.o
 LookOnceMore: CMakeFiles/LookOnceMore.dir/src/lex.cpp.o
-LookOnceMore: CMakeFiles/LookOnceMore.dir/src/parse.cpp.o
+LookOnceMore: CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o
 LookOnceMore: CMakeFiles/LookOnceMore.dir/build.make
 LookOnceMore: CMakeFiles/LookOnceMore.dir/compiler_depend.ts
 LookOnceMore: CMakeFiles/LookOnceMore.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable LookOnceMore"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable LookOnceMore"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/LookOnceMore.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -141,6 +141,6 @@ CMakeFiles/LookOnceMore.dir/clean:
 .PHONY : CMakeFiles/LookOnceMore.dir/clean
 
 CMakeFiles/LookOnceMore.dir/depend:
-	cd /home/ggtgd/Desktop/Code/LookOnceMore/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/ggtgd/Desktop/Code/LookOnceMore /home/ggtgd/Desktop/Code/LookOnceMore /home/ggtgd/Desktop/Code/LookOnceMore/build /home/ggtgd/Desktop/Code/LookOnceMore/build /home/ggtgd/Desktop/Code/LookOnceMore/build/CMakeFiles/LookOnceMore.dir/DependInfo.cmake "--color=$(COLOR)"
+	cd /home/boggy/Desktop/Code/Look-Once-More-PL/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/boggy/Desktop/Code/Look-Once-More-PL /home/boggy/Desktop/Code/Look-Once-More-PL /home/boggy/Desktop/Code/Look-Once-More-PL/build /home/boggy/Desktop/Code/Look-Once-More-PL/build /home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles/LookOnceMore.dir/DependInfo.cmake "--color=$(COLOR)"
 .PHONY : CMakeFiles/LookOnceMore.dir/depend
 

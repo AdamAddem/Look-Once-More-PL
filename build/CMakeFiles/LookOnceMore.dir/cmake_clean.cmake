@@ -2,10 +2,10 @@ file(REMOVE_RECURSE
   "CMakeFiles/LookOnceMore.dir/link.d"
   "CMakeFiles/LookOnceMore.dir/main.cpp.o"
   "CMakeFiles/LookOnceMore.dir/main.cpp.o.d"
+  "CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o"
+  "CMakeFiles/LookOnceMore.dir/src/firstparse.cpp.o.d"
   "CMakeFiles/LookOnceMore.dir/src/lex.cpp.o"
   "CMakeFiles/LookOnceMore.dir/src/lex.cpp.o.d"
-  "CMakeFiles/LookOnceMore.dir/src/parse.cpp.o"
-  "CMakeFiles/LookOnceMore.dir/src/parse.cpp.o.d"
   "LookOnceMore"
   "LookOnceMore.pdb"
 )

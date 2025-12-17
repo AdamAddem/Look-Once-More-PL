@@ -29,7 +29,13 @@ Possible Features:
     cast_if<type> for dynamic cast
     unsafe_cast<type> for reinterpret cast
     Pattern matching
-    Do While loop can use variable in block inside while condition
+    Do While loop has While within scope of Do, while keyword can also 
+    be placed within loop
+      do{
+          char c = getch();
+          while(c != EOF);
+          ...
+        }
 
     Classes with one a member of a unique type (no other member with that type), that member may be referred to solely by type name
       struct Example{
@@ -74,7 +80,7 @@ Possible Features:
           }
       Global variables may not be initialize/destruct with functions or data external to their file.
       Global function/keyword may only be used once per file, only in global scope.
- 
+       
 
 
 

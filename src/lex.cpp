@@ -11,6 +11,8 @@ std::unordered_map<std::string, TokenType> keywords{STRING_TO_KEYWORDS_MAPPING};
 std::unordered_map<std::string, TokenType> stringToSymbol{
     STRING_TO_SYMBOLS_MAPPING};
 
+/* Lexer Functions */
+
 char charToEscapeSequenceEquivalent(char c) {
   switch (c) {
   case 'n':
@@ -252,7 +254,7 @@ void debugPrintList(std::vector<Token> &token_list, std::ifstream &file) {
   }
 }
 
-std::vector<Token> Lexer::tokenizeFile(const std::string &file_path) {
+TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
   std::ifstream file(file_path);
   if (!file)
     throw std::runtime_error("File Not Found");
@@ -279,9 +281,12 @@ std::vector<Token> Lexer::tokenizeFile(const std::string &file_path) {
       token_list
           .end()); // tokens now organized such that back is first-most token.
 
-  // debugPrintList(token_list);
-  return token_list;
+  return TokenHandler(std::move(token_list));
 }
+
+/* Lexer Functions */
+
+/* Token Methods */
 
 bool Token::isPrimitive() const {
   switch (type) {
@@ -343,3 +348,80 @@ std::string Token::toString() {
 
   return tokenToString[type];
 }
+
+int Token::getInt() const { return std::get<int>(value); }
+float Token::getFloat() const { return std::get<float>(value); }
+double Token::getDouble() const { return std::get<double>(value); }
+bool Token::getBool() const { return std::get<bool>(value); }
+std::string Token::takeString() {
+  return std::get<std::string>(std::move(value));
+}
+
+/* Token Methods */
+
+/* TokenHandler Methods */
+
+TokenHandler TokenHandler::getTokensBetweenBraces() {
+  std::vector<Lexer::Token> body;
+  int openbrace = 1;
+  while (openbrace) {
+    if (token_list.empty())
+      throw std::runtime_error("Expected closing rbrace");
+
+    if (token_list.back().type == Lexer::LBRACE)
+      ++openbrace;
+    else if (token_list.back().type == Lexer::RBRACE)
+      --openbrace;
+
+    body.emplace_back(std::move(token_list.back()));
+    token_list.pop_back();
+  }
+  body.pop_back();
+  std::reverse(body.begin(), body.end()); // stackify
+
+  return TokenHandler(std::move(body));
+}
+
+TokenHandler TokenHandler::getTokensBetweenParenthesis() {
+  std::vector<Lexer::Token> body;
+  int openbrace = 1;
+  while (openbrace) {
+    if (token_list.empty())
+      throw std::runtime_error("Expected closing rparen");
+
+    if (token_list.back().type == Lexer::LPAREN)
+      ++openbrace;
+    else if (token_list.back().type == Lexer::RPAREN)
+      --openbrace;
+
+    body.emplace_back(std::move(token_list.back()));
+    token_list.pop_back();
+  }
+  body.pop_back();
+  std::reverse(body.begin(), body.end()); // stackify
+
+  return TokenHandler(std::move(body));
+}
+
+TokenHandler TokenHandler::getTokensBetweenBrackets() {
+  std::vector<Lexer::Token> body;
+  int openbracket = 1;
+  while (openbracket) {
+    if (token_list.empty())
+      throw std::runtime_error("Expected closing rparen");
+
+    if (token_list.back().type == Lexer::LBRACKET)
+      ++openbracket;
+    else if (token_list.back().type == Lexer::RBRACKET)
+      --openbracket;
+
+    body.emplace_back(std::move(token_list.back()));
+    token_list.pop_back();
+  }
+  body.pop_back();
+  std::reverse(body.begin(), body.end()); // stackify
+
+  return TokenHandler(std::move(body));
+}
+
+/* TokenHandler Methods */

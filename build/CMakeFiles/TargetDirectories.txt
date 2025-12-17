@@ -1,3 +1,0 @@
-/home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles/LookOnceMore.dir
-/home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles/edit_cache.dir
-/home/boggy/Desktop/Code/Look-Once-More-PL/build/CMakeFiles/rebuild_cache.dir

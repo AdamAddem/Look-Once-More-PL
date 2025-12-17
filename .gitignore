@@ -1,4 +1,4 @@
 build/
-./build.sh
+build.sh
 Text/
-./Code.lom
+Code.lom

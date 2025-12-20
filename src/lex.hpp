@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <iostream>
 #include <string>
 #include <variant>
@@ -19,7 +20,9 @@ enum TokenType {
 
   // Symbols
   PLUS,         // +
+  PLUSPLUS,     // ++
   MINUS,        // -
+  MINUSMINUS,   // --
   DIV,          // /
   MULT,         // *
   POW,          // ^
@@ -107,7 +110,6 @@ enum TokenType {
   KEYWORD_GLOBAL,
   KEYWORD_GLOBALS,
 };
-
 // this is so stupid dude
 
 #define STRING_TO_KEYWORDS_MAPPING                                             \
@@ -171,22 +173,22 @@ enum TokenType {
       {KEYWORD_GLOBAL, "global"}, {KEYWORD_GLOBALS, "globals"},
 
 #define STRING_TO_SYMBOLS_MAPPING                                              \
-  {"+", PLUS}, {"-", MINUS}, {"/", DIV}, {"*", MULT}, {"^", POW}, {"%", MOD},  \
-      {"+=", PLUS_ASSIGN}, {"-=", MINUS_ASSIGN}, {"/=", DIV_ASSIGN},           \
-      {"*=", MULT_ASSIGN}, {"^=", POW_ASSIGN}, {"%=", MOD_ASSIGN},             \
-      {"=", ASSIGN}, {"(", LPAREN}, {")", RPAREN}, {"{", LBRACE},              \
-      {"}", RBRACE}, {"[", LBRACKET}, {"]", RBRACKET}, {"<", LESS},            \
-      {">", GTR}, {"<=", LESSEQ}, {">=", GTREQ}, {";", SEMI_COLON},            \
-      {"@", ADDR}, {",", COMMA},
+  {"+", PLUS}, {"++", PLUSPLUS}, {"-", MINUS}, {"--", MINUSMINUS}, {"/", DIV}, \
+      {"*", MULT}, {"^", POW}, {"%", MOD}, {"+=", PLUS_ASSIGN},                \
+      {"-=", MINUS_ASSIGN}, {"/=", DIV_ASSIGN}, {"*=", MULT_ASSIGN},           \
+      {"^=", POW_ASSIGN}, {"%=", MOD_ASSIGN}, {"=", ASSIGN}, {"(", LPAREN},    \
+      {")", RPAREN}, {"{", LBRACE}, {"}", RBRACE}, {"[", LBRACKET},            \
+      {"]", RBRACKET}, {"<", LESS}, {">", GTR}, {"<=", LESSEQ}, {">=", GTREQ}, \
+      {";", SEMI_COLON}, {"@", ADDR}, {",", COMMA},
 
 #define SYMBOLS_TO_STRING_MAPPING                                              \
-  {PLUS, "+"}, {MINUS, "-"}, {DIV, "/"}, {MULT, "*"}, {POW, "^"}, {MOD, "%"},  \
-      {PLUS_ASSIGN, "+="}, {MINUS_ASSIGN, "-="}, {DIV_ASSIGN, "/="},           \
-      {MULT_ASSIGN, "*="}, {POW_ASSIGN, "^="}, {MOD_ASSIGN, "%="},             \
-      {ASSIGN, "="}, {LPAREN, "("}, {RPAREN, ")"}, {LBRACE, "{"},              \
-      {RBRACE, "}"}, {LBRACKET, "["}, {RBRACKET, "]"}, {LESS, "<"},            \
-      {GTR, ">"}, {LESSEQ, "<="}, {GTREQ, ">="}, {SEMI_COLON, ";"},            \
-      {ADDR, "@"}, {COMMA, ","},
+  {PLUS, "+"}, {PLUSPLUS, "++"}, {MINUS, "-"}, {MINUSMINUS, "--"}, {DIV, "/"}, \
+      {MULT, "*"}, {POW, "^"}, {MOD, "%"}, {PLUS_ASSIGN, "+="},                \
+      {MINUS_ASSIGN, "-="}, {DIV_ASSIGN, "/="}, {MULT_ASSIGN, "*="},           \
+      {POW_ASSIGN, "^="}, {MOD_ASSIGN, "%="}, {ASSIGN, "="}, {LPAREN, "("},    \
+      {RPAREN, ")"}, {LBRACE, "{"}, {RBRACE, "}"}, {LBRACKET, "["},            \
+      {RBRACKET, "]"}, {LESS, "<"}, {GTR, ">"}, {LESSEQ, "<="}, {GTREQ, ">="}, \
+      {SEMI_COLON, ";"}, {ADDR, "@"}, {COMMA, ","},
 
 using TokenValue = std::variant<int, float, double, bool, std::string>;
 struct Token {
@@ -222,10 +224,10 @@ struct Token {
 };
 
 class TokenHandler {
-  std::vector<Lexer::Token> token_list;
+  std::vector<Token> token_list;
 
 public:
-  explicit TokenHandler(std::vector<Lexer::Token> &&_tokens)
+  explicit TokenHandler(std::vector<Token> &&_tokens)
       : token_list(std::move(_tokens)) {};
 
   TokenHandler() = default;
@@ -237,7 +239,8 @@ public:
   }
 
   const Lexer::Token &peek() const { return token_list.back(); };
-  bool peek_is(Lexer::TokenType _type) const {
+  const Lexer::Token &peek_back() const { return token_list.front(); }
+  bool peek_is(TokenType _type) const {
     return token_list.back().type == _type;
   }
 
@@ -253,7 +256,10 @@ public:
 
   void pop() { token_list.pop_back(); }
 
-  bool pop_if(Lexer::TokenType _type) {
+  bool pop_if(TokenType _type) {
+    if (token_list.empty())
+      return false;
+
     if (token_list.back().type == _type) {
       token_list.pop_back();
       return true;
@@ -261,9 +267,7 @@ public:
     return false;
   }
 
-  bool check(Lexer::TokenType _type) const {
-    return token_list.back().type == _type;
-  }
+  bool check(TokenType _type) const { return token_list.back().type == _type; }
 
   bool empty() const { return token_list.empty(); }
   unsigned size() const { return token_list.size(); }
@@ -277,9 +281,12 @@ public:
     }
   }
 
+  void for_all(std::function<void(Token &)>);
   TokenHandler getTokensBetweenBraces();
   TokenHandler getTokensBetweenParenthesis();
   TokenHandler getTokensBetweenBrackets();
+  TokenHandler getAllTokensUntilFirstOf(TokenType _type);
+  TokenHandler getAllTokensUntilLastOf(TokenType _type);
 };
 // Vector organized as stack, back is top is first token
 [[nodiscard]] TokenHandler tokenizeFile(const std::string &file_path);

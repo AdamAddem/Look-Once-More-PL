@@ -2,6 +2,7 @@
 #include "statements.hpp"
 
 namespace Parser {
+
 struct ParsedGlobals {
   std::vector<VarDeclaration> globals;
   std::vector<Statement *> global_init_body;
@@ -17,13 +18,13 @@ struct ParsedGlobals {
 };
 
 struct ParsedFunction {
-  StrictType return_value;
+  Type return_value;
   std::string name;
   std::vector<VarDeclaration>
       parameter_list; // VarDeclarations should have expr = nullptr
   std::vector<Statement *> function_body;
 
-  ParsedFunction(StrictType &&_return_value, std::string &&_name,
+  ParsedFunction(Type &&_return_value, std::string &&_name,
                  std::vector<VarDeclaration> &&_parameter_list,
                  std::vector<Statement *> &&_function_body)
       : return_value(std::move(_return_value)), name(std::move(_name)),
@@ -35,6 +36,8 @@ struct ParsedFunction {
         name(std::move(other.name)),
         parameter_list(std::move(other.parameter_list)),
         function_body(std::move(other.function_body)) {}
+
+  void print();
 };
 
 struct ParsedTranslationUnit {

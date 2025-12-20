@@ -98,6 +98,11 @@ void grabSymbol(char c, std::vector<Token> &token_list, std::ifstream &file) {
   switch (c) { // compound symbols up first, single char symbols down there
   case '+':
   case '-':
+    if (file.peek() == c) {
+      symbol.push_back(file.get());
+      type = stringToSymbol[symbol];
+      break;
+    }
   case '/':
   case '*':
   case '^':
@@ -208,7 +213,7 @@ void grabIdentOrKeyword(std::vector<Token> &token_list, std::ifstream &file) {
   token_list.emplace_back(type, std::move(value));
 }
 
-void debugPrintList(std::vector<Token> &token_list, std::ifstream &file) {
+void debugPrintList(std::vector<Token> &token_list) {
   static std::unordered_map<TokenType, std::string> keywordToString = {
       KEYWORDS_TO_STRING_MAPPING};
   static std::unordered_map<TokenType, std::string> symbolToString = {
@@ -290,17 +295,17 @@ TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
 
 bool Token::isPrimitive() const {
   switch (type) {
-  case Lexer::KEYWORD_INT:
-  case Lexer::KEYWORD_UINT:
-  case Lexer::KEYWORD_FLOAT:
-  case Lexer::KEYWORD_DOUBLE:
-  case Lexer::KEYWORD_CHAR:
-  case Lexer::KEYWORD_UCHAR:
-  case Lexer::KEYWORD_BOOL:
-  case Lexer::KEYWORD_SHORT:
-  case Lexer::KEYWORD_LONG:
-  case Lexer::KEYWORD_SIGNED:
-  case Lexer::KEYWORD_UNSIGNED:
+  case KEYWORD_INT:
+  case KEYWORD_UINT:
+  case KEYWORD_FLOAT:
+  case KEYWORD_DOUBLE:
+  case KEYWORD_CHAR:
+  case KEYWORD_UCHAR:
+  case KEYWORD_BOOL:
+  case KEYWORD_SHORT:
+  case KEYWORD_LONG:
+  case KEYWORD_SIGNED:
+  case KEYWORD_UNSIGNED:
     return true;
 
   default:
@@ -368,9 +373,9 @@ TokenHandler TokenHandler::getTokensBetweenBraces() {
     if (token_list.empty())
       throw std::runtime_error("Expected closing rbrace");
 
-    if (token_list.back().type == Lexer::LBRACE)
+    if (token_list.back().type == LBRACE)
       ++openbrace;
-    else if (token_list.back().type == Lexer::RBRACE)
+    else if (token_list.back().type == RBRACE)
       --openbrace;
 
     body.emplace_back(std::move(token_list.back()));
@@ -389,15 +394,16 @@ TokenHandler TokenHandler::getTokensBetweenParenthesis() {
     if (token_list.empty())
       throw std::runtime_error("Expected closing rparen");
 
-    if (token_list.back().type == Lexer::LPAREN)
+    if (token_list.back().type == LPAREN)
       ++openbrace;
-    else if (token_list.back().type == Lexer::RPAREN)
+    else if (token_list.back().type == RPAREN)
       --openbrace;
 
     body.emplace_back(std::move(token_list.back()));
     token_list.pop_back();
   }
   body.pop_back();
+
   std::reverse(body.begin(), body.end()); // stackify
 
   return TokenHandler(std::move(body));
@@ -410,9 +416,9 @@ TokenHandler TokenHandler::getTokensBetweenBrackets() {
     if (token_list.empty())
       throw std::runtime_error("Expected closing rparen");
 
-    if (token_list.back().type == Lexer::LBRACKET)
+    if (token_list.back().type == LBRACKET)
       ++openbracket;
-    else if (token_list.back().type == Lexer::RBRACKET)
+    else if (token_list.back().type == RBRACKET)
       --openbracket;
 
     body.emplace_back(std::move(token_list.back()));
@@ -422,6 +428,53 @@ TokenHandler TokenHandler::getTokensBetweenBrackets() {
   std::reverse(body.begin(), body.end()); // stackify
 
   return TokenHandler(std::move(body));
+}
+
+TokenHandler TokenHandler::getAllTokensUntilFirstOf(TokenType _type) {
+  std::vector<Token> tokens;
+
+  while (!token_list.back().is(_type)) {
+    tokens.emplace_back(std::move(token_list.back()));
+    token_list.pop_back();
+
+    if (token_list.empty())
+      throw std::runtime_error(
+          "Did not find token in getAllTokensUntilFirstOf");
+  }
+  std::reverse(tokens.begin(), tokens.end());
+
+  return TokenHandler(std::move(tokens));
+}
+
+TokenHandler TokenHandler::getAllTokensUntilLastOf(TokenType _type) {
+  auto last_of = std::find_if(token_list.begin(), token_list.end(),
+                              [_type](const Token &t) { return t.is(_type); });
+
+  if (last_of == token_list.end())
+    throw std::runtime_error("Did not find token in getAllTokensUntilLastOf");
+
+  size_t num = std::distance(last_of, token_list.end()) - 1;
+  std::vector<Token> tokens;
+  tokens.reserve(num);
+
+  for (size_t i = 0; i < num; ++i) {
+    tokens.emplace_back(std::move(token_list.back()));
+    token_list.pop_back();
+  }
+
+  std::reverse(tokens.begin(), tokens.end());
+  return TokenHandler(std::move(tokens));
+}
+
+void TokenHandler::for_all(std::function<void(Token &)> f) {
+
+  auto curr = token_list.rbegin();
+  auto end = token_list.rend();
+
+  while (curr != end) {
+    f(*curr);
+    ++curr;
+  }
 }
 
 /* TokenHandler Methods */

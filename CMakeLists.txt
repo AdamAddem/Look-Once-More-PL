@@ -10,4 +10,7 @@ add_executable(LookOnceMore
         main.cpp
         src/lex.cpp
         src/firstparse.cpp
+        src/secondparse.cpp
+        src/statements.cpp
+        src/expressions.cpp
 )

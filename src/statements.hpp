@@ -18,83 +18,79 @@ struct VarDeclaration : Statement {
   VarDeclaration(VarDeclaration &&other) noexcept
       : type(std::move(other.type)), ident(std::move(other.ident)) {}
 
-  virtual void print() override {
-    std::string type_name;
-    if (std::holds_alternative<StrictType>(type))
-      type_name = std::get<StrictType>(type).type_name;
-    else
-      type_name = std::get<VariantType>(type).type_name;
-
-    std::cout << type_name << " " << ident << "expr;\n";
-  }
-};
-
-struct VarAssignment : Statement {
-
-  std::string ident;
-  Expression *expr; // cannot be nullptr
-  VarAssignment(std::string &&_ident, Expression *_expr)
-      : ident(std::move(_ident)), expr(_expr) {}
-
-  virtual void print() override { std::cout << ident << "expr;\n"; }
-};
-
-struct FunctionCall : Statement {
-  std::string function_name;
-  std::vector<std::string> parameters;
-  FunctionCall(std::string &&_function_name,
-               std::vector<std::string> &&_parameters)
-      : function_name(std::move(_function_name)),
-        parameters(std::move(_parameters)) {}
-
   virtual void print() override;
 };
 
 struct IfStatement : Statement {
   Expression *condition;
-  std::vector<Statement *> true_path;
-  Statement *false_path;
+  Statement *true_branch;
+  Statement *false_branch;
 
-  IfStatement(Expression *_condition, std::vector<Statement *> &&_true_path,
-              Statement *_false_path = nullptr)
-      : condition(_condition), true_path(_true_path),
-        false_path(std::move(_false_path)) {}
+  IfStatement(Expression *_condition, Statement *_true_branch,
+              Statement *_false_branch = nullptr)
+      : condition(_condition), true_branch(_true_branch),
+        false_branch(_false_branch) {}
 
   virtual void print() override;
 };
 
 struct ForLoop : Statement {
-  Statement *decl_statement;
+  Statement *var_statement;
   Expression *condition;
   Expression *iteration;
 
-  std::vector<Statement *> loop_body;
+  Statement *loop_body;
 
   ForLoop(Statement *_decl, Expression *_condition, Expression *_iteration,
-          std::vector<Statement *> &&_loop_body)
-      : decl_statement(_decl), condition(_condition), iteration(_iteration),
-        loop_body(std::move(_loop_body)) {}
+          Statement *_loop_body)
+      : var_statement(_decl), condition(_condition), iteration(_iteration),
+        loop_body(_loop_body) {}
 
   virtual void print() override;
 };
 
 struct WhileLoop : Statement {
   Expression *condition;
-  bool doWhile;
-  std::vector<Statement *> loop_body;
-  WhileLoop(Expression *_condition, bool _doWhile,
-            std::vector<Statement *> &&_loop_body)
-      : condition(_condition), doWhile(_doWhile), loop_body(_loop_body) {}
+  Statement *loop_body;
+  WhileLoop(Expression *_condition, Statement *_loop_body)
+      : condition(_condition), loop_body(_loop_body) {}
+
+  virtual void print() override;
+};
+
+/*
+struct DoWhileLoop : Statement {
+  Expression* condition;
+  Statement* loop_body;
+
+  DoWhileLoop()
+
+  virtual void print() override;
+}; */
+
+struct ScopedStatement : Statement {
+  std::vector<Statement *> scope_body;
+
+  explicit ScopedStatement(std::vector<Statement *> &&_body)
+      : scope_body(std::move(_body)) {}
 
   virtual void print() override;
 };
 
 struct ReturnStatement : Statement {
-  Expression *return_value;
-  explicit ReturnStatement(Expression *_return_value)
+  Expression *return_value; // may be nullptr
+  explicit ReturnStatement(Expression *_return_value = nullptr)
       : return_value(_return_value) {}
 
   virtual void print() override;
 };
 
 struct SwitchCase : Statement {}; // TBD
+
+struct ExpressionStatement : Statement {
+  Expression *expr; // can be nullptr
+
+  ExpressionStatement(Expression *_expr = nullptr) : expr(_expr) {}
+
+  virtual void print() override;
+};

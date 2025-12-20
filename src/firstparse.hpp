@@ -43,5 +43,7 @@ struct UnparsedTU {
   UnparsedTU() = default;
 };
 
+[[nodiscard]] std::string parseIdentifier(Lexer::TokenHandler &tokens);
+[[nodiscard]] Type parseType(Lexer::TokenHandler &tokens);
 [[nodiscard]] UnparsedTU firstPassParsing(Lexer::TokenHandler &&tokens);
 } // namespace Parser

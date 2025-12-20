@@ -61,7 +61,7 @@ void UnparsedTU::print() {
   std::cout << std::endl;
 }
 
-Type parseType(TokenHandler &tokens) {
+Type Parser::parseType(TokenHandler &tokens) {
   Token token = tokens.eat();
 
   if (token.isPrimitive())
@@ -101,7 +101,7 @@ Type parseType(TokenHandler &tokens) {
   throw std::runtime_error(error_msg);
 }
 
-std::string parseIdentifier(TokenHandler &tokens) {
+std::string Parser::parseIdentifier(TokenHandler &tokens) {
   Token token = tokens.eat();
 
   if (token.is(IDENTIFIER))
@@ -211,6 +211,5 @@ UnparsedTU Parser::firstPassParsing(TokenHandler &&tokens) {
   while (!token_list.empty())
     parseGlobalFunctions(pass_one_tu, token_list);
 
-  pass_one_tu.print();
   return pass_one_tu;
 }

@@ -7,6 +7,85 @@
 #include <vector>
 using namespace Lexer;
 
+// this is so stupid
+#define STRING_TO_KEYWORDS_MAPPING                                             \
+  {"and", KEYWORD_AND}, {"or", KEYWORD_OR}, {"xor", KEYWORD_XOR},              \
+      {"not", KEYWORD_NOT}, {"equals", KEYWORD_EQUALS},                        \
+      {"bitand", KEYWORD_BITAND}, {"bitor", KEYWORD_BITOR},                    \
+      {"bitxor", KEYWORD_BITXOR}, {"bitnot", KEYWORD_BITNOT},                  \
+      {"int", KEYWORD_INT}, {"uint", KEYWORD_UINT}, {"float", KEYWORD_FLOAT},  \
+      {"double", KEYWORD_DOUBLE}, {"char", KEYWORD_CHAR},                      \
+      {"uchar", KEYWORD_UCHAR}, {"bool", KEYWORD_BOOL},                        \
+      {"short", KEYWORD_SHORT}, {"long", KEYWORD_LONG},                        \
+      {"signed", KEYWORD_SIGNED}, {"unsigned", KEYWORD_UNSIGNED},              \
+      {"null", KEYWORD_NULL}, {"devoid", KEYWORD_DEVOID},                      \
+      {"junk", KEYWORD_JUNK}, {"selfish", KEYWORD_SELFISH},                    \
+      {"sharing", KEYWORD_SHARING}, {"watching", KEYWORD_WATCHING},            \
+      {"raw", KEYWORD_RAW}, {"vague", KEYWORD_VAGUE}, {"if", KEYWORD_IF},      \
+      {"else", KEYWORD_ELSE}, {"elif", KEYWORD_ELIF}, {"for", KEYWORD_FOR},    \
+      {"while", KEYWORD_WHILE}, {"do", KEYWORD_DO},                            \
+      {"return", KEYWORD_RETURN}, {"switch", KEYWORD_SWITCH},                  \
+      {"case", KEYWORD_CASE}, {"default", KEYWORD_DEFAULT},                    \
+      {"goto", KEYWORD_GOTO}, {"break", KEYWORD_BREAK},                        \
+      {"continue", KEYWORD_CONTINUE}, {"cast", KEYWORD_CAST},                  \
+      {"cast_if", KEYWORD_CAST_IF}, {"unsafe_cast", KEYWORD_UNSAFE_CAST},      \
+      {"very_unsafe_cast", KEYWORD_VERY_UNSAFE_CAST},                          \
+      {"steal", KEYWORD_STEAL}, {"build_new", KEYWORD_BUILD_NEW},              \
+      {"allocate", KEYWORD_ALLOCATE}, {"construct", KEYWORD_CONSTRUCT},        \
+      {"auto", KEYWORD_AUTO}, {"const", KEYWORD_CONST},                        \
+      {"except", KEYWORD_EXCEPT}, {"static", KEYWORD_STATIC},                  \
+      {"extern", KEYWORD_EXTERN}, {"true", KEYWORD_TRUE},                      \
+      {"false", KEYWORD_FALSE}, {"from", KEYWORD_FROM}, {"as", KEYWORD_AS},    \
+      {"global", KEYWORD_GLOBAL}, {"globals", KEYWORD_GLOBALS},
+
+#define KEYWORDS_TO_STRING_MAPPING                                             \
+  {KEYWORD_AND, "and"}, {KEYWORD_OR, "or"}, {KEYWORD_XOR, "xor"},              \
+      {KEYWORD_NOT, "not"}, {KEYWORD_EQUALS, "equals"},                        \
+      {KEYWORD_BITAND, "bitand"}, {KEYWORD_BITOR, "bitor"},                    \
+      {KEYWORD_BITXOR, "bitxor"}, {KEYWORD_BITNOT, "bitnot"},                  \
+      {KEYWORD_INT, "int"}, {KEYWORD_UINT, "uint"}, {KEYWORD_FLOAT, "float"},  \
+      {KEYWORD_DOUBLE, "double"}, {KEYWORD_CHAR, "char"},                      \
+      {KEYWORD_UCHAR, "uchar"}, {KEYWORD_BOOL, "bool"},                        \
+      {KEYWORD_SHORT, "short"}, {KEYWORD_LONG, "long"},                        \
+      {KEYWORD_SIGNED, "signed"}, {KEYWORD_UNSIGNED, "unsigned"},              \
+      {KEYWORD_NULL, "null"}, {KEYWORD_DEVOID, "devoid"},                      \
+      {KEYWORD_JUNK, "junk"}, {KEYWORD_SELFISH, "selfish"},                    \
+      {KEYWORD_SHARING, "sharing"}, {KEYWORD_WATCHING, "watching"},            \
+      {KEYWORD_RAW, "raw"}, {KEYWORD_VAGUE, "vague"}, {KEYWORD_IF, "if"},      \
+      {KEYWORD_ELSE, "else"}, {KEYWORD_ELIF, "elif"}, {KEYWORD_FOR, "for"},    \
+      {KEYWORD_WHILE, "while"}, {KEYWORD_DO, "do"},                            \
+      {KEYWORD_RETURN, "return"}, {KEYWORD_SWITCH, "switch"},                  \
+      {KEYWORD_CASE, "case"}, {KEYWORD_DEFAULT, "default"},                    \
+      {KEYWORD_GOTO, "goto"}, {KEYWORD_BREAK, "break"},                        \
+      {KEYWORD_CONTINUE, "continue"}, {KEYWORD_CAST, "cast"},                  \
+      {KEYWORD_CAST_IF, "cast_if"}, {KEYWORD_UNSAFE_CAST, "unsafe_cast"},      \
+      {KEYWORD_VERY_UNSAFE_CAST, "very_unsafe_cast"},                          \
+      {KEYWORD_STEAL, "steal"}, {KEYWORD_BUILD_NEW, "build_new"},              \
+      {KEYWORD_ALLOCATE, "allocate"}, {KEYWORD_CONSTRUCT, "construct"},        \
+      {KEYWORD_AUTO, "auto"}, {KEYWORD_CONST, "const"},                        \
+      {KEYWORD_EXCEPT, "except"}, {KEYWORD_STATIC, "static"},                  \
+      {KEYWORD_EXTERN, "extern"}, {KEYWORD_TRUE, "true"},                      \
+      {KEYWORD_FALSE, "false"}, {KEYWORD_FROM, "from"}, {KEYWORD_AS, "as"},    \
+      {KEYWORD_GLOBAL, "global"}, {KEYWORD_GLOBALS, "globals"},
+
+#define STRING_TO_SYMBOLS_MAPPING                                              \
+  {"+", PLUS}, {"++", PLUSPLUS}, {"-", MINUS}, {"--", MINUSMINUS},             \
+      {"/", SLASH}, {"*", STAR}, {"^", POW}, {"%", MOD}, {"+=", PLUS_ASSIGN},  \
+      {"-=", MINUS_ASSIGN}, {"/=", DIV_ASSIGN}, {"*=", MULT_ASSIGN},           \
+      {"^=", POW_ASSIGN}, {"%=", MOD_ASSIGN}, {"=", ASSIGN}, {"(", LPAREN},    \
+      {")", RPAREN}, {"{", LBRACE}, {"}", RBRACE}, {"[", LBRACKET},            \
+      {"]", RBRACKET}, {"<", LESS}, {">", GTR}, {"<=", LESSEQ}, {">=", GTREQ}, \
+      {";", SEMI_COLON}, {"@", ADDR}, {",", COMMA},
+
+#define SYMBOLS_TO_STRING_MAPPING                                              \
+  {PLUS, "+"}, {PLUSPLUS, "++"}, {MINUS, "-"}, {MINUSMINUS, "--"},             \
+      {SLASH, "/"}, {STAR, "*"}, {POW, "^"}, {MOD, "%"}, {PLUS_ASSIGN, "+="},  \
+      {MINUS_ASSIGN, "-="}, {DIV_ASSIGN, "/="}, {MULT_ASSIGN, "*="},           \
+      {POW_ASSIGN, "^="}, {MOD_ASSIGN, "%="}, {ASSIGN, "="}, {LPAREN, "("},    \
+      {RPAREN, ")"}, {LBRACE, "{"}, {RBRACE, "}"}, {LBRACKET, "["},            \
+      {RBRACKET, "]"}, {LESS, "<"}, {GTR, ">"}, {LESSEQ, "<="}, {GTREQ, ">="}, \
+      {SEMI_COLON, ";"}, {ADDR, "@"}, {COMMA, ","},
+
 std::unordered_map<std::string, TokenType> keywords{STRING_TO_KEYWORDS_MAPPING};
 std::unordered_map<std::string, TokenType> stringToSymbol{
     STRING_TO_SYMBOLS_MAPPING};
@@ -203,9 +282,12 @@ void grabIdentOrKeyword(std::vector<Token> &token_list, std::ifstream &file) {
   }
   file.putback(c);
 
-  if (keywords.contains(word)) {
+  if (word == "true" || word == "false") {
+    type = BOOL_LITERAL;
+    value = (word == "true" ? 1 : 0);
+  } else if (keywords.contains(word))
     type = keywords[word];
-  } else {
+  else {
     type = IDENTIFIER;
     value = word;
   }
@@ -244,6 +326,11 @@ void debugPrintList(std::vector<Token> &token_list) {
 
     case STRING_LITERAL:
       std::cout << "STRING_LITERAL: " << std::get<std::string>(t.value);
+      break;
+
+    case BOOL_LITERAL:
+      std::cout << "BOOL_LITERAL: "
+                << (std::get<int>(t.value) ? "true" : "false");
       break;
 
     default:
@@ -320,6 +407,7 @@ bool Token::isLiteral() const {
   case DOUBLE_LITERAL:
   case CHAR_LITERAL:
   case STRING_LITERAL:
+  case BOOL_LITERAL:
     return true;
 
   default:
@@ -345,6 +433,8 @@ std::string Token::toString() {
       return std::to_string((char)std::get<int>(value));
     case STRING_LITERAL:
       return std::get<std::string>(value);
+    case BOOL_LITERAL:
+      return std::get<int>(value) ? "true" : "false";
 
     default:
       throw std::runtime_error("Error in isLiteral method");
@@ -357,7 +447,7 @@ std::string Token::toString() {
 int Token::getInt() const { return std::get<int>(value); }
 float Token::getFloat() const { return std::get<float>(value); }
 double Token::getDouble() const { return std::get<double>(value); }
-bool Token::getBool() const { return std::get<bool>(value); }
+bool Token::getBool() const { return std::get<int>(value); }
 std::string Token::takeString() {
   return std::get<std::string>(std::move(value));
 }
@@ -365,6 +455,28 @@ std::string Token::takeString() {
 /* Token Methods */
 
 /* TokenHandler Methods */
+
+void TokenHandler::print() {
+  auto curr = token_list.rbegin();
+  auto end = token_list.rend();
+
+  while (curr != end) {
+    std::cout << curr->toString() << std::endl;
+    ++curr;
+  }
+}
+
+bool TokenHandler::pop_if(TokenType _type) {
+  if (token_list.empty())
+    return false;
+
+  if (token_list.back().type == _type) {
+    token_list.pop_back();
+    return true;
+  }
+
+  return false;
+}
 
 TokenHandler TokenHandler::getTokensBetweenBraces() {
   std::vector<Lexer::Token> body;

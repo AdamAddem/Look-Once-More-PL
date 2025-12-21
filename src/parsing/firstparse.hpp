@@ -1,6 +1,6 @@
 #pragma once
-#include "lex.hpp"
-#include "statements.hpp"
+#include "../grammar/statements.hpp"
+#include "../lexing/lex.hpp"
 #include <cassert>
 
 namespace Parser {

@@ -1,7 +1,7 @@
 #include "firstparse.hpp"
 #include <iostream>
 #include <stdexcept>
-#include <variant>
+
 using namespace Parser;
 using namespace Lexer;
 
@@ -19,19 +19,10 @@ void UnparsedGlobals::print() {
 }
 
 void UnparsedFunction::print() {
-  std::string return_type_name;
-  if (std::holds_alternative<StrictType>(return_value))
-    return_type_name = std::get<StrictType>(return_value).type_name;
-  else
-    return_type_name = std::get<VariantType>(return_value).type_name;
-  std::cout << return_type_name << " " << name << "(";
+  printType(return_value);
   for (auto &decl : parameter_list) {
-    std::string param_type;
-    if (std::holds_alternative<StrictType>(decl.type))
-      param_type = std::get<StrictType>(decl.type).type_name;
-    else
-      param_type = std::get<VariantType>(decl.type).type_name;
-    std::cout << param_type << " " << decl.ident << ", ";
+    printType(decl.type);
+    std::cout << " " << decl.ident << ", ";
   }
 
   std::cout << ") {" << std::endl;
@@ -70,7 +61,7 @@ Type Parser::parseType(TokenHandler &tokens) {
   if (token.is(IDENTIFIER))
     return StrictType(std::move(std::get<std::string>(token.value)));
 
-  if (token.is(LESS)) { // allows for the same type multiple times
+  if (token.is(Lexer::LESS)) { // allows for the same type multiple times
     std::vector<StrictType> types;
     bool devoid = false;
     do {
@@ -88,8 +79,14 @@ Type Parser::parseType(TokenHandler &tokens) {
         continue;
       }
 
-      if (token.is(KEYWORD_DEVOID))
+      if (token.is(KEYWORD_DEVOID)) {
         devoid = true;
+        continue;
+      }
+
+      if (!token.is(COMMA) && !token.is(GTR)) {
+        throw std::runtime_error("Expected comma in variant type list");
+      }
 
     } while (!token.is(GTR));
 
@@ -107,6 +104,7 @@ std::string Parser::parseIdentifier(TokenHandler &tokens) {
   if (token.is(IDENTIFIER))
     return token.takeString();
 
+  std::cout << token.toString() << std::endl;
   throw std::runtime_error("Expected identifier");
 }
 

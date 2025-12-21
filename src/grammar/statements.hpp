@@ -1,9 +1,13 @@
 #pragma once
-#include "expressions.hpp"
+#include "types.hpp"
+#include <string>
+#include <vector>
+
+struct Expression;
 
 struct Statement {
   virtual ~Statement() = default;
-  virtual void print() = 0;
+  virtual void print(unsigned indent = 0) = 0;
 };
 
 struct VarDeclaration : Statement {
@@ -11,6 +15,7 @@ struct VarDeclaration : Statement {
   Type type;
   std::string ident;
   Expression *expr; // nullptr indicates junk initialization
+
   VarDeclaration(Type &&_type, std::string &&_ident,
                  Expression *_expr = nullptr)
       : type(std::move(_type)), ident(std::move(_ident)), expr(_expr) {}
@@ -18,35 +23,35 @@ struct VarDeclaration : Statement {
   VarDeclaration(VarDeclaration &&other) noexcept
       : type(std::move(other.type)), ident(std::move(other.ident)) {}
 
-  virtual void print() override;
+  virtual void print(unsigned indent = 0) override;
 };
 
 struct IfStatement : Statement {
   Expression *condition;
   Statement *true_branch;
-  Statement *false_branch;
+  Statement *false_branch; // nullptr indicates no false branch
 
   IfStatement(Expression *_condition, Statement *_true_branch,
               Statement *_false_branch = nullptr)
       : condition(_condition), true_branch(_true_branch),
         false_branch(_false_branch) {}
 
-  virtual void print() override;
+  virtual void print(unsigned indent = 0) override;
 };
 
 struct ForLoop : Statement {
   Statement *var_statement;
-  Expression *condition;
+  Statement *condition;
   Expression *iteration;
 
   Statement *loop_body;
 
-  ForLoop(Statement *_decl, Expression *_condition, Expression *_iteration,
+  ForLoop(Statement *_decl, Statement *_condition, Expression *_iteration,
           Statement *_loop_body)
       : var_statement(_decl), condition(_condition), iteration(_iteration),
         loop_body(_loop_body) {}
 
-  virtual void print() override;
+  virtual void print(unsigned indent = 0) override;
 };
 
 struct WhileLoop : Statement {
@@ -55,7 +60,7 @@ struct WhileLoop : Statement {
   WhileLoop(Expression *_condition, Statement *_loop_body)
       : condition(_condition), loop_body(_loop_body) {}
 
-  virtual void print() override;
+  virtual void print(unsigned indent = 0) override;
 };
 
 /*
@@ -74,7 +79,7 @@ struct ScopedStatement : Statement {
   explicit ScopedStatement(std::vector<Statement *> &&_body)
       : scope_body(std::move(_body)) {}
 
-  virtual void print() override;
+  virtual void print(unsigned indent = 0) override;
 };
 
 struct ReturnStatement : Statement {
@@ -82,15 +87,14 @@ struct ReturnStatement : Statement {
   explicit ReturnStatement(Expression *_return_value = nullptr)
       : return_value(_return_value) {}
 
-  virtual void print() override;
+  virtual void print(unsigned indent = 0) override;
 };
 
 struct SwitchCase : Statement {}; // TBD
 
 struct ExpressionStatement : Statement {
-  Expression *expr; // can be nullptr
-
+  Expression *expr; // may be nullptr
   ExpressionStatement(Expression *_expr = nullptr) : expr(_expr) {}
 
-  virtual void print() override;
+  virtual void print(unsigned indent = 0) override;
 };

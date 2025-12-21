@@ -1,20 +1,22 @@
 #pragma once
-#include "statements.hpp"
+#include "../grammar/statements.hpp"
 
 namespace Parser {
 
 struct ParsedGlobals {
-  std::vector<VarDeclaration> globals;
+  std::vector<VarDeclaration> declarations;
   std::vector<Statement *> global_init_body;
 
   ParsedGlobals(std::vector<VarDeclaration> &&_globals,
                 std::vector<Statement *> _globals_body)
-      : globals(std::move(_globals)),
+      : declarations(std::move(_globals)),
         global_init_body(std::move(_globals_body)) {}
 
   ParsedGlobals(ParsedGlobals &&other) noexcept
-      : globals(std::move(other.globals)),
+      : declarations(std::move(other.declarations)),
         global_init_body(std::move(other.global_init_body)) {}
+
+  void print();
 };
 
 struct ParsedFunction {
@@ -47,6 +49,8 @@ struct ParsedTranslationUnit {
   ParsedTranslationUnit(ParsedGlobals &&_global,
                         std::vector<ParsedFunction> &&_functions)
       : global(std::move(_global)), functions(std::move(_functions)) {}
+
+  void print();
 };
 
 class UnparsedTU;

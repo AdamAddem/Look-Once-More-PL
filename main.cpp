@@ -1,8 +1,11 @@
-#include "src/firstparse.hpp"
-#include "src/secondparse.hpp"
-int main() {
+#include "src/lexing/lex.hpp"
+#include "src/parsing/firstparse.hpp"
+#include "src/parsing/secondparse.hpp"
 
-  Parser::secondPassParsing(
-      Parser::firstPassParsing(Lexer::tokenizeFile("Code.lom")));
+using namespace Parser;
+using namespace Lexer;
+
+int main() {
+  secondPassParsing(firstPassParsing(tokenizeFile("Code.lom")));
   return 0;
 }

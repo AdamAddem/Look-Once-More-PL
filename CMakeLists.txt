@@ -8,9 +8,12 @@ include_directories(${PROJECT_SOURCE_DIR}/src)
 
 add_executable(LookOnceMore
         main.cpp
-        src/lex.cpp
-        src/firstparse.cpp
-        src/secondparse.cpp
-        src/statements.cpp
-        src/expressions.cpp
+        src/lexing/lex.cpp
+
+        src/parsing/firstparse.cpp
+        src/parsing/secondparse.cpp
+
+        src/grammar/statements.cpp
+        src/grammar/expressions.cpp
+        src/grammar/types.cpp
 )

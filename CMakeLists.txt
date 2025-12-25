@@ -16,4 +16,7 @@ add_executable(LookOnceMore
         src/grammar/statements.cpp
         src/grammar/expressions.cpp
         src/grammar/types.cpp
+
+        src/analysis/symbol_table.cpp
 )
+

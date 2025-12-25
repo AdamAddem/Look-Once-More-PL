@@ -6,18 +6,17 @@
 enum Operator {
 
   ADD,
-  PRE_INCREMENT,
-  POST_INCREMENT,
-
   SUBTRACT,
-  UNARY_MINUS,
-  PRE_DECREMENT,
-  POST_DECREMENT,
-
   MULTIPLY,
   DIVIDE,
   POWER,
   MODULUS,
+
+  PRE_INCREMENT,
+  POST_INCREMENT,
+  UNARY_MINUS,
+  PRE_DECREMENT,
+  POST_DECREMENT,
 
   ASSIGN,
   ADD_ASSIGN,
@@ -74,7 +73,6 @@ struct BinaryExpression : Expression {
   BinaryExpression(Expression *_expr_left, Expression *_expr_right,
                    Operator _opr)
       : expr_left(_expr_left), expr_right(_expr_right), opr(_opr) {}
-
   virtual void print() override;
 };
 
@@ -84,7 +82,6 @@ struct CallingExpression : Expression {
 
   CallingExpression(Expression *_f, std::vector<Expression *> &&_params)
       : func(_f), parameters(std::move(_params)) {}
-
   virtual void print() override;
 };
 
@@ -93,8 +90,7 @@ struct SubscriptExpression : Expression {
   Expression *inside;
 
   SubscriptExpression(Expression *_arr, Expression *_inside)
-      : arr(_arr), inside(_inside) {};
-
+      : arr(_arr), inside(_inside) {}
   virtual void print() override;
 };
 
@@ -103,7 +99,6 @@ struct IdentifierExpression : Expression {
 
   explicit IdentifierExpression(std::string &&_ident)
       : ident(std::move(_ident)) {}
-
   virtual void print() override;
 };
 

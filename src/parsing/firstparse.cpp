@@ -34,14 +34,27 @@ void UnparsedFunction::print() {
 
 void UnparsedTU::registerGlobal(Type &&_type, std::string &&_name) {
   globalsDeclared = true;
+  table.addGlobalVariable(_name, _type, false);
   globals.declarations.emplace_back(std::move(_type), std::move(_name));
 }
 
-void UnparsedTU::registerGlobalFuncBody(TokenHandler &&_body) {
+void UnparsedTU::registerGlobalsFuncBody(TokenHandler &&_body) {
   if (parsedGlobalBody == true)
     throw std::runtime_error("Redefinition of global initialization body");
   globals.global_init_body = std::move(_body);
   parsedGlobalBody = true;
+}
+
+void UnparsedTU::registerFunction(Type _type, std::string _name,
+                                  std::vector<VarDeclaration> _decl,
+                                  Lexer::TokenHandler _body) {
+  std::vector<Type> param_types;
+  for (auto &decl : _decl)
+    param_types.emplace_back(decl.type); // this is stupid
+
+  table.addFunction(_name, _type, std::move(param_types));
+  functions.emplace_back(std::move(_type), std::move(_name), std::move(_decl),
+                         std::move(_body));
 }
 
 void UnparsedTU::print() {
@@ -110,7 +123,7 @@ std::string Parser::parseIdentifier(TokenHandler &tokens) {
 
 std::vector<VarDeclaration> parseParameterDecl(TokenHandler &tokens) {
   std::vector<VarDeclaration> parameter_list;
-  if (tokens.peek().is(RPAREN)) {
+  if (tokens.peek_is(RPAREN)) {
     tokens.pop();
     return parameter_list;
   }
@@ -134,7 +147,8 @@ std::vector<VarDeclaration> parseParameterDecl(TokenHandler &tokens) {
 
 void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
 
-  Type type = parseType(tokens);
+  Type type = (tokens.peek_is(KEYWORD_DEVOID)) ? StrictType("devoid")
+                                               : parseType(tokens);
   std::string ident = parseIdentifier(tokens);
 
   Lexer::Token third = tokens.eat();
@@ -153,9 +167,9 @@ void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
     throw std::runtime_error(error_msg);
   }
 
-  tu.functions.emplace_back(std::move(type), std::move(ident),
-                            std::move(parameter_list),
-                            tokens.getTokensBetweenBraces());
+  tu.registerFunction(std::move(type), std::move(ident),
+                      std::move(parameter_list),
+                      tokens.getTokensBetweenBraces());
 }
 
 bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
@@ -168,7 +182,7 @@ bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
       throw std::runtime_error(
           "Global initialzation body declared despite no global variables");
 
-    tu.registerGlobalFuncBody(tokens.getTokensBetweenBraces());
+    tu.registerGlobalsFuncBody(tokens.getTokensBetweenBraces());
     return false;
   }
 

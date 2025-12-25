@@ -16,19 +16,20 @@ using namespace Lexer;
       {"int", KEYWORD_INT}, {"uint", KEYWORD_UINT}, {"float", KEYWORD_FLOAT},  \
       {"double", KEYWORD_DOUBLE}, {"char", KEYWORD_CHAR},                      \
       {"uchar", KEYWORD_UCHAR}, {"bool", KEYWORD_BOOL},                        \
-      {"short", KEYWORD_SHORT}, {"long", KEYWORD_LONG},                        \
-      {"signed", KEYWORD_SIGNED}, {"unsigned", KEYWORD_UNSIGNED},              \
-      {"null", KEYWORD_NULL}, {"devoid", KEYWORD_DEVOID},                      \
-      {"junk", KEYWORD_JUNK}, {"selfish", KEYWORD_SELFISH},                    \
-      {"sharing", KEYWORD_SHARING}, {"watching", KEYWORD_WATCHING},            \
-      {"raw", KEYWORD_RAW}, {"vague", KEYWORD_VAGUE}, {"if", KEYWORD_IF},      \
-      {"else", KEYWORD_ELSE}, {"elif", KEYWORD_ELIF}, {"for", KEYWORD_FOR},    \
-      {"while", KEYWORD_WHILE}, {"do", KEYWORD_DO},                            \
-      {"return", KEYWORD_RETURN}, {"switch", KEYWORD_SWITCH},                  \
-      {"case", KEYWORD_CASE}, {"default", KEYWORD_DEFAULT},                    \
-      {"goto", KEYWORD_GOTO}, {"break", KEYWORD_BREAK},                        \
-      {"continue", KEYWORD_CONTINUE}, {"cast", KEYWORD_CAST},                  \
-      {"cast_if", KEYWORD_CAST_IF}, {"unsafe_cast", KEYWORD_UNSAFE_CAST},      \
+      {"string", KEYWORD_STRING}, {"short", KEYWORD_SHORT},                    \
+      {"long", KEYWORD_LONG}, {"signed", KEYWORD_SIGNED},                      \
+      {"unsigned", KEYWORD_UNSIGNED}, {"null", KEYWORD_NULL},                  \
+      {"devoid", KEYWORD_DEVOID}, {"junk", KEYWORD_JUNK},                      \
+      {"selfish", KEYWORD_SELFISH}, {"sharing", KEYWORD_SHARING},              \
+      {"watching", KEYWORD_WATCHING}, {"raw", KEYWORD_RAW},                    \
+      {"vague", KEYWORD_VAGUE}, {"if", KEYWORD_IF}, {"else", KEYWORD_ELSE},    \
+      {"elif", KEYWORD_ELIF}, {"for", KEYWORD_FOR}, {"while", KEYWORD_WHILE},  \
+      {"do", KEYWORD_DO}, {"return", KEYWORD_RETURN},                          \
+      {"switch", KEYWORD_SWITCH}, {"case", KEYWORD_CASE},                      \
+      {"default", KEYWORD_DEFAULT}, {"goto", KEYWORD_GOTO},                    \
+      {"break", KEYWORD_BREAK}, {"continue", KEYWORD_CONTINUE},                \
+      {"cast", KEYWORD_CAST}, {"cast_if", KEYWORD_CAST_IF},                    \
+      {"unsafe_cast", KEYWORD_UNSAFE_CAST},                                    \
       {"very_unsafe_cast", KEYWORD_VERY_UNSAFE_CAST},                          \
       {"steal", KEYWORD_STEAL}, {"build_new", KEYWORD_BUILD_NEW},              \
       {"allocate", KEYWORD_ALLOCATE}, {"construct", KEYWORD_CONSTRUCT},        \
@@ -46,19 +47,20 @@ using namespace Lexer;
       {KEYWORD_INT, "int"}, {KEYWORD_UINT, "uint"}, {KEYWORD_FLOAT, "float"},  \
       {KEYWORD_DOUBLE, "double"}, {KEYWORD_CHAR, "char"},                      \
       {KEYWORD_UCHAR, "uchar"}, {KEYWORD_BOOL, "bool"},                        \
-      {KEYWORD_SHORT, "short"}, {KEYWORD_LONG, "long"},                        \
-      {KEYWORD_SIGNED, "signed"}, {KEYWORD_UNSIGNED, "unsigned"},              \
-      {KEYWORD_NULL, "null"}, {KEYWORD_DEVOID, "devoid"},                      \
-      {KEYWORD_JUNK, "junk"}, {KEYWORD_SELFISH, "selfish"},                    \
-      {KEYWORD_SHARING, "sharing"}, {KEYWORD_WATCHING, "watching"},            \
-      {KEYWORD_RAW, "raw"}, {KEYWORD_VAGUE, "vague"}, {KEYWORD_IF, "if"},      \
-      {KEYWORD_ELSE, "else"}, {KEYWORD_ELIF, "elif"}, {KEYWORD_FOR, "for"},    \
-      {KEYWORD_WHILE, "while"}, {KEYWORD_DO, "do"},                            \
-      {KEYWORD_RETURN, "return"}, {KEYWORD_SWITCH, "switch"},                  \
-      {KEYWORD_CASE, "case"}, {KEYWORD_DEFAULT, "default"},                    \
-      {KEYWORD_GOTO, "goto"}, {KEYWORD_BREAK, "break"},                        \
-      {KEYWORD_CONTINUE, "continue"}, {KEYWORD_CAST, "cast"},                  \
-      {KEYWORD_CAST_IF, "cast_if"}, {KEYWORD_UNSAFE_CAST, "unsafe_cast"},      \
+      {KEYWORD_STRING, "string"}, {KEYWORD_SHORT, "short"},                    \
+      {KEYWORD_LONG, "long"}, {KEYWORD_SIGNED, "signed"},                      \
+      {KEYWORD_UNSIGNED, "unsigned"}, {KEYWORD_NULL, "null"},                  \
+      {KEYWORD_DEVOID, "devoid"}, {KEYWORD_JUNK, "junk"},                      \
+      {KEYWORD_SELFISH, "selfish"}, {KEYWORD_SHARING, "sharing"},              \
+      {KEYWORD_WATCHING, "watching"}, {KEYWORD_RAW, "raw"},                    \
+      {KEYWORD_VAGUE, "vague"}, {KEYWORD_IF, "if"}, {KEYWORD_ELSE, "else"},    \
+      {KEYWORD_ELIF, "elif"}, {KEYWORD_FOR, "for"}, {KEYWORD_WHILE, "while"},  \
+      {KEYWORD_DO, "do"}, {KEYWORD_RETURN, "return"},                          \
+      {KEYWORD_SWITCH, "switch"}, {KEYWORD_CASE, "case"},                      \
+      {KEYWORD_DEFAULT, "default"}, {KEYWORD_GOTO, "goto"},                    \
+      {KEYWORD_BREAK, "break"}, {KEYWORD_CONTINUE, "continue"},                \
+      {KEYWORD_CAST, "cast"}, {KEYWORD_CAST_IF, "cast_if"},                    \
+      {KEYWORD_UNSAFE_CAST, "unsafe_cast"},                                    \
       {KEYWORD_VERY_UNSAFE_CAST, "very_unsafe_cast"},                          \
       {KEYWORD_STEAL, "steal"}, {KEYWORD_BUILD_NEW, "build_new"},              \
       {KEYWORD_ALLOCATE, "allocate"}, {KEYWORD_CONSTRUCT, "construct"},        \
@@ -388,6 +390,7 @@ bool Token::isPrimitive() const {
   case KEYWORD_DOUBLE:
   case KEYWORD_CHAR:
   case KEYWORD_UCHAR:
+  case KEYWORD_STRING:
   case KEYWORD_BOOL:
   case KEYWORD_SHORT:
   case KEYWORD_LONG:

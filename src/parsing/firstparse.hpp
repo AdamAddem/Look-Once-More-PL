@@ -1,4 +1,5 @@
 #pragma once
+#include "../analysis/symbol_table.hpp"
 #include "../grammar/statements.hpp"
 #include "../lexing/lex.hpp"
 #include <cassert>
@@ -31,13 +32,17 @@ struct UnparsedFunction {
 };
 
 struct UnparsedTU {
+  SymbolTable table;
   UnparsedGlobals globals;
   bool globalsDeclared = false;
   bool parsedGlobalBody = false;
   std::vector<UnparsedFunction> functions;
 
   void registerGlobal(Type &&_type, std::string &&_name);
-  void registerGlobalFuncBody(Lexer::TokenHandler &&_body);
+  void registerGlobalsFuncBody(Lexer::TokenHandler &&_body);
+  void registerFunction(Type _type, std::string _name,
+                        std::vector<VarDeclaration> _decl,
+                        Lexer::TokenHandler _body);
   void print();
 
   UnparsedTU() = default;

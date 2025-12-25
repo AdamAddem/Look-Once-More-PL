@@ -140,6 +140,41 @@ bool isPrefix(Operator op) {
   }
 }
 
+bool returnsArithmetic(Operator op) {
+  switch (op) {
+  case ADD:
+  case PRE_INCREMENT:
+  case POST_INCREMENT:
+  case SUBTRACT:
+  case UNARY_MINUS:
+  case PRE_DECREMENT:
+  case POST_DECREMENT:
+  case MULTIPLY:
+  case DIVIDE:
+  case POWER:
+  case MODULUS:
+  case LESS:
+  case GREATER:
+  case LESS_EQUAL:
+  case GREATER_EQUAL:
+  case EQUAL:
+  case NOT_EQUAL:
+  case AND:
+  case OR:
+  case XOR:
+  case NOT:
+  case BITAND:
+  case BITOR:
+  case BITXOR:
+  case BITNOT:
+    return true;
+
+  default:
+    return false;
+  }
+}
+
+/* printing */
 void UnaryExpression::print() {
 
   if (isPrefix(opr)) {
@@ -218,3 +253,5 @@ void LiteralExpression::print() {
 }
 
 void TemporaryExpr::print() { std::cout << "temporaryexpr"; }
+
+/* printing */

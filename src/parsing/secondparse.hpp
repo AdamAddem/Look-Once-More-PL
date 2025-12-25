@@ -53,7 +53,7 @@ struct ParsedTranslationUnit {
   void print();
 };
 
-class UnparsedTU;
+struct UnparsedTU;
 void secondPassParsing(UnparsedTU &&tu);
 
 } // namespace Parser

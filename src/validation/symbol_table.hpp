@@ -3,6 +3,20 @@
 #include <unordered_map>
 #include <vector>
 
+struct TypeDetails {
+  bool arithmetic;
+};
+
+struct TypeRegistry {
+  std::unordered_map<std::string, TypeDetails> registry;
+
+  TypeRegistry();
+
+  void addType(const std::string &type_name, TypeDetails details);
+  bool isValidType(const std::string &type_name);
+  bool isArithmeticType(const std::string &type_name);
+};
+
 struct Function {
   Type return_type;
   std::vector<Type> parameter_types;
@@ -36,50 +50,42 @@ struct FunctionSignature {
 
 struct Variable {
   Type type;
-  bool is_const;
+  bool is_mutable;
   bool is_stolen{false};
 
   Variable(const Variable &) = default;
-  Variable(Type &&_t, bool _const) : type(std::move(_t)), is_const(_const) {}
+  Variable(Type &&_t, bool _mut) : type(std::move(_t)), is_mutable(_mut) {}
   Variable(Variable &&other) noexcept
-      : type(std::move(other.type)), is_const(other.is_const),
+      : type(std::move(other.type)), is_mutable(other.is_mutable),
         is_stolen(other.is_stolen) {}
 };
 
 struct SymbolTable {
   using Entry = std::variant<Variable, FunctionSignature>;
 
+  TypeRegistry registry;
+  Type expectedReturnType;
   std::unordered_map<std::string, Entry> globals;
   std::vector<std::unordered_map<std::string, Variable>> locals;
+
+  SymbolTable();
 
   bool containsVariable(const std::string &name);
   void addGlobalVariable(std::string name, Type type, bool is_const = false);
   void addLocalVariable(std::string name, Type type, bool is_const = false);
+  const Variable &closestVariable(const std::string &name);
   void enterScope();
   void leaveScope();
-
   void addFunction(std::string name, Type type,
                    std::vector<Type> &&parameter_types);
   bool containsFunction(const std::string &name);
   bool isValidCall(const std::string &name, const Type &capture_type,
                    const std::vector<Type> &provided_params);
+  bool isSymbolInCurrentScope(const std::string &name);
+  bool isAssignable(const std::string &name);
+  bool isTypeArithmetic(const std::string &name);
 
   void clearLocalTable();
-
   void printGlobals();
   void printLocals();
-};
-
-struct TypeDetails {
-  bool arithmetic;
-};
-
-struct TypeRegistry {
-  std::unordered_map<std::string, TypeDetails> registry;
-
-  TypeRegistry();
-
-  void addType(const std::string &type_name, TypeDetails details);
-  bool isValidType(const std::string &type_name);
-  bool isArithmeticType(const std::string &type_name);
 };

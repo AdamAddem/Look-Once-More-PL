@@ -20,7 +20,7 @@ struct ParsedGlobals {
 };
 
 struct ParsedFunction {
-  Type return_value;
+  Type return_type;
   std::string name;
   std::vector<VarDeclaration>
       parameter_list; // VarDeclarations should have expr = nullptr
@@ -29,13 +29,12 @@ struct ParsedFunction {
   ParsedFunction(Type &&_return_value, std::string &&_name,
                  std::vector<VarDeclaration> &&_parameter_list,
                  std::vector<Statement *> &&_function_body)
-      : return_value(std::move(_return_value)), name(std::move(_name)),
+      : return_type(std::move(_return_value)), name(std::move(_name)),
         parameter_list(std::move(_parameter_list)),
         function_body(std::move(_function_body)) {}
 
   ParsedFunction(ParsedFunction &&other) noexcept
-      : return_value(std::move(other.return_value)),
-        name(std::move(other.name)),
+      : return_type(std::move(other.return_type)), name(std::move(other.name)),
         parameter_list(std::move(other.parameter_list)),
         function_body(std::move(other.function_body)) {}
 
@@ -54,6 +53,6 @@ struct ParsedTranslationUnit {
 };
 
 struct UnparsedTU;
-void secondPassParsing(UnparsedTU &&tu);
+ParsedTranslationUnit secondPassParsing(UnparsedTU &&tu);
 
 } // namespace Parser

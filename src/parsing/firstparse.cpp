@@ -9,9 +9,8 @@ void UnparsedGlobals::print() {
   if (declarations.empty())
     return;
 
-  for (auto &decl : declarations) {
-    decl.print();
-  }
+  for (auto &decl : declarations)
+    PrintStatementVisitor{}(decl);
 
   std::cout << "globals{\n";
   global_init_body.print();
@@ -34,7 +33,6 @@ void UnparsedFunction::print() {
 
 void UnparsedTU::registerGlobal(Type &&_type, std::string &&_name) {
   globalsDeclared = true;
-  table.addGlobalVariable(_name, _type, false);
   globals.declarations.emplace_back(std::move(_type), std::move(_name));
 }
 
@@ -52,7 +50,6 @@ void UnparsedTU::registerFunction(Type _type, std::string _name,
   for (auto &decl : _decl)
     param_types.emplace_back(decl.type); // this is stupid
 
-  table.addFunction(_name, _type, std::move(param_types));
   functions.emplace_back(std::move(_type), std::move(_name), std::move(_decl),
                          std::move(_body));
 }

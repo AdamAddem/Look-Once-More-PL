@@ -51,21 +51,15 @@ enum Operator {
   ADDRESS_OF,
 };
 
-struct Expression {
-  virtual ~Expression() = default;
-  virtual void print() = 0;
-};
+struct Expression;
 
-struct UnaryExpression : Expression {
+struct UnaryExpression {
   Expression *expr;
   Operator opr;
-
   UnaryExpression(Expression *_expr, Operator _opr) : expr(_expr), opr(_opr) {}
-
-  virtual void print() override;
 };
 
-struct BinaryExpression : Expression {
+struct BinaryExpression {
   Expression *expr_left;
   Expression *expr_right;
   Operator opr;
@@ -73,36 +67,32 @@ struct BinaryExpression : Expression {
   BinaryExpression(Expression *_expr_left, Expression *_expr_right,
                    Operator _opr)
       : expr_left(_expr_left), expr_right(_expr_right), opr(_opr) {}
-  virtual void print() override;
 };
 
-struct CallingExpression : Expression {
+struct CallingExpression {
   Expression *func;
   std::vector<Expression *> parameters;
 
   CallingExpression(Expression *_f, std::vector<Expression *> &&_params)
       : func(_f), parameters(std::move(_params)) {}
-  virtual void print() override;
 };
 
-struct SubscriptExpression : Expression {
+struct SubscriptExpression {
   Expression *arr;
   Expression *inside;
 
   SubscriptExpression(Expression *_arr, Expression *_inside)
       : arr(_arr), inside(_inside) {}
-  virtual void print() override;
 };
 
-struct IdentifierExpression : Expression {
+struct IdentifierExpression {
   std::string ident;
 
   explicit IdentifierExpression(std::string &&_ident)
       : ident(std::move(_ident)) {}
-  virtual void print() override;
 };
 
-struct LiteralExpression : Expression {
+struct LiteralExpression {
   using LiteralValue = std::variant<int, float, double, std::string>;
   enum LiteralType { INT, FLOAT, DOUBLE, BOOL, CHAR, STRING };
   LiteralValue value;
@@ -110,10 +100,24 @@ struct LiteralExpression : Expression {
 
   explicit LiteralExpression(LiteralValue &&_v, LiteralType _t)
       : value(std::move(_v)), type(_t) {}
-
-  virtual void print() override;
 };
 
-struct TemporaryExpr : Expression { // finish
-  virtual void print() override;
+struct TemporaryExpr { // finish
+};
+
+struct Expression {
+  std::variant<UnaryExpression, BinaryExpression, CallingExpression,
+               SubscriptExpression, IdentifierExpression, LiteralExpression,
+               TemporaryExpr>
+      value;
+};
+
+struct PrintExpressionVisitor {
+  void operator()(const UnaryExpression &) noexcept;
+  void operator()(const BinaryExpression &) noexcept;
+  void operator()(const CallingExpression &) noexcept;
+  void operator()(const SubscriptExpression &) noexcept;
+  void operator()(const IdentifierExpression &) noexcept;
+  void operator()(const LiteralExpression &) noexcept;
+  void operator()(const TemporaryExpr &) noexcept;
 };

@@ -174,77 +174,82 @@ bool returnsArithmetic(Operator op) {
   }
 }
 
-/* printing */
-void UnaryExpression::print() {
+void PrintExpressionVisitor::operator()(const UnaryExpression &unary) noexcept {
 
-  if (isPrefix(opr)) {
-    printOperator(opr);
-    expr->print();
+  if (isPrefix(unary.opr)) {
+    printOperator(unary.opr);
+    std::visit(PrintExpressionVisitor{}, unary.expr->value);
   } else {
-    expr->print();
-    printOperator(opr);
+    std::visit(PrintExpressionVisitor{}, unary.expr->value);
+    printOperator(unary.opr);
   }
 }
 
-void BinaryExpression::print() {
+void PrintExpressionVisitor::operator()(
+    const BinaryExpression &binary) noexcept {
   std::cout << "(";
-  expr_left->print();
+  std::visit(PrintExpressionVisitor{}, binary.expr_left->value);
 
   std::cout << " ";
-  printOperator(opr);
+  printOperator(binary.opr);
   std::cout << " ";
 
-  expr_right->print();
+  std::visit(PrintExpressionVisitor{}, binary.expr_right->value);
   std::cout << ")";
 }
 
-void CallingExpression::print() {
-  func->print();
+void PrintExpressionVisitor::operator()(
+    const CallingExpression &calling) noexcept {
+  std::visit(PrintExpressionVisitor{}, calling.func->value);
   std::cout << "(";
-  for (auto p : parameters) {
-    p->print();
+  for (auto p : calling.parameters) {
+    std::visit(PrintExpressionVisitor{}, p->value);
     std::cout << ", ";
   }
-  if (!parameters.empty())
+  if (!calling.parameters.empty())
     std::cout << "\b\b";
 
   std::cout << ")";
 }
 
-void SubscriptExpression::print() {
-  arr->print();
+void PrintExpressionVisitor::operator()(
+    const SubscriptExpression &subscript) noexcept {
+  std::visit(PrintExpressionVisitor{}, subscript.arr->value);
   std::cout << "[";
-  inside->print();
+  std::visit(PrintExpressionVisitor{}, subscript.inside->value);
   std::cout << "]";
 }
 
-void IdentifierExpression::print() { std::cout << ident; }
+void PrintExpressionVisitor::operator()(
+    const IdentifierExpression &identifier) noexcept {
+  std::cout << identifier.ident;
+}
+void PrintExpressionVisitor::operator()(
+    const LiteralExpression &literal) noexcept {
 
-void LiteralExpression::print() {
-
-  switch (type) {
-  case INT:
-    std::cout << std::get<int>(value);
+  switch (literal.type) {
+  case LiteralExpression::INT:
+    std::cout << std::get<int>(literal.value);
     return;
-  case FLOAT:
-    std::cout << std::get<float>(value);
+  case LiteralExpression::FLOAT:
+    std::cout << std::get<float>(literal.value);
     return;
-  case DOUBLE:
-    std::cout << std::get<double>(value);
+  case LiteralExpression::DOUBLE:
+    std::cout << std::get<double>(literal.value);
     return;
 
-  case BOOL:
-    if (std::get<int>(value) == 1)
+  case LiteralExpression::BOOL:
+    if (std::get<int>(literal.value) == 1)
       std::cout << "true";
     else
       std::cout << "false";
     return;
-  case CHAR:
-    std::cout << static_cast<char>(std::get<int>(value));
+  case LiteralExpression::CHAR:
+    std::cout << static_cast<char>(std::get<int>(literal.value));
     return;
 
-  case STRING:
-    std::cout << std::get<std::string>(value);
+  case LiteralExpression::STRING:
+    std::cout << std::get<std::string>(literal.value);
     return;
 
   default:
@@ -252,6 +257,6 @@ void LiteralExpression::print() {
   }
 }
 
-void TemporaryExpr::print() { std::cout << "temporaryexpr"; }
-
-/* printing */
+void PrintExpressionVisitor::operator()(const TemporaryExpr &) noexcept {
+  std::cout << "temporaryexpr";
+}

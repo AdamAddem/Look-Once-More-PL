@@ -2,101 +2,101 @@
 #include "expressions.hpp"
 #include <iostream>
 
-void VarDeclaration::print(unsigned indent) {
-
+void PrintStatementVisitor::operator()(
+    const ExpressionStatement &stmt) noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
-  printType(type);
-  std::cout << " " << ident << " = ";
-
-  if (expr == nullptr)
-    std::cout << "junk";
-  else
-    expr->print();
-
+  if (stmt.expr)
+    std::visit(PrintExpressionVisitor{}, stmt.expr->value);
   std::cout << ";";
 }
 
-void IfStatement::print(unsigned indent) {
-
+void PrintStatementVisitor::operator()(const ReturnStatement &stmt) noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
+  std::cout << "return ";
 
-  std::cout << "if (";
-  condition->print();
-  std::cout << ") \n";
-
-  true_branch->print(indent + 1);
-
-  if (false_branch) {
-    std::cout << "\n else \n";
-    false_branch->print(indent + 1);
-  }
+  if (stmt.return_value)
+    std::visit(PrintExpressionVisitor{}, stmt.return_value->value);
+  std::cout << ";";
 }
 
-void ForLoop::print(unsigned indent) {
+void PrintStatementVisitor::operator()(const ScopedStatement &stmt) noexcept {
 
   for (unsigned i{}; i < indent; ++i)
-    std::cout << "  ";
-
-  std::cout << "for (";
-  var_statement->print();
-  std::cout << " ";
-  condition->print();
-  std::cout << " ";
-  iteration->print();
-
-  std::cout << ")\n";
-  loop_body->print(indent + 1);
-}
-
-void WhileLoop::print(unsigned indent) {
-
-  for (unsigned i{}; i < indent; ++i)
-    std::cout << "  ";
-
-  std::cout << "while (";
-  condition->print();
-  std::cout << ")\n";
-  loop_body->print(indent + 1);
-}
-
-void ScopedStatement::print(unsigned indent) {
-
-  for (unsigned i{}; i < indent - 1; ++i)
     std::cout << "  ";
 
   std::cout << "{\n";
 
-  for (auto s : scope_body) {
-    s->print(indent);
+  for (auto s : stmt.scope_body) {
+    std::visit(PrintStatementVisitor{indent + 1}, s->value);
     std::cout << "\n";
   }
 
-  for (unsigned i{}; i < indent - 1; ++i)
+  for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
   std::cout << "}";
 }
 
-void ReturnStatement::print(unsigned indent) {
-
+void PrintStatementVisitor::operator()(const WhileLoop &stmt) noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
-  std::cout << "return ";
 
-  if (return_value)
-    return_value->print();
-  std::cout << ";";
+  std::cout << "while (";
+  std::visit(PrintExpressionVisitor{}, stmt.condition->value);
+  std::cout << ")\n";
+  std::visit(PrintStatementVisitor{indent + 1}, stmt.loop_body->value);
 }
 
-void ExpressionStatement::print(unsigned indent) {
+void PrintStatementVisitor::operator()(const ForLoop &stmt) noexcept {
 
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
-  if (expr)
-    expr->print();
+  std::cout << "for (";
+  std::visit(PrintStatementVisitor{}, stmt.var_statement->value);
+  std::cout << " ";
+  if (stmt.condition)
+    std::visit(PrintExpressionVisitor{}, stmt.condition->value);
+  std::cout << "; ";
+  if (stmt.iteration)
+    std::visit(PrintExpressionVisitor{}, stmt.iteration->value);
+
+  std::cout << ")\n";
+  std::visit(PrintStatementVisitor{indent}, stmt.loop_body->value);
+}
+
+void PrintStatementVisitor::operator()(const IfStatement &stmt) noexcept {
+
+  for (unsigned i{}; i < indent; ++i)
+    std::cout << "  ";
+
+  std::cout << "if (";
+  std::visit(PrintExpressionVisitor{}, stmt.condition->value);
+  std::cout << ") \n";
+
+  std::visit(PrintStatementVisitor{indent + 1}, stmt.true_branch->value);
+
+  if (stmt.false_branch) {
+    std::cout << "\n else \n";
+    std::visit(PrintStatementVisitor{indent + 1}, stmt.false_branch->value);
+  }
+}
+
+void PrintStatementVisitor::operator()(const VarDeclaration &stmt) noexcept {
+
+  for (unsigned i{}; i < indent; ++i)
+    std::cout << "  ";
+
+  printType(stmt.type);
+  std::cout << " " << stmt.ident << " = ";
+
+  if (stmt.expr == nullptr)
+    std::cout << "junk";
+  else
+    std::visit(PrintExpressionVisitor{}, stmt.expr->value);
+
   std::cout << ";";
 }

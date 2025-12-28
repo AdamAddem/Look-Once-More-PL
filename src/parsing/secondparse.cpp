@@ -1,5 +1,4 @@
 #include "secondparse.hpp"
-#include "../analysis/symbol_table.hpp"
 #include "../grammar/expressions.hpp"
 #include "../grammar/statements.hpp"
 #include "firstparse.hpp"
@@ -82,17 +81,16 @@ Operator tokenToOperator(TokenType t) {
   }
 }
 
-Expression *parseExpression(SymbolTable &table, TokenHandler &tokens);
+Expression *parseExpression(TokenHandler &tokens);
 
-std::vector<Expression *> parseParameters(SymbolTable &table,
-                                          TokenHandler &tokens) {
+std::vector<Expression *> parseParameters(TokenHandler &tokens) {
   if (tokens.empty())
     return {};
 
   std::vector<Expression *> retval;
 
   while (true) {
-    retval.push_back(parseExpression(table, tokens));
+    retval.push_back(parseExpression(tokens));
     if (tokens.empty())
       return retval;
 
@@ -102,7 +100,7 @@ std::vector<Expression *> parseParameters(SymbolTable &table,
   }
 }
 
-Expression *parsePrimaryExpression(SymbolTable &table, TokenHandler &tokens) {
+Expression *parsePrimaryExpression(TokenHandler &tokens) {
   if (tokens.peek().isLiteral()) {
     LiteralExpression::LiteralType type;
     switch (tokens.peek().type) {
@@ -130,36 +128,37 @@ Expression *parsePrimaryExpression(SymbolTable &table, TokenHandler &tokens) {
           "Impossible error in parsePrimaryExpression function in secondparse");
     }
 
-    return new LiteralExpression(tokens.eat().value, type);
+    return new Expression(LiteralExpression(tokens.eat().value, type));
   }
 
   if (tokens.pop_if(LPAREN)) {
     TokenHandler t = tokens.getTokensBetweenParenthesis();
-    return parseExpression(table, t);
+    return parseExpression(t);
   }
 
-  return new IdentifierExpression(parseIdentifier(tokens));
+  std::string ident = parseIdentifier(tokens);
+  return new Expression(IdentifierExpression(std::move(ident)));
 }
 
-Expression *parsePostfixExpression(SymbolTable &table, TokenHandler &tokens) {
-  Expression *left = parsePrimaryExpression(table, tokens);
+Expression *parsePostfixExpression(TokenHandler &tokens) {
+  Expression *left = parsePrimaryExpression(tokens);
 
   while (true) {
 
     if (tokens.pop_if(PLUSPLUS))
-      left = new UnaryExpression(left, PRE_INCREMENT);
+      left = new Expression(UnaryExpression(left, PRE_INCREMENT));
 
     else if (tokens.pop_if(MINUSMINUS))
-      left = new UnaryExpression(left, POST_DECREMENT);
+      left = new Expression(UnaryExpression(left, POST_DECREMENT));
 
     else if (tokens.pop_if(LPAREN)) {
       TokenHandler t = tokens.getTokensBetweenParenthesis();
-      left = new CallingExpression(left, parseParameters(table, t));
+      left = new Expression(CallingExpression(left, parseParameters(t)));
     }
 
     else if (tokens.pop_if(LBRACKET)) {
       TokenHandler t = tokens.getTokensBetweenBrackets();
-      left = new SubscriptExpression(left, parseExpression(table, t));
+      left = new Expression(SubscriptExpression(left, parseExpression(t)));
     }
 
     else
@@ -169,30 +168,30 @@ Expression *parsePostfixExpression(SymbolTable &table, TokenHandler &tokens) {
   return left;
 }
 
-Expression *parsePrefixExpression(SymbolTable &table, TokenHandler &tokens) {
+Expression *parsePrefixExpression(TokenHandler &tokens) {
 
   if (tokens.pop_if(PLUSPLUS))
-    return new UnaryExpression(parsePrefixExpression(table, tokens),
-                               PRE_INCREMENT);
+    return new Expression(
+        UnaryExpression(parsePrefixExpression(tokens), PRE_INCREMENT));
 
   if (tokens.pop_if(MINUSMINUS))
-    return new UnaryExpression(parsePrefixExpression(table, tokens),
-                               PRE_DECREMENT);
+    return new Expression(
+        UnaryExpression(parsePrefixExpression(tokens), PRE_DECREMENT));
 
   if (tokens.pop_if(ADDR))
-    return new UnaryExpression(parsePrefixExpression(table, tokens),
-                               ADDRESS_OF);
+    return new Expression(
+        UnaryExpression(parsePrefixExpression(tokens), ADDRESS_OF));
 
-  return parsePostfixExpression(table, tokens);
+  return parsePostfixExpression(tokens);
 }
 
-Expression *parseExponentExpression(SymbolTable &table, TokenHandler &tokens) {
-  Expression *left = parsePrefixExpression(table, tokens);
+Expression *parseExponentExpression(TokenHandler &tokens) {
+  Expression *left = parsePrefixExpression(tokens);
 
   while (true) {
     if (tokens.pop_if(POW))
-      left = new BinaryExpression(left, parsePrefixExpression(table, tokens),
-                                  POWER);
+      left = new Expression(
+          BinaryExpression(left, parsePrefixExpression(tokens), POWER));
     else
       break;
   }
@@ -200,21 +199,21 @@ Expression *parseExponentExpression(SymbolTable &table, TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseFactorExpression(SymbolTable &table, TokenHandler &tokens) {
-  Expression *left = parseExponentExpression(table, tokens);
+Expression *parseFactorExpression(TokenHandler &tokens) {
+  Expression *left = parseExponentExpression(tokens);
 
   while (true) {
     if (tokens.pop_if(STAR))
-      left = new BinaryExpression(left, parseFactorExpression(table, tokens),
-                                  MULTIPLY);
+      left = new Expression(
+          BinaryExpression(left, parseFactorExpression(tokens), MULTIPLY));
 
     else if (tokens.pop_if(SLASH))
-      left = new BinaryExpression(left, parseFactorExpression(table, tokens),
-                                  DIVIDE);
+      left = new Expression(
+          BinaryExpression(left, parseFactorExpression(tokens), DIVIDE));
 
     else if (tokens.pop_if(MOD))
-      left = new BinaryExpression(left, parseFactorExpression(table, tokens),
-                                  MODULUS);
+      left = new Expression(
+          BinaryExpression(left, parseFactorExpression(tokens), MODULUS));
 
     else
       break;
@@ -223,17 +222,18 @@ Expression *parseFactorExpression(SymbolTable &table, TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseTermExpression(SymbolTable &table, TokenHandler &tokens) {
-  Expression *l = parseFactorExpression(table, tokens);
+Expression *parseTermExpression(TokenHandler &tokens) {
+  Expression *l = parseFactorExpression(tokens);
 
   while (true) {
 
     if (tokens.pop_if(PLUS))
-      l = new BinaryExpression(l, parseFactorExpression(table, tokens), ADD);
+      l = new Expression(
+          BinaryExpression(l, parseFactorExpression(tokens), ADD));
 
     else if (tokens.pop_if(MINUS))
-      l = new BinaryExpression(l, parseFactorExpression(table, tokens),
-                               SUBTRACT);
+      l = new Expression(
+          BinaryExpression(l, parseFactorExpression(tokens), SUBTRACT));
 
     else
       break;
@@ -242,30 +242,29 @@ Expression *parseTermExpression(SymbolTable &table, TokenHandler &tokens) {
   return l;
 }
 
-Expression *parseRelationalExpression(SymbolTable &table,
-                                      TokenHandler &tokens) {
-  Expression *left = parseTermExpression(table, tokens);
+Expression *parseRelationalExpression(TokenHandler &tokens) {
+  Expression *left = parseTermExpression(tokens);
 
   while (true) {
     if (tokens.pop_if(KEYWORD_EQUALS))
-      left =
-          new BinaryExpression(left, parseTermExpression(table, tokens), EQUAL);
+      left = new Expression(
+          BinaryExpression(left, parseTermExpression(tokens), EQUAL));
 
     else if (tokens.pop_if(Lexer::LESS))
-      left = new BinaryExpression(left, parseTermExpression(table, tokens),
-                                  Operator::LESS);
+      left = new Expression(
+          BinaryExpression(left, parseTermExpression(tokens), Operator::LESS));
 
     else if (tokens.pop_if(GTR))
-      left = new BinaryExpression(left, parseTermExpression(table, tokens),
-                                  GREATER);
+      left = new Expression(
+          BinaryExpression(left, parseTermExpression(tokens), GREATER));
 
     else if (tokens.pop_if(LESSEQ))
-      left = new BinaryExpression(left, parseTermExpression(table, tokens),
-                                  LESS_EQUAL);
+      left = new Expression(
+          BinaryExpression(left, parseTermExpression(tokens), LESS_EQUAL));
 
     else if (tokens.pop_if(GTREQ))
-      left = new BinaryExpression(left, parseTermExpression(table, tokens),
-                                  GREATER_EQUAL);
+      left = new Expression(
+          BinaryExpression(left, parseTermExpression(tokens), GREATER_EQUAL));
     else
       break;
   }
@@ -273,26 +272,26 @@ Expression *parseRelationalExpression(SymbolTable &table,
   return left;
 }
 
-Expression *parseBitwiseExpression(SymbolTable &table, TokenHandler &tokens) {
+Expression *parseBitwiseExpression(TokenHandler &tokens) {
 
-  Expression *left = parseRelationalExpression(table, tokens);
+  Expression *left = parseRelationalExpression(tokens);
 
   while (true) {
     if (tokens.pop_if(KEYWORD_BITAND))
-      left = new BinaryExpression(
-          left, parseRelationalExpression(table, tokens), BITAND);
+      left = new Expression(
+          BinaryExpression(left, parseRelationalExpression(tokens), BITAND));
 
     else if (tokens.pop_if(KEYWORD_BITOR))
-      left = new BinaryExpression(
-          left, parseRelationalExpression(table, tokens), BITOR);
+      left = new Expression(
+          BinaryExpression(left, parseRelationalExpression(tokens), BITOR));
 
     else if (tokens.pop_if(KEYWORD_BITXOR))
-      left = new BinaryExpression(
-          left, parseRelationalExpression(table, tokens), BITXOR);
+      left = new Expression(
+          BinaryExpression(left, parseRelationalExpression(tokens), BITXOR));
 
     else if (tokens.pop_if(KEYWORD_BITNOT))
-      left = new BinaryExpression(
-          left, parseRelationalExpression(table, tokens), BITNOT);
+      left = new Expression(
+          BinaryExpression(left, parseRelationalExpression(tokens), BITNOT));
 
     else
       break;
@@ -301,16 +300,16 @@ Expression *parseBitwiseExpression(SymbolTable &table, TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseLogicalExpression(SymbolTable &table, TokenHandler &tokens) {
-  Expression *left = parseBitwiseExpression(table, tokens);
+Expression *parseLogicalExpression(TokenHandler &tokens) {
+  Expression *left = parseBitwiseExpression(tokens);
 
   while (true) {
     if (tokens.pop_if(KEYWORD_AND))
-      left = new BinaryExpression(left, parseBitwiseExpression(table, tokens),
-                                  AND);
+      left = new Expression(
+          BinaryExpression(left, parseBitwiseExpression(tokens), AND));
     else if (tokens.pop_if(KEYWORD_OR))
-      left =
-          new BinaryExpression(left, parseBitwiseExpression(table, tokens), OR);
+      left = new Expression(
+          BinaryExpression(left, parseBitwiseExpression(tokens), OR));
     else
       break;
   }
@@ -318,62 +317,62 @@ Expression *parseLogicalExpression(SymbolTable &table, TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseAssignmentExpression(SymbolTable &table,
-                                      TokenHandler &tokens) {
+Expression *parseAssignmentExpression(TokenHandler &tokens) {
 
-  Expression *left = parseLogicalExpression(table, tokens);
+  Expression *const left = parseLogicalExpression(tokens);
   if (tokens.pop_if(Lexer::ASSIGN))
-    return new BinaryExpression(left, parseAssignmentExpression(table, tokens),
-                                Operator::ASSIGN);
+    return new Expression(BinaryExpression(
+        left, parseAssignmentExpression(tokens), Operator::ASSIGN));
 
   if (tokens.pop_if(PLUS_ASSIGN))
-    return new BinaryExpression(left, parseAssignmentExpression(table, tokens),
-                                ADD_ASSIGN);
+    return new Expression(
+        BinaryExpression(left, parseAssignmentExpression(tokens), ADD_ASSIGN));
 
   if (tokens.pop_if(MINUS_ASSIGN))
-    return new BinaryExpression(left, parseAssignmentExpression(table, tokens),
-                                SUB_ASSIGN);
+    return new Expression(
+        BinaryExpression(left, parseAssignmentExpression(tokens), SUB_ASSIGN));
 
   if (tokens.pop_if(Lexer::DIV_ASSIGN))
-    return new BinaryExpression(left, parseAssignmentExpression(table, tokens),
-                                Operator::DIV_ASSIGN);
+    return new Expression(BinaryExpression(
+        left, parseAssignmentExpression(tokens), Operator::DIV_ASSIGN));
 
   if (tokens.pop_if(Lexer::MULT_ASSIGN))
-    return new BinaryExpression(left, parseAssignmentExpression(table, tokens),
-                                Operator::MULT_ASSIGN);
+    return new Expression(BinaryExpression(
+        left, parseAssignmentExpression(tokens), Operator::MULT_ASSIGN));
 
   if (tokens.pop_if(Lexer::MOD_ASSIGN))
-    return new BinaryExpression(left, parseAssignmentExpression(table, tokens),
-                                Operator::MOD_ASSIGN);
+    return new Expression(BinaryExpression(
+        left, parseAssignmentExpression(tokens), Operator::MOD_ASSIGN));
 
   if (tokens.pop_if(Lexer::POW_ASSIGN))
-    return new BinaryExpression(left, parseAssignmentExpression(table, tokens),
-                                Operator::POW_ASSIGN);
+    return new Expression(BinaryExpression(
+        left, parseAssignmentExpression(tokens), Operator::POW_ASSIGN));
 
   return left;
 }
 
 // assumes tokens holds only the tokens relevant to the expression
-Expression *parseExpression(SymbolTable &table, TokenHandler &tokens) {
-  return parseAssignmentExpression(table, tokens);
+Expression *parseExpression(TokenHandler &tokens) {
+  if (tokens.empty())
+    return nullptr;
+  return parseAssignmentExpression(tokens);
 }
 
-Statement *parseStatement(SymbolTable &table, TokenHandler &tokens);
-Statement *parseScoped(SymbolTable &table, TokenHandler &tokens);
+Statement *parseStatement(TokenHandler &tokens);
+Statement *parseScoped(TokenHandler &tokens);
 
-Statement *parseExpressionStatement(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseExpressionStatement(TokenHandler &tokens) {
   if (tokens.pop_if(SEMI_COLON))
-    return new ExpressionStatement();
+    return new Statement(ExpressionStatement());
 
   TokenHandler until_semi = tokens.getAllTokensUntilFirstOf(SEMI_COLON);
   tokens.pop();
-  return new ExpressionStatement(parseExpression(table, until_semi));
+  return new Statement(ExpressionStatement(parseExpression(until_semi)));
 }
 
-Statement *parseVarDecl(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseVarDecl(TokenHandler &tokens) {
   Type type = parseType(tokens);
   std::string ident = parseIdentifier(tokens);
-  table.addLocalVariable(ident, type);
   if (!tokens.pop_if(Lexer::ASSIGN))
     throw std::runtime_error("Expected assignment in variable declaration");
 
@@ -382,202 +381,191 @@ Statement *parseVarDecl(SymbolTable &table, TokenHandler &tokens) {
       throw std::runtime_error(
           "Expected semicolon ending variable declaration");
 
-    return new VarDeclaration(std::move(type), std::move(ident));
+    return new Statement(VarDeclaration(std::move(type), std::move(ident)));
   }
 
   TokenHandler expression_tokens = tokens.getAllTokensUntilFirstOf(SEMI_COLON);
+  if (expression_tokens.empty())
+    throw std::runtime_error(
+        "Expected initializing expression in variable declaration");
   tokens.pop();
-  Expression *expr = parseExpression(table, expression_tokens);
+  Expression *const expr = parseExpression(expression_tokens);
 
-  return new VarDeclaration(std::move(type), std::move(ident), expr);
+  return new Statement(VarDeclaration(std::move(type), std::move(ident), expr));
 }
 
 // for the statements below starting with a keyword,
 // that keyword has already been eaten
-Statement *parseIf(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseIf(TokenHandler &tokens) {
   if (!tokens.pop_if(LPAREN))
     throw std::runtime_error("Expected lparen in if statement condition");
 
   TokenHandler condition_tokens = tokens.getTokensBetweenParenthesis();
-  Expression *condition = parseExpression(table, condition_tokens);
+  if (condition_tokens.empty())
+    throw std::runtime_error("Expected condition in if statement");
 
-  Statement *true_branch = parseScoped(table, tokens);
+  Expression *const condition = parseExpression(condition_tokens);
+
+  Statement *const true_branch = parseScoped(tokens);
   Statement *false_branch = nullptr;
 
   if (tokens.pop_if(KEYWORD_ELSE))
-    false_branch = parseScoped(table, tokens);
+    false_branch = parseScoped(tokens);
 
-  return new IfStatement(condition, true_branch, false_branch);
+  return new Statement(IfStatement(condition, true_branch, false_branch));
 }
 
-Statement *parseFor(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseFor(TokenHandler &tokens) {
   if (!tokens.pop_if(LPAREN))
     throw std::runtime_error("Expected opening parenthesis in for statement");
 
   TokenHandler betweenParen = tokens.getTokensBetweenParenthesis();
   Statement *declOrAssignment;
-  table.enterScope();
   if (betweenParen.peek().isPrimitive())
-    declOrAssignment = parseVarDecl(table, betweenParen);
+    declOrAssignment = parseVarDecl(betweenParen);
   else if (betweenParen.peek_is(IDENTIFIER)) {
     if (betweenParen.peek_ahead(1).is(IDENTIFIER))
-      declOrAssignment = parseVarDecl(table, betweenParen);
+      declOrAssignment = parseVarDecl(betweenParen);
     else
-      declOrAssignment = parseExpressionStatement(table, betweenParen);
+      declOrAssignment = parseExpressionStatement(betweenParen);
   } else if (betweenParen.peek_is(Lexer::LESS)) {
-    declOrAssignment = parseVarDecl(table, betweenParen);
+    declOrAssignment = parseVarDecl(betweenParen);
   } else
     throw std::runtime_error("Expected variable declaration or assignment in "
                              "first for loop statement");
 
-  Statement *condition = parseExpressionStatement(table, betweenParen);
-  Expression *iteration = parseExpression(table, betweenParen);
-  Statement *loop_body = parseScoped(table, tokens);
-  table.leaveScope();
+  Expression *const condition = parseExpression(betweenParen);
+  if (!betweenParen.pop_if(SEMI_COLON))
+    throw std::runtime_error("Expected semicolon after condition in forloop");
 
-  return new ForLoop(declOrAssignment, condition, iteration, loop_body);
+  Expression *const iteration = parseExpression(betweenParen);
+  Statement *const loop_body = parseScoped(tokens);
+
+  return new Statement(
+      ForLoop(declOrAssignment, condition, iteration, loop_body));
 }
 
-Statement *parseWhile(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseWhile(TokenHandler &tokens) {
 
   if (!tokens.pop_if(LPAREN))
     throw std::runtime_error(
         "Expected open parenthesis in while loop condition");
 
   TokenHandler condition_tokens = tokens.getTokensBetweenParenthesis();
-  Expression *condition = parseExpression(table, condition_tokens);
+  if (condition_tokens.empty())
+    throw std::runtime_error("Expected condition in while loop");
+  Expression *const condition = parseExpression(condition_tokens);
 
-  table.enterScope();
-  Statement *loop_body = parseScoped(table, tokens);
-  table.leaveScope();
+  Statement *const loop_body = parseScoped(tokens);
 
-  return new WhileLoop(condition, loop_body);
+  return new Statement(WhileLoop(condition, loop_body));
 }
 
-Statement *parseDoWhile(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseDoWhile(TokenHandler &tokens) {
   throw std::runtime_error("Do While Loop unsupported");
 }
 
 // scoped may be {...} or one statement ;
-Statement *parseScoped(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseScoped(TokenHandler &tokens) {
   std::vector<Statement *> statements;
   if (tokens.pop_if(LBRACE)) {
     TokenHandler scopedTokens = tokens.getTokensBetweenBraces();
     while (!scopedTokens.empty())
-      statements.push_back(parseStatement(table, scopedTokens));
+      statements.push_back(parseStatement(scopedTokens));
 
-    return new ScopedStatement(std::move(statements));
+    return new Statement(ScopedStatement(std::move(statements)));
   }
 
-  statements.push_back(parseStatement(table, tokens));
-  return new ScopedStatement(std::move(statements));
+  statements.push_back(parseStatement(tokens));
+  return new Statement(ScopedStatement(std::move(statements)));
 }
 
-Statement *parseReturn(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseReturn(TokenHandler &tokens) {
   if (tokens.pop_if(SEMI_COLON))
-    return new ReturnStatement();
+    return new Statement(ReturnStatement());
 
   TokenHandler retval = tokens.getAllTokensUntilFirstOf(SEMI_COLON);
   tokens.pop();
-  return new ReturnStatement(parseExpression(table, retval));
+  return new Statement(ReturnStatement(parseExpression(retval)));
 }
 
-Statement *parseSwitch(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseSwitch(TokenHandler &tokens) {
   throw std::runtime_error("Switch Statement Unsupported");
 }
 
-Statement *parseStatement(SymbolTable &table, TokenHandler &tokens) {
+Statement *parseStatement(TokenHandler &tokens) {
 
   const Token &first = tokens.peek();
   if (first.isPrimitive())
-    return parseVarDecl(table, tokens);
+    return parseVarDecl(tokens);
 
   switch (first.type) {
   case KEYWORD_IF:
     tokens.pop();
-    return parseIf(table, tokens);
+    return parseIf(tokens);
   case KEYWORD_FOR:
     tokens.pop();
-    return parseFor(table, tokens);
+    return parseFor(tokens);
   case KEYWORD_WHILE:
     tokens.pop();
-    return parseWhile(table, tokens);
+    return parseWhile(tokens);
   case KEYWORD_DO:
     tokens.pop();
-    return parseDoWhile(table, tokens);
+    return parseDoWhile(tokens);
   case KEYWORD_RETURN:
     tokens.pop();
-    return parseReturn(table, tokens);
+    return parseReturn(tokens);
   case KEYWORD_SWITCH:
     tokens.pop();
-    return parseSwitch(table, tokens);
+    return parseSwitch(tokens);
 
-  case LBRACE: {
-    table.enterScope();
-    Statement *scoped = parseScoped(table, tokens);
-    table.leaveScope();
-    return scoped;
-  }
+  case LBRACE:
+    return parseScoped(tokens);
 
   case Lexer::LESS:
-    return parseVarDecl(table, tokens);
+    return parseVarDecl(tokens);
 
   case IDENTIFIER:
     if (tokens.peek_ahead(1).is(IDENTIFIER))
-      return parseVarDecl(table, tokens);
+      return parseVarDecl(tokens);
   default:
-    return parseExpressionStatement(table, tokens);
+    return parseExpressionStatement(tokens);
   }
 }
 
-std::vector<Statement *> parseStatements(SymbolTable &table,
-                                         TokenHandler &body_tokens) {
+std::vector<Statement *> parseStatements(TokenHandler &body_tokens) {
 
   std::vector<Statement *> body_statements;
 
   while (!body_tokens.empty())
-    body_statements.push_back(parseStatement(table, body_tokens));
+    body_statements.push_back(parseStatement(body_tokens));
 
   return body_statements;
 }
 
-ParsedGlobals parseGlobals(SymbolTable &table, UnparsedGlobals &globals) {
-
-  for (auto &decl : globals.declarations)
-    table.addGlobalVariable(decl.ident, decl.type, false);
+ParsedGlobals parseGlobals(UnparsedGlobals &globals) {
 
   return {std::move(globals.declarations),
-          parseStatements(table, globals.global_init_body)};
+          parseStatements(globals.global_init_body)};
 }
 
-ParsedFunction parseFunction(SymbolTable &table, UnparsedFunction &func) {
-
-  for (auto &decl : func.parameter_list)
-    table.addLocalVariable(decl.ident, decl.type);
+ParsedFunction parseFunction(UnparsedFunction &func) {
 
   return {std::move(func.return_value), std::move(func.name),
-          std::move(func.parameter_list),
-          parseStatements(table, func.body_tokens)};
+          std::move(func.parameter_list), parseStatements(func.body_tokens)};
 }
 
-void Parser::secondPassParsing(UnparsedTU &&unparsedtu) {
-  SymbolTable table;
+ParsedTranslationUnit Parser::secondPassParsing(UnparsedTU &&unparsedtu) {
 
-  table.enterScope();
-  ParsedGlobals globals = parseGlobals(table, unparsedtu.globals);
-  table.leaveScope();
+  ParsedGlobals globals = parseGlobals(unparsedtu.globals);
 
   std::vector<ParsedFunction> parsed_funcs;
-  for (auto &f : unparsedtu.functions) {
-    table.enterScope();
-    parsed_funcs.emplace_back(parseFunction(table, f));
-    table.leaveScope();
-  }
+  for (auto &f : unparsedtu.functions)
+    parsed_funcs.emplace_back(parseFunction(f));
 
   ParsedTranslationUnit ptu{std::move(globals), std::move(parsed_funcs)};
 
-  unparsedtu.table.printGlobals();
-  // ptu.print();
+  return ptu;
 }
 
 void ParsedTranslationUnit::print() {
@@ -595,7 +583,7 @@ void ParsedGlobals::print() {
     return;
 
   for (auto &decl : declarations) {
-    decl.print();
+    PrintStatementVisitor{}(decl);
     std::cout << "\n";
   }
   std::cout << "\n";
@@ -603,7 +591,7 @@ void ParsedGlobals::print() {
   std::cout << "globals{\n\n";
 
   for (auto s : global_init_body) {
-    s->print(1);
+    std::visit(PrintStatementVisitor{1}, s->value);
     std::cout << "\n";
   }
 
@@ -611,7 +599,7 @@ void ParsedGlobals::print() {
 }
 
 void ParsedFunction::print() {
-  printType(return_value);
+  printType(return_type);
   std::cout << " " << name << "(";
   for (auto &decl : parameter_list) {
     printType(decl.type);
@@ -624,7 +612,7 @@ void ParsedFunction::print() {
   std::cout << ") {\n" << std::endl;
 
   for (auto s : function_body) {
-    s->print(1);
+    std::visit(PrintStatementVisitor{1}, s->value);
     std::cout << "\n\n";
   }
 

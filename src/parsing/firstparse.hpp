@@ -1,5 +1,4 @@
 #pragma once
-#include "../analysis/symbol_table.hpp"
 #include "../grammar/statements.hpp"
 #include "../lexing/lex.hpp"
 #include <cassert>
@@ -32,7 +31,6 @@ struct UnparsedFunction {
 };
 
 struct UnparsedTU {
-  SymbolTable table;
   UnparsedGlobals globals;
   bool globalsDeclared = false;
   bool parsedGlobalBody = false;

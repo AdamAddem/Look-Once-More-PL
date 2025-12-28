@@ -53,6 +53,8 @@ void FunctionSignature::print() {
   std::cout << "\b\b";
 }
 
+SymbolTable::SymbolTable() : expectedReturnType(StrictType("devoid")) {}
+
 bool SymbolTable::containsVariable(const std::string &name) {
 
   for (auto m : locals) // order doesn't matter
@@ -79,6 +81,19 @@ void SymbolTable::addLocalVariable(std::string name, Type type, bool is_const) {
     throw std::runtime_error("Redefinition of local symbol with name: " + name);
 
   locals.back().emplace(std::move(name), Variable(std::move(type), is_const));
+}
+
+const Variable &SymbolTable::closestVariable(const std::string &name) {
+  auto end = locals.rend();
+  for (auto curr = locals.rbegin(); curr != end; ++curr)
+    if (curr->contains(name))
+      return curr->at(name);
+
+  if (globals.contains(name))
+    return std::get<Variable>(globals.at(name));
+
+  throw std::runtime_error(
+      "No variable found in typeOfMatchingVariable method");
 }
 
 void SymbolTable::enterScope() { locals.emplace_back(); }
@@ -118,6 +133,24 @@ bool SymbolTable::isValidCall(const std::string &name, const Type &capture_type,
       .isValidCall(capture_type, provided_params);
 }
 
+bool SymbolTable::isSymbolInCurrentScope(const std::string &name) {
+  if (locals.empty())
+    return globals.contains(name);
+
+  return locals.back().contains(name);
+}
+
+bool SymbolTable::isAssignable(const std::string &name) {
+  if (!containsVariable(name))
+    return false;
+
+  return closestVariable(name).is_mutable;
+}
+
+bool SymbolTable::isTypeArithmetic(const std::string &name) {
+  return registry.isArithmeticType(name);
+}
+
 void SymbolTable::clearLocalTable() { locals.clear(); }
 
 void SymbolTable::printGlobals() {
@@ -139,21 +172,15 @@ void SymbolTable::printGlobals() {
 }
 
 void SymbolTable::printLocals() {
+  if (locals.back().empty())
+    return;
+
   std::cout << "\nScope:\n{\n" << std::endl;
   for (auto &[name, var] : locals.back()) {
     printType(var.type);
     std::cout << " " << name << ";\n";
   }
   std::cout << "\n}" << std::endl;
-
-  // for (auto &scope : locals) {
-  //   std::cout << "\nScope:\n{\n" << std::endl;
-  //   for (auto &[name, var] : scope) {
-  //     printType(var.type);
-  //     std::cout << " " << name << ";\n";
-  //   }
-  //   std::cout << "\n}" << std::endl;
-  // }
 }
 
 TypeRegistry::TypeRegistry() {

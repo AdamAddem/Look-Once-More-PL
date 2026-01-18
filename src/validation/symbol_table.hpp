@@ -3,24 +3,10 @@
 #include <unordered_map>
 #include <vector>
 
-struct TypeDetails {
-  bool arithmetic;
-};
-
-struct TypeRegistry {
-  std::unordered_map<std::string, TypeDetails> registry;
-
-  TypeRegistry();
-
-  void addType(const std::string &type_name, TypeDetails details);
-  bool isValidType(const std::string &type_name);
-  bool isArithmeticType(const std::string &type_name);
-};
-
 struct Function {
-  Type return_type;
+  StrictType return_type;
   std::vector<Type> parameter_types;
-  Function(Type &&_t, std::vector<Type> &&_params)
+  Function(StrictType &&_t, std::vector<Type> &&_params)
       : return_type(std::move(_t)), parameter_types(std::move(_params)) {}
   Function(Function &&other) noexcept
       : return_type(std::move(other.return_type)),
@@ -40,10 +26,9 @@ struct FunctionSignature {
   FunctionSignature(FunctionSignature &&other)
       : functions(std::move(other.functions)) {}
 
-  void addFunction(Type &&t, std::vector<Type> &&params);
+  void addFunction(StrictType &&t, std::vector<Type> &&params);
 
-  bool isValidCall(const Type &capture_type,
-                   const std::vector<Type> &provided_param);
+  StrictType returnTypeOfCall(const std::vector<Type> &provided_param);
 
   void print();
 };
@@ -60,30 +45,35 @@ struct Variable {
         is_stolen(other.is_stolen) {}
 };
 
+struct TypeDetails {
+  bool arithmetic;
+  bool callable;
+};
+
 struct SymbolTable {
   using Entry = std::variant<Variable, FunctionSignature>;
 
-  TypeRegistry registry;
   Type expectedReturnType;
   std::unordered_map<std::string, Entry> globals;
   std::vector<std::unordered_map<std::string, Variable>> locals;
+  std::unordered_map<std::string, TypeDetails> type_registry;
 
   SymbolTable();
-
   bool containsVariable(const std::string &name);
   void addGlobalVariable(std::string name, Type type, bool is_const = false);
   void addLocalVariable(std::string name, Type type, bool is_const = false);
   const Variable &closestVariable(const std::string &name);
   void enterScope();
   void leaveScope();
-  void addFunction(std::string name, Type type,
+  void addFunction(std::string name, StrictType type,
                    std::vector<Type> &&parameter_types);
   bool containsFunction(const std::string &name);
-  bool isValidCall(const std::string &name, const Type &capture_type,
-                   const std::vector<Type> &provided_params);
+  StrictType returnTypeOfCall(const std::string &name,
+                              const std::vector<Type> &provided_params);
   bool isSymbolInCurrentScope(const std::string &name);
-  bool isAssignable(const std::string &name);
-  bool isTypeArithmetic(const std::string &name);
+  bool isAssignable(const std::string &var_name);
+  TypeDetails detailsOfType(const std::string &type_name);
+  TypeDetails detailsOfType(const StrictType &type);
 
   void clearLocalTable();
   void printGlobals();

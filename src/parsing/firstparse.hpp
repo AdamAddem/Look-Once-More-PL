@@ -15,12 +15,12 @@ struct UnparsedGlobals {
 };
 
 struct UnparsedFunction {
-  Type return_value;
+  StrictType return_value;
   std::string name;
   std::vector<VarDeclaration> parameter_list;
   Lexer::TokenHandler body_tokens;
 
-  UnparsedFunction(Type &&_return_value, std::string &&_name,
+  UnparsedFunction(StrictType &&_return_value, std::string &&_name,
                    std::vector<VarDeclaration> &&_parameter_list,
                    Lexer::TokenHandler &&_body_tokens)
       : return_value(std::move(_return_value)), name(std::move(_name)),
@@ -38,7 +38,7 @@ struct UnparsedTU {
 
   void registerGlobal(Type &&_type, std::string &&_name);
   void registerGlobalsFuncBody(Lexer::TokenHandler &&_body);
-  void registerFunction(Type _type, std::string _name,
+  void registerFunction(StrictType _type, std::string _name,
                         std::vector<VarDeclaration> _decl,
                         Lexer::TokenHandler _body);
   void print();

@@ -3,7 +3,7 @@
 #include <variant>
 #include <vector>
 
-enum Operator {
+enum class Operator {
 
   ADD,
   SUBTRACT,

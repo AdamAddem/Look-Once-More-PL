@@ -14,17 +14,16 @@ void Function::print() {
   std::cout << ")";
 }
 
-void FunctionSignature::addFunction(Type &&t, std::vector<Type> &&params) {
+void FunctionSignature::addFunction(StrictType &&t,
+                                    std::vector<Type> &&params) {
   functions.emplace_back(std::move(t), std::move(params));
 }
 
-bool FunctionSignature::isValidCall(const Type &capture_type,
-                                    const std::vector<Type> &provided_param) {
+StrictType
+FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) {
   bool is_valid{false};
+  StrictType ret_type("placeholder");
   for (const auto &f : functions) {
-
-    if (!convertibleFromTo(capture_type, f.return_type))
-      continue;
 
     if (provided_param.size() != f.parameter_types.size())
       continue;
@@ -38,11 +37,16 @@ bool FunctionSignature::isValidCall(const Type &capture_type,
       throw std::runtime_error("Ambiguous function overload");
 
     is_valid = true;
+    ret_type = f.return_type;
 
   escape:
   }
 
-  return is_valid;
+  if (!is_valid)
+    throw std::runtime_error(
+        "Parameters not matching any variant of function signature");
+
+  return ret_type;
 }
 
 void FunctionSignature::print() {
@@ -102,20 +106,21 @@ void SymbolTable::leaveScope() {
   locals.pop_back();
 }
 
-void SymbolTable::addFunction(std::string name, Type type,
+void SymbolTable::addFunction(std::string name, StrictType ret_type,
                               std::vector<Type> &&parameter_types) {
   if (globals.contains(name)) {
     if (std::holds_alternative<Variable>(globals.at(name)))
       throw std::runtime_error("Redefinition of global variable with name: " +
                                name);
   } else {
-    globals.emplace(name, FunctionSignature(Function(
-                              std::move(type), std::move(parameter_types))));
+    globals.emplace(name,
+                    FunctionSignature(Function(std::move(ret_type),
+                                               std::move(parameter_types))));
     return;
   }
 
   std::get<FunctionSignature>(globals.at(name))
-      .addFunction(std::move(type), std::move(parameter_types));
+      .addFunction(std::move(ret_type), std::move(parameter_types));
 }
 
 bool SymbolTable::containsFunction(const std::string &name) {
@@ -124,13 +129,14 @@ bool SymbolTable::containsFunction(const std::string &name) {
   return false;
 }
 
-bool SymbolTable::isValidCall(const std::string &name, const Type &capture_type,
+StrictType
+SymbolTable::returnTypeOfCall(const std::string &name,
                               const std::vector<Type> &provided_params) {
   if (!containsFunction(name))
-    return false;
+    throw std::runtime_error("Identifier not recognized as callable");
 
   return std::get<FunctionSignature>(globals.at(name))
-      .isValidCall(capture_type, provided_params);
+      .returnTypeOfCall(provided_params);
 }
 
 bool SymbolTable::isSymbolInCurrentScope(const std::string &name) {
@@ -140,15 +146,22 @@ bool SymbolTable::isSymbolInCurrentScope(const std::string &name) {
   return locals.back().contains(name);
 }
 
-bool SymbolTable::isAssignable(const std::string &name) {
-  if (!containsVariable(name))
+bool SymbolTable::isAssignable(const std::string &var_name) {
+  if (!containsVariable(var_name))
     return false;
 
-  return closestVariable(name).is_mutable;
+  return closestVariable(var_name).is_mutable;
 }
 
-bool SymbolTable::isTypeArithmetic(const std::string &name) {
-  return registry.isArithmeticType(name);
+TypeDetails SymbolTable::detailsOfType(const std::string &type_name) {
+  if (!type_registry.contains(type_name))
+    throw std::runtime_error("Type name not registered");
+
+  return type_registry.at(type_name);
+}
+
+TypeDetails SymbolTable::detailsOfType(const StrictType &type) {
+  return detailsOfType(type.type_name);
 }
 
 void SymbolTable::clearLocalTable() { locals.clear(); }
@@ -181,37 +194,4 @@ void SymbolTable::printLocals() {
     std::cout << " " << name << ";\n";
   }
   std::cout << "\n}" << std::endl;
-}
-
-TypeRegistry::TypeRegistry() {
-  registry["int"] = {true};
-  registry["uint"] = {true};
-  registry["float"] = {true};
-  registry["double"] = {true};
-  registry["char"] = {true};
-  registry["uchar"] = {true};
-  registry["bool"] = {true};
-  registry["string"] = {false};
-  registry["short"] = {true};
-  registry["long"] = {true};
-  registry["signed"] = {true};
-  registry["unsigned"] = {true};
-}
-
-void TypeRegistry::addType(const std::string &type_name, TypeDetails details) {
-  if (registry.contains(type_name))
-    throw std::runtime_error("Redefinition of registered type_name");
-
-  registry[type_name] = details;
-}
-
-bool TypeRegistry::isValidType(const std::string &type_name) {
-  return registry.contains(type_name);
-}
-
-bool TypeRegistry::isArithmeticType(const std::string &type_name) {
-  if (!isValidType(type_name))
-    throw std::runtime_error("Invalid typename in isArithmetic check");
-
-  return registry[type_name].arithmetic;
 }

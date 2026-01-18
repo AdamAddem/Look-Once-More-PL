@@ -1,6 +1,7 @@
 #include "firstparse.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <variant>
 
 using namespace Parser;
 using namespace Lexer;
@@ -43,7 +44,7 @@ void UnparsedTU::registerGlobalsFuncBody(TokenHandler &&_body) {
   parsedGlobalBody = true;
 }
 
-void UnparsedTU::registerFunction(Type _type, std::string _name,
+void UnparsedTU::registerFunction(StrictType _type, std::string _name,
                                   std::vector<VarDeclaration> _decl,
                                   Lexer::TokenHandler _body) {
   std::vector<Type> param_types;
@@ -68,10 +69,10 @@ Type Parser::parseType(TokenHandler &tokens) {
   if (token.isPrimitive())
     return StrictType(token.toString());
 
-  if (token.is(IDENTIFIER))
+  if (token.is(TokenType::IDENTIFIER))
     return StrictType(std::move(std::get<std::string>(token.value)));
 
-  if (token.is(Lexer::LESS)) { // allows for the same type multiple times
+  if (token.is(TokenType::LESS)) { // allows for the same type multiple times
     std::vector<StrictType> types;
     bool devoid = false;
     do {
@@ -84,21 +85,21 @@ Type Parser::parseType(TokenHandler &tokens) {
         continue;
       }
 
-      if (token.is(IDENTIFIER)) {
+      if (token.is(TokenType::IDENTIFIER)) {
         types.emplace_back(StrictType(token.takeString()));
         continue;
       }
 
-      if (token.is(KEYWORD_DEVOID)) {
+      if (token.is(TokenType::KEYWORD_DEVOID)) {
         devoid = true;
         continue;
       }
 
-      if (!token.is(COMMA) && !token.is(GTR)) {
+      if (!token.is(TokenType::COMMA) && !token.is(TokenType::GTR)) {
         throw std::runtime_error("Expected comma in variant type list");
       }
 
-    } while (!token.is(GTR));
+    } while (!token.is(TokenType::GTR));
 
     return VariantType(std::move(types), devoid);
   }
@@ -111,7 +112,7 @@ Type Parser::parseType(TokenHandler &tokens) {
 std::string Parser::parseIdentifier(TokenHandler &tokens) {
   Token token = tokens.eat();
 
-  if (token.is(IDENTIFIER))
+  if (token.is(TokenType::IDENTIFIER))
     return token.takeString();
 
   std::cout << token.toString() << std::endl;
@@ -120,7 +121,7 @@ std::string Parser::parseIdentifier(TokenHandler &tokens) {
 
 std::vector<VarDeclaration> parseParameterDecl(TokenHandler &tokens) {
   std::vector<VarDeclaration> parameter_list;
-  if (tokens.peek_is(RPAREN)) {
+  if (tokens.peek_is(TokenType::RPAREN)) {
     tokens.pop();
     return parameter_list;
   }
@@ -131,10 +132,10 @@ std::vector<VarDeclaration> parseParameterDecl(TokenHandler &tokens) {
 
     parameter_list.emplace_back(std::move(type_name), std::move(ident));
 
-    if (tokens.pop_if(RPAREN))
+    if (tokens.pop_if(TokenType::RPAREN))
       return parameter_list;
 
-    if (tokens.pop_if(COMMA))
+    if (tokens.pop_if(TokenType::COMMA))
       continue;
     else
       throw std::runtime_error(
@@ -144,22 +145,31 @@ std::vector<VarDeclaration> parseParameterDecl(TokenHandler &tokens) {
 
 void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
 
-  Type type = (tokens.peek_is(KEYWORD_DEVOID)) ? StrictType("devoid")
-                                               : parseType(tokens);
+  StrictType type = [&]() -> StrictType {
+    if (tokens.peek_is(TokenType::KEYWORD_DEVOID))
+      return StrictType("devoid");
+
+    Type t = parseType(tokens);
+    if (std::holds_alternative<VariantType>(t))
+      throw std::runtime_error("VariantType used as return type of function.");
+
+    return std::get<StrictType>(t);
+  }();
+
   std::string ident = parseIdentifier(tokens);
 
   Lexer::Token third = tokens.eat();
 
-  if (third.is(ASSIGN)) // global var declaration
+  if (third.is(TokenType::ASSIGN)) // global var declaration
     throw std::runtime_error("Global declaration not allowed after globals "
                              "initialization specified");
 
-  if (!third.is(LPAREN))
+  if (!third.is(TokenType::LPAREN))
     throw std::runtime_error("Expected lparen in function declaration");
 
   std::vector<VarDeclaration> parameter_list = parseParameterDecl(tokens);
 
-  if (!tokens.pop_if(LBRACE)) {
+  if (!tokens.pop_if(TokenType::LBRACE)) {
     std::string error_msg = "Expected lbrace in function declaration: ";
     throw std::runtime_error(error_msg);
   }
@@ -170,9 +180,9 @@ void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
 }
 
 bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
-  if (tokens.pop_if(KEYWORD_GLOBALS)) { // global func definition
+  if (tokens.pop_if(TokenType::KEYWORD_GLOBALS)) { // global func definition
 
-    if (!tokens.pop_if(LBRACE))
+    if (!tokens.pop_if(TokenType::LBRACE))
       throw std::runtime_error("Expected lbrace in global initialization body");
 
     if (!tu.globalsDeclared)
@@ -183,7 +193,7 @@ bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
     return false;
   }
 
-  if (!tokens.peek_ahead(2).is(ASSIGN)) {
+  if (!tokens.peek_ahead(2).is(TokenType::ASSIGN)) {
     if (tu.globalsDeclared)
       throw std::runtime_error("Expected global initialization body");
 
@@ -199,10 +209,10 @@ bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
     throw std::runtime_error("Global declaration not allowed after globals "
                              "initialization specified");
 
-  if (!tokens.pop_if(KEYWORD_GLOBAL))
+  if (!tokens.pop_if(TokenType::KEYWORD_GLOBAL))
     throw std::runtime_error("Expected keyword global");
 
-  if (!tokens.pop_if(SEMI_COLON))
+  if (!tokens.pop_if(TokenType::SEMI_COLON))
     throw std::runtime_error("Expected semicolon after global declaration");
 
   tu.registerGlobal(std::move(type), std::move(ident));

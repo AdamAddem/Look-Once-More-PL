@@ -6,7 +6,7 @@
 
 namespace Lexer {
 
-enum TokenType {
+enum class TokenType {
 
   IDENTIFIER,
 

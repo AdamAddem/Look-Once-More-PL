@@ -8,27 +8,76 @@ using namespace Parser;
 
 /* Expressions */
 
-TypeDetails validateLiteralExpression(SymbolTable &table,
-                                      const LiteralExpression *literal) {}
+struct ExpressionReturn {
+  StrictType type;
+  bool is_mutable;
+};
 
-TypeDetails
+ExpressionReturn validateExpression(SymbolTable &table,
+                                    const Expression *expression);
+
+ExpressionReturn validateLiteralExpression(SymbolTable &table,
+                                           const LiteralExpression *literal) {}
+
+ExpressionReturn
 validateIdentifierExpression(SymbolTable &table,
                              const IdentifierExpression *identifier) {}
 
-TypeDetails validateSubscriptExpression(SymbolTable &table,
-                                        const SubscriptExpression *subscript) {}
+ExpressionReturn
+validateSubscriptExpression(SymbolTable &table,
+                            const SubscriptExpression *subscript) {}
 
-TypeDetails validateCallingExpression(SymbolTable &table,
-                                      const CallingExpression *calling) {}
+ExpressionReturn validateCallingExpression(SymbolTable &table,
+                                           const CallingExpression *calling) {
+  auto expr_details = validateExpression(table, calling->func);
+  auto type_details = table.detailsOfType(expr_details.type);
 
-TypeDetails validateBinaryExpression(SymbolTable &table,
-                                     const BinaryExpression *binary) {}
+  if (!type_details.callable)
+    throw std::runtime_error("Call operator used on non-callable");
 
-TypeDetails validateUnaryExpression(SymbolTable &table,
-                                    const UnaryExpression *unary) {}
+  auto identexpr = std::get_if<IdentifierExpression>(&calling->func->value);
+  if (identexpr == nullptr)
+    throw std::runtime_error("Call operator used on non-identifier");
 
-TypeDetails validateExpression(SymbolTable &table,
-                               const Expression *expression) {
+  std::vector<Type> provided_params;
+  for (auto param : calling->parameters)
+    provided_params.emplace_back(validateExpression(table, param).type);
+
+  return {table.returnTypeOfCall(identexpr->ident, provided_params), true};
+}
+
+ExpressionReturn validateBinaryExpression(SymbolTable &table,
+                                          const BinaryExpression *binary) {
+  auto expr_details = validateExpression(table, binary->expr_left);
+  auto type_details = table.detailsOfType(expr_details.type);
+}
+
+ExpressionReturn validateUnaryExpression(SymbolTable &table,
+                                         const UnaryExpression *unary) {
+  auto expr_details = validateExpression(table, unary->expr);
+  auto type_details = table.detailsOfType(expr_details.type);
+  if (!type_details.arithmetic)
+    throw std::runtime_error(
+        "Unary operator used on non-arithmetic expresison");
+
+  if (unary->opr == Operator::UNARY_MINUS) {
+    expr_details.is_mutable = false;
+    return expr_details;
+  }
+
+  if (!expr_details.is_mutable)
+    throw std::runtime_error(
+        "Pre/Postfix operator used on non-mutable expression");
+
+  if (unary->opr == Operator::POST_INCREMENT ||
+      unary->opr == Operator::POST_DECREMENT)
+    expr_details.is_mutable = false;
+
+  return expr_details;
+}
+
+ExpressionReturn validateExpression(SymbolTable &table,
+                                    const Expression *expression) {
   if (auto e = std::get_if<UnaryExpression>(&expression->value))
     return validateUnaryExpression(table, e);
   if (auto e = std::get_if<BinaryExpression>(&expression->value))
@@ -71,7 +120,9 @@ void validateScopedStatement(SymbolTable &table,
 }
 
 void validateWhileLoop(SymbolTable &table, const WhileLoop *while_loop) {
-  if (!validateExpression(table, while_loop->condition).arithmetic)
+  auto expr_details = validateExpression(table, while_loop->condition);
+  auto type_details = table.detailsOfType(expr_details.type);
+  if (type_details.arithmetic)
     throw std::runtime_error("While Loop condition non-convertible to boolean");
 
   validateStatement(table, while_loop->loop_body);
@@ -80,9 +131,13 @@ void validateWhileLoop(SymbolTable &table, const WhileLoop *while_loop) {
 void validateForLoop(SymbolTable &table, const ForLoop *for_loop) {
   validateStatement(table, for_loop->var_statement);
 
-  if (for_loop->condition &&
-      !validateExpression(table, for_loop->condition).arithmetic)
-    throw std::runtime_error("For Loop condition non-convertible to boolean");
+  if (for_loop->condition) {
+    auto expr_details = validateExpression(table, for_loop->condition);
+    auto type_details = table.detailsOfType(expr_details.type);
+
+    if (!type_details.arithmetic)
+      throw std::runtime_error("For Loop condition non-convertible to boolean");
+  }
 
   if (for_loop->iteration)
     validateExpression(table, for_loop->iteration);
@@ -91,7 +146,10 @@ void validateForLoop(SymbolTable &table, const ForLoop *for_loop) {
 }
 
 void validateIfStatement(SymbolTable &table, const IfStatement *if_statement) {
-  if (!validateExpression(table, if_statement->condition).arithmetic)
+
+  auto expr_details = validateExpression(table, if_statement->condition);
+  auto type_details = table.detailsOfType(expr_details.type);
+  if (!type_details.arithmetic)
     throw std::runtime_error(
         "If statement condition non-convertible to boolean");
 
@@ -164,6 +222,8 @@ void validateGlobals(SymbolTable &table, ParsedGlobals &globals) {
 }
 
 void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
+  unverified_tu.print();
+  return;
   SymbolTable table;
   ParsedTranslationUnit ptu = std::move(unverified_tu);
 

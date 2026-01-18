@@ -31,6 +31,10 @@ struct VariantType {
   bool isConvertibleTo(const VariantType &) const;
   bool canBeConvertedToSubtype(const StrictType &) const;
 };
+
+struct FullType {
+  bool mut;
+};
 using Type = std::variant<StrictType, VariantType>;
 
 bool convertibleFromTo(const Type &from, const Type &to);

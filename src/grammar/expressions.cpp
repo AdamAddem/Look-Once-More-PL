@@ -5,95 +5,95 @@
 void printOperator(Operator op) {
   switch (op) {
 
-  case PRE_INCREMENT:
-  case POST_INCREMENT:
+  case Operator::PRE_INCREMENT:
+  case Operator::POST_INCREMENT:
     std::cout << '+';
-  case ADD:
+  case Operator::ADD:
     std::cout << '+';
     return;
 
-  case PRE_DECREMENT:
-  case POST_DECREMENT:
+  case Operator::PRE_DECREMENT:
+  case Operator::POST_DECREMENT:
     std::cout << '-';
-  case SUBTRACT:
-  case UNARY_MINUS:
+  case Operator::SUBTRACT:
+  case Operator::UNARY_MINUS:
     std::cout << '-';
     return;
 
-  case DIVIDE:
+  case Operator::DIVIDE:
     std::cout << '/';
     return;
-  case MULTIPLY:
+  case Operator::MULTIPLY:
     std::cout << '*';
     return;
-  case POWER:
+  case Operator::POWER:
     std::cout << '^';
     return;
-  case MODULUS:
+  case Operator::MODULUS:
     std::cout << '%';
     return;
 
-  case ASSIGN:
+  case Operator::ASSIGN:
     std::cout << '=';
     return;
-  case ADD_ASSIGN:
+  case Operator::ADD_ASSIGN:
     std::cout << "+=";
     return;
-  case SUB_ASSIGN:
+  case Operator::SUB_ASSIGN:
     std::cout << "-=";
     return;
-  case MULT_ASSIGN:
+  case Operator::MULT_ASSIGN:
     std::cout << "*=";
     return;
-  case DIV_ASSIGN:
+  case Operator::DIV_ASSIGN:
     std::cout << "/=";
     return;
-  case POW_ASSIGN:
+  case Operator::POW_ASSIGN:
     std::cout << "^=";
     return;
-  case MOD_ASSIGN:
+  case Operator::MOD_ASSIGN:
     std::cout << "%=";
     return;
 
-  case AND:
+  case Operator::AND:
     std::cout << "and";
     return;
-  case OR:
+  case Operator::OR:
     std::cout << "or";
     return;
-  case XOR:
+  case Operator::XOR:
     std::cout << "xor";
     return;
-  case NOT:
+  case Operator::NOT:
     std::cout << "not";
     return;
 
-  case BITAND:
+  case Operator::BITAND:
     std::cout << "bitand";
     return;
-  case BITOR:
+  case Operator::BITOR:
     std::cout << "bitor";
     return;
-  case BITXOR:
+  case Operator::BITXOR:
     std::cout << "bitxor";
     return;
-  case BITNOT:
+  case Operator::BITNOT:
     std::cout << "bitnot";
     return;
 
-  case LESS:
+  case Operator::LESS:
     std::cout << '<';
     return;
-  case LESS_EQUAL:
+  case Operator::LESS_EQUAL:
     std::cout << "<=";
     return;
-  case GREATER:
+  case Operator::GREATER:
     std::cout << '>';
     return;
-  case GREATER_EQUAL:
+  case Operator::GREATER_EQUAL:
     std::cout << ">=";
     return;
-  case EQUAL:
+  case Operator::EQUAL:
     std::cout << "equals";
     return;
 
@@ -105,19 +105,19 @@ void printOperator(Operator op) {
 
 bool isLeftAssociative(Operator op) {
   switch (op) {
-  case ADDRESS_OF:
-  case CAST:
-  case CAST_IF:
-  case UNSAFE_CAST:
-  case VERY_UNSAFE_CAST:
-  case NOT:
-  case ASSIGN:
-  case ADD_ASSIGN:
-  case SUB_ASSIGN:
-  case MULT_ASSIGN:
-  case DIV_ASSIGN:
-  case POW_ASSIGN:
-  case MOD_ASSIGN:
+  case Operator::ADDRESS_OF:
+  case Operator::CAST:
+  case Operator::CAST_IF:
+  case Operator::UNSAFE_CAST:
+  case Operator::VERY_UNSAFE_CAST:
+  case Operator::NOT:
+  case Operator::ASSIGN:
+  case Operator::ADD_ASSIGN:
+  case Operator::SUB_ASSIGN:
+  case Operator::MULT_ASSIGN:
+  case Operator::DIV_ASSIGN:
+  case Operator::POW_ASSIGN:
+  case Operator::MOD_ASSIGN:
     return false;
 
   default:
@@ -127,12 +127,12 @@ bool isLeftAssociative(Operator op) {
 
 bool isPrefix(Operator op) {
   switch (op) {
-  case PRE_INCREMENT:
-  case PRE_DECREMENT:
-  case CAST:
-  case CAST_IF:
-  case UNSAFE_CAST:
-  case VERY_UNSAFE_CAST:
+  case Operator::PRE_INCREMENT:
+  case Operator::PRE_DECREMENT:
+  case Operator::CAST:
+  case Operator::CAST_IF:
+  case Operator::UNSAFE_CAST:
+  case Operator::VERY_UNSAFE_CAST:
     return true;
 
   default:
@@ -142,31 +142,31 @@ bool isPrefix(Operator op) {
 
 bool returnsArithmetic(Operator op) {
   switch (op) {
-  case ADD:
-  case PRE_INCREMENT:
-  case POST_INCREMENT:
-  case SUBTRACT:
-  case UNARY_MINUS:
-  case PRE_DECREMENT:
-  case POST_DECREMENT:
-  case MULTIPLY:
-  case DIVIDE:
-  case POWER:
-  case MODULUS:
-  case LESS:
-  case GREATER:
-  case LESS_EQUAL:
-  case GREATER_EQUAL:
-  case EQUAL:
-  case NOT_EQUAL:
-  case AND:
-  case OR:
-  case XOR:
-  case NOT:
-  case BITAND:
-  case BITOR:
-  case BITXOR:
-  case BITNOT:
+  case Operator::ADD:
+  case Operator::PRE_INCREMENT:
+  case Operator::POST_INCREMENT:
+  case Operator::SUBTRACT:
+  case Operator::UNARY_MINUS:
+  case Operator::PRE_DECREMENT:
+  case Operator::POST_DECREMENT:
+  case Operator::MULTIPLY:
+  case Operator::DIVIDE:
+  case Operator::POWER:
+  case Operator::MODULUS:
+  case Operator::LESS:
+  case Operator::GREATER:
+  case Operator::LESS_EQUAL:
+  case Operator::GREATER_EQUAL:
+  case Operator::EQUAL:
+  case Operator::NOT_EQUAL:
+  case Operator::AND:
+  case Operator::OR:
+  case Operator::XOR:
+  case Operator::NOT:
+  case Operator::BITAND:
+  case Operator::BITOR:
+  case Operator::BITXOR:
+  case Operator::BITNOT:
     return true;
 
   default:

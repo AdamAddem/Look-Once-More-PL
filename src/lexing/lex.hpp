@@ -1,5 +1,4 @@
 #pragma once
-#include <functional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -132,15 +131,15 @@ struct Token {
   TokenType type;
   TokenValue value;
 
-  bool is(TokenType _type) const { return type == _type; }
-  bool isPrimitive() const;
-  bool isLiteral() const;
-  std::string toString();
-  int getInt() const;
-  float getFloat() const;
-  double getDouble() const;
-  bool getBool() const;
-  std::string takeString();
+  [[nodiscard]] bool is(TokenType _type) const { return type == _type; }
+  [[nodiscard]] bool isPrimitive() const;
+  [[nodiscard]] bool isLiteral() const;
+  [[nodiscard]] std::string toString();
+  [[nodiscard]] int getInt() const;
+  [[nodiscard]] float getFloat() const;
+  [[nodiscard]] double getDouble() const;
+  [[nodiscard]] bool getBool() const;
+  [[nodiscard]] std::string takeString();
 };
 
 class TokenHandler {
@@ -154,17 +153,18 @@ public:
   TokenHandler(TokenHandler &&other) noexcept
       : token_list(std::move(other.token_list)) {}
 
-  void operator=(TokenHandler &&other) noexcept {
+  TokenHandler& operator=(TokenHandler &&other) noexcept {
     token_list = std::move(other.token_list);
+    return *this;
   }
 
-  const Lexer::Token &peek() const { return token_list.back(); };
-  const Lexer::Token &peek_back() const { return token_list.front(); }
-  bool peek_is(TokenType _type) const {
+  [[nodiscard]] const Lexer::Token &peek() const { return token_list.back(); };
+  [[nodiscard]] const Lexer::Token &peek_back() const { return token_list.front(); }
+  [[nodiscard]] bool peek_is(const TokenType _type) const {
     return token_list.back().type == _type;
   }
 
-  const Lexer::Token &peek_ahead(std::size_t distance) {
+  [[nodiscard]] const Lexer::Token &peek_ahead(const std::size_t distance) {
     return token_list.at(token_list.size() - distance - 1);
   }
 
@@ -175,13 +175,12 @@ public:
   }
 
   void pop() { token_list.pop_back(); }
-  bool check(TokenType _type) const { return token_list.back().type == _type; }
-  bool empty() const { return token_list.empty(); }
-  unsigned size() const { return token_list.size(); }
+  [[nodiscard]] bool check(TokenType _type) const { return token_list.back().type == _type; }
+  [[nodiscard]] bool empty() const { return token_list.empty(); }
+  [[nodiscard]] unsigned size() const { return token_list.size(); }
 
   bool pop_if(TokenType _type);
   void print();
-  void for_all(std::function<void(Token &)>);
   TokenHandler getTokensBetweenBraces();
   TokenHandler getTokensBetweenParenthesis();
   TokenHandler getTokensBetweenBrackets();

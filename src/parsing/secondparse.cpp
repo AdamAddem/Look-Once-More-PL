@@ -23,18 +23,7 @@ Operator tokenToOperator(TokenType t) {
     return Operator::POWER;
   case TokenType::MOD:
     return Operator::MODULUS;
-  case TokenType::PLUS_ASSIGN:
-    return Operator::ADD_ASSIGN;
-  case TokenType::MINUS_ASSIGN:
-    return Operator::SUB_ASSIGN;
-  case TokenType::MULT_ASSIGN:
-    return Operator::MULT_ASSIGN;
-  case TokenType::DIV_ASSIGN:
-    return Operator::DIV_ASSIGN;
-  case TokenType::POW_ASSIGN:
-    return Operator::POW_ASSIGN;
-  case TokenType::MOD_ASSIGN:
-    return Operator::MOD_ASSIGN;
+
   case TokenType::ASSIGN:
     return Operator::ASSIGN;
   case TokenType::LESS:

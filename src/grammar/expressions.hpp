@@ -98,7 +98,7 @@ struct LiteralExpression {
   LiteralValue value;
   LiteralType type;
 
-  explicit LiteralExpression(LiteralValue &&_v, LiteralType _t)
+  explicit LiteralExpression(LiteralValue &&_v, const LiteralType _t)
       : value(std::move(_v)), type(_t) {}
 };
 

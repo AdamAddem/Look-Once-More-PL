@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+
+#include "grammar/expressions.hpp"
 using namespace Lexer;
 
 // this is so stupid
@@ -144,7 +146,7 @@ std::unordered_map<std::string, TokenType> stringToSymbol{
 
 /* Lexer Functions */
 
-char charToEscapeSequenceEquivalent(char c) {
+int charToEscapeSequenceEquivalent(int c) {
   switch (c) {
   case 'n':
     return '\n';
@@ -175,7 +177,7 @@ char charToEscapeSequenceEquivalent(char c) {
 void grabStringLiteral(std::vector<Token> &token_list, std::ifstream &file) {
   std::string literal;
   file >> std::noskipws;
-  char c = 1;
+  int c;
   while (true) { // stupid and dumb
     c = file.get();
     switch (c) {
@@ -206,8 +208,8 @@ ending_quote_found:
 // called when opening single-quote already consumed
 void grabCharLiteral(std::vector<Token> &token_list, std::ifstream &file) {
   file >> std::noskipws;
-  char c1 = file.get();
-  char c2 = file.get();
+  int c1 = file.get();
+  int c2 = file.get();
 
   if (c1 == '\\') { // this is stupid
 
@@ -218,12 +220,12 @@ void grabCharLiteral(std::vector<Token> &token_list, std::ifstream &file) {
   } else if (c2 != '\'')
     throw std::runtime_error("Expected ending ' in char literal.");
 
-  token_list.emplace_back(TokenType::CHAR_LITERAL, std::string{c1});
+  token_list.emplace_back(TokenType::CHAR_LITERAL, std::string{static_cast<char>(c1)});
   file >> std::ws;
 }
 
 // c contains already popped symbol
-void grabSymbol(char c, std::vector<Token> &token_list, std::ifstream &file) {
+void grabSymbol(int c, std::vector<Token> &token_list, std::ifstream &file) {
   TokenType type;
   std::string symbol(1, c);
   switch (c) { // compound symbols up first, single char symbols down there
@@ -268,6 +270,7 @@ void grabSymbol(char c, std::vector<Token> &token_list, std::ifstream &file) {
     throw std::runtime_error(error_msg);
   }
 
+
   token_list.emplace_back(type);
 }
 
@@ -308,10 +311,6 @@ void grabNumber(std::vector<Token> &token_list, std::ifstream &file) {
   case TokenType::DOUBLE_LITERAL:
     value = std::stod(num);
     break;
-
-  default:
-    throw std::runtime_error(
-        "Invalid numeric literal type found? This shouldn't happen.");
   }
 
   token_list.emplace_back(type, std::move(value));
@@ -337,7 +336,8 @@ void grabIdentOrKeyword(std::vector<Token> &token_list, std::ifstream &file) {
   if (word == "true" || word == "false") {
     type = TokenType::BOOL_LITERAL;
     value = (word == "true" ? 1 : 0);
-  } else if (keywords.contains(word))
+  }
+  else if (keywords.contains(word))
     type = keywords[word];
   else {
     type = TokenType::IDENTIFIER;
@@ -347,7 +347,7 @@ void grabIdentOrKeyword(std::vector<Token> &token_list, std::ifstream &file) {
   token_list.emplace_back(type, std::move(value));
 }
 
-void debugPrintList(std::vector<Token> &token_list) {
+void debugPrintList(const std::vector<Token> &token_list) {
   static std::unordered_map<TokenType, std::string> keywordToString = {
       KEYWORDS_TO_STRING_MAPPING};
   static std::unordered_map<TokenType, std::string> symbolToString = {
@@ -404,26 +404,23 @@ TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
     throw std::runtime_error("File Not Found");
 
   std::vector<Token> token_list;
-  char c = 1;
-  while (c != EOF) {
+  while (true) {
     file >> std::ws;
-    c = file.peek();
+    const int c = file.peek();
     if (c == EOF)
       break;
-    if (c >= '0' && c <= '9') {
+    if (c >= '0' && c <= '9') 
       grabNumber(token_list, file);
-    } else if (std::isalpha(c)) {
+    else if (std::isalpha(c)) 
       grabIdentOrKeyword(token_list, file);
-    } else {
+    else 
       grabSymbol(file.get(), token_list, file);
-    }
+    
   }
+  
   file.close();
 
-  std::reverse(
-      token_list.begin(),
-      token_list
-          .end()); // tokens now organized such that back is first-most token.
+  std::reverse( token_list.begin(), token_list.end()); // tokens now organized such that back is first-most token.
 
   return TokenHandler(std::move(token_list));
 }
@@ -483,7 +480,7 @@ std::string Token::toString() {
     case TokenType::DOUBLE_LITERAL:
       return std::to_string(std::get<double>(value));
     case TokenType::CHAR_LITERAL:
-      return std::to_string((char)std::get<int>(value));
+      return std::to_string(static_cast<char>(std::get<int>(value)));
     case TokenType::STRING_LITERAL:
       return std::get<std::string>(value);
     case TokenType::BOOL_LITERAL:
@@ -631,15 +628,5 @@ TokenHandler TokenHandler::getAllTokensUntilLastOf(TokenType _type) {
   return TokenHandler(std::move(tokens));
 }
 
-void TokenHandler::for_all(std::function<void(Token &)> f) {
-
-  auto curr = token_list.rbegin();
-  auto end = token_list.rend();
-
-  while (curr != end) {
-    f(*curr);
-    ++curr;
-  }
-}
 
 /* TokenHandler Methods */

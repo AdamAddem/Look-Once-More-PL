@@ -2,25 +2,25 @@
 #include <iostream>
 #include <stdexcept>
 
-void Function::print() {
+void SymbolTable::Function::print() {
   printType(return_type);
   std::cout << " (";
+  
   for (auto &t : parameter_types) {
     printType(t);
     std::cout << ", ";
   }
+  
   if (!parameter_types.empty())
     std::cout << "\b\b";
   std::cout << ")";
 }
 
-void FunctionSignature::addFunction(StrictType &&t,
-                                    std::vector<Type> &&params) {
+void SymbolTable::FunctionSignature::addFunction(StrictType &&t, std::vector<Type> &&params) {
   functions.emplace_back(std::move(t), std::move(params));
 }
 
-StrictType
-FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) {
+StrictType SymbolTable::FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) {
   bool is_valid{false};
   StrictType ret_type("placeholder");
   for (const auto &f : functions) {
@@ -49,7 +49,7 @@ FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) {
   return ret_type;
 }
 
-void FunctionSignature::print() {
+void SymbolTable::FunctionSignature::print() {
   for (auto &f : functions) {
     f.print();
     std::cout << ", ";
@@ -57,11 +57,8 @@ void FunctionSignature::print() {
   std::cout << "\b\b";
 }
 
-SymbolTable::SymbolTable() : expectedReturnType(StrictType("devoid")) {}
-
 bool SymbolTable::containsVariable(const std::string &name) {
-
-  for (auto m : locals) // order doesn't matter
+  for (const auto m : locals) // order doesn't matter
     if (m.contains(name))
       return true;
 
@@ -70,8 +67,7 @@ bool SymbolTable::containsVariable(const std::string &name) {
   return false;
 }
 
-void SymbolTable::addGlobalVariable(std::string name, Type type,
-                                    bool is_const) {
+void SymbolTable::addGlobalVariable(std::string name, Type type, bool is_const) {
 
   if (globals.contains(name))
     throw std::runtime_error("Redefinition of global symbol with name: " +
@@ -87,7 +83,7 @@ void SymbolTable::addLocalVariable(std::string name, Type type, bool is_const) {
   locals.back().emplace(std::move(name), Variable(std::move(type), is_const));
 }
 
-const Variable &SymbolTable::closestVariable(const std::string &name) {
+const SymbolTable::Variable &SymbolTable::closestVariable(const std::string &name) {
   auto end = locals.rend();
   for (auto curr = locals.rbegin(); curr != end; ++curr)
     if (curr->contains(name))
@@ -106,8 +102,7 @@ void SymbolTable::leaveScope() {
   locals.pop_back();
 }
 
-void SymbolTable::addFunction(std::string name, StrictType ret_type,
-                              std::vector<Type> &&parameter_types) {
+void SymbolTable::addFunction(std::string name, StrictType ret_type, std::vector<Type> &&parameter_types) {
   if (globals.contains(name)) {
     if (std::holds_alternative<Variable>(globals.at(name)))
       throw std::runtime_error("Redefinition of global variable with name: " +
@@ -129,9 +124,7 @@ bool SymbolTable::containsFunction(const std::string &name) {
   return false;
 }
 
-StrictType
-SymbolTable::returnTypeOfCall(const std::string &name,
-                              const std::vector<Type> &provided_params) {
+StrictType SymbolTable::returnTypeOfCall(const std::string &name, const std::vector<Type> &provided_params) {
   if (!containsFunction(name))
     throw std::runtime_error("Identifier not recognized as callable");
 
@@ -153,14 +146,14 @@ bool SymbolTable::isAssignable(const std::string &var_name) {
   return closestVariable(var_name).is_mutable;
 }
 
-TypeDetails SymbolTable::detailsOfType(const std::string &type_name) {
+auto SymbolTable::detailsOfType(const std::string &type_name) -> TypeDetails {
   if (!type_registry.contains(type_name))
     throw std::runtime_error("Type name not registered");
 
   return type_registry.at(type_name);
 }
 
-TypeDetails SymbolTable::detailsOfType(const StrictType &type) {
+auto SymbolTable::detailsOfType(const StrictType &type) -> TypeDetails {
   return detailsOfType(type.type_name);
 }
 

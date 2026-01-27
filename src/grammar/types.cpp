@@ -25,7 +25,7 @@ bool VariantType::isConvertibleTo(const VariantType &other) const {
 }
 
 bool VariantType::canBeConvertedToSubtype(const StrictType &type) const {
-  for (auto &subtype : types) {
+  for (const auto &subtype : types) {
     if (subtype.isConvertibleTo(type))
       return true;
   }
@@ -45,8 +45,8 @@ bool StrictType::isConvertibleTo(const StrictType &other) const {
 // conversion from strict->strict, strict->variant, variant->variant supported.
 bool convertibleFromTo(const Type &from, const Type &to) {
 
-  if (auto f = std::get_if<StrictType>(&from)) {
-    if (auto t = std::get_if<StrictType>(&to))
+  if (const auto f = std::get_if<StrictType>(&from)) {
+    if (const auto t = std::get_if<StrictType>(&to))
       return f->isConvertibleTo(*t);
     else
       return std::get<VariantType>(to).canBeConvertedToSubtype(*f);

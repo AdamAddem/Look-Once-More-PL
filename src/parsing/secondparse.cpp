@@ -461,7 +461,7 @@ Statement *parseWhile(TokenHandler &tokens) {
   return new Statement(WhileLoop(condition, loop_body));
 }
 
-Statement *parseDoWhile(TokenHandler &tokens) {
+Statement *parseDoWhile([[maybe_unused]] TokenHandler &tokens) {
   throw std::runtime_error("Do While Loop unsupported");
 }
 
@@ -489,7 +489,7 @@ Statement *parseReturn(TokenHandler &tokens) {
   return new Statement(ReturnStatement(parseExpression(retval)));
 }
 
-Statement *parseSwitch(TokenHandler &tokens) {
+Statement *parseSwitch([[maybe_unused]] TokenHandler &tokens) {
   throw std::runtime_error("Switch Statement Unsupported");
 }
 
@@ -528,6 +528,7 @@ Statement *parseStatement(TokenHandler &tokens) {
   case TokenType::IDENTIFIER:
     if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER))
       return parseVarDecl(tokens);
+    [[fallthrough]];
   default:
     return parseExpressionStatement(tokens);
   }

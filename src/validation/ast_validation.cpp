@@ -13,21 +13,30 @@ struct ExpressionReturn {
   bool is_mutable;
 };
 
-ExpressionReturn validateExpression(SymbolTable &table,
-                                    const Expression *expression);
-
-ExpressionReturn validateLiteralExpression(SymbolTable &table,
-                                           const LiteralExpression *literal) {}
+ExpressionReturn
+validateExpression([[maybe_unused]] SymbolTable &table,
+                   [[maybe_unused]] const Expression *expression);
 
 ExpressionReturn
-validateIdentifierExpression(SymbolTable &table,
-                             const IdentifierExpression *identifier) {}
+validateLiteralExpression([[maybe_unused]] SymbolTable &table,
+                          [[maybe_unused]] const LiteralExpression *literal) {
+  return {StrictType("temp"), false};
+}
 
-ExpressionReturn
-validateSubscriptExpression(SymbolTable &table,
-                            const SubscriptExpression *subscript) {}
+ExpressionReturn validateIdentifierExpression(
+    [[maybe_unused]] SymbolTable &table,
+    [[maybe_unused]] const IdentifierExpression *identifier) {
+  return {StrictType("temp"), false};
+}
 
-ExpressionReturn validateCallingExpression(SymbolTable &table,
+ExpressionReturn validateSubscriptExpression(
+    [[maybe_unused]] SymbolTable &table,
+    [[maybe_unused]] const SubscriptExpression *subscript) {
+
+  return {StrictType("temp"), false};
+}
+
+ExpressionReturn validateCallingExpression([[maybe_unused]] SymbolTable &table,
                                            const CallingExpression *calling) {
   auto expr_details = validateExpression(table, calling->func);
   auto type_details = table.detailsOfType(expr_details.type);
@@ -46,10 +55,12 @@ ExpressionReturn validateCallingExpression(SymbolTable &table,
   return {table.returnTypeOfCall(identexpr->ident, provided_params), true};
 }
 
-ExpressionReturn validateBinaryExpression(SymbolTable &table,
-                                          const BinaryExpression *binary) {
-  auto expr_details = validateExpression(table, binary->expr_left);
-  auto type_details = table.detailsOfType(expr_details.type);
+ExpressionReturn
+validateBinaryExpression([[maybe_unused]] SymbolTable &table,
+                         [[maybe_unused]] const BinaryExpression *binary) {
+  // auto expr_details = validateExpression(table, binary->expr_left);
+  //  auto type_details = table.detailsOfType(expr_details.type);
+  return {StrictType("temp"), false};
 }
 
 ExpressionReturn validateUnaryExpression(SymbolTable &table,

@@ -1,6 +1,6 @@
 #include "expressions.hpp"
+#include <cassert>
 #include <iostream>
-#include <stdexcept>
 
 void printOperator(Operator op) {
   switch (op) {
@@ -8,6 +8,7 @@ void printOperator(Operator op) {
   case Operator::PRE_INCREMENT:
   case Operator::POST_INCREMENT:
     std::cout << '+';
+    [[fallthrough]];
   case Operator::ADD:
     std::cout << '+';
     return;
@@ -15,6 +16,7 @@ void printOperator(Operator op) {
   case Operator::PRE_DECREMENT:
   case Operator::POST_DECREMENT:
     std::cout << '-';
+    [[fallthrough]];
   case Operator::SUBTRACT:
   case Operator::UNARY_MINUS:
     std::cout << '-';
@@ -253,7 +255,7 @@ void PrintExpressionVisitor::operator()(
     return;
 
   default:
-    throw std::runtime_error("invalid type in LiteralExpression");
+    assert(false && "invalid literalexpression type");
   }
 }
 

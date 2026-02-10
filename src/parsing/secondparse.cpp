@@ -6,10 +6,12 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "../debug_flags.hpp"
+
 using namespace Parser;
 using namespace Lexer;
 
-Operator tokenToOperator(TokenType t) {
+[[maybe_unused]] static Operator tokenToOperator(TokenType t) {
   switch (t) {
   case TokenType::PLUS:
     return Operator::ADD;
@@ -80,9 +82,9 @@ Operator tokenToOperator(TokenType t) {
   }
 }
 
-Expression *parseExpression(TokenHandler &tokens);
+static Expression *parseExpression(TokenHandler &tokens);
 
-std::vector<Expression *> parseParameters(TokenHandler &tokens) {
+static std::vector<Expression *> parseParameters(TokenHandler &tokens) {
   if (tokens.empty())
     return {};
 
@@ -99,7 +101,7 @@ std::vector<Expression *> parseParameters(TokenHandler &tokens) {
   }
 }
 
-Expression *parsePrimaryExpression(TokenHandler &tokens) {
+static Expression *parsePrimaryExpression(TokenHandler &tokens) {
   if (tokens.peek().isLiteral()) {
     LiteralExpression::LiteralType type;
     switch (tokens.peek().type) {
@@ -139,7 +141,7 @@ Expression *parsePrimaryExpression(TokenHandler &tokens) {
   return new Expression(IdentifierExpression(std::move(ident)));
 }
 
-Expression *parsePostfixExpression(TokenHandler &tokens) {
+static Expression *parsePostfixExpression(TokenHandler &tokens) {
   Expression *left = parsePrimaryExpression(tokens);
 
   while (true) {
@@ -167,7 +169,7 @@ Expression *parsePostfixExpression(TokenHandler &tokens) {
   return left;
 }
 
-Expression *parsePrefixExpression(TokenHandler &tokens) {
+static Expression *parsePrefixExpression(TokenHandler &tokens) {
 
   if (tokens.pop_if(TokenType::PLUSPLUS))
     return new Expression(UnaryExpression(parsePrefixExpression(tokens),
@@ -184,7 +186,7 @@ Expression *parsePrefixExpression(TokenHandler &tokens) {
   return parsePostfixExpression(tokens);
 }
 
-Expression *parseExponentExpression(TokenHandler &tokens) {
+static Expression *parseExponentExpression(TokenHandler &tokens) {
   Expression *left = parsePrefixExpression(tokens);
 
   while (true) {
@@ -198,7 +200,7 @@ Expression *parseExponentExpression(TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseFactorExpression(TokenHandler &tokens) {
+static Expression *parseFactorExpression(TokenHandler &tokens) {
   Expression *left = parseExponentExpression(tokens);
 
   while (true) {
@@ -221,7 +223,7 @@ Expression *parseFactorExpression(TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseTermExpression(TokenHandler &tokens) {
+static Expression *parseTermExpression(TokenHandler &tokens) {
   Expression *l = parseFactorExpression(tokens);
 
   while (true) {
@@ -240,7 +242,7 @@ Expression *parseTermExpression(TokenHandler &tokens) {
   return l;
 }
 
-Expression *parseRelationalExpression(TokenHandler &tokens) {
+static Expression *parseRelationalExpression(TokenHandler &tokens) {
   Expression *left = parseTermExpression(tokens);
 
   while (true) {
@@ -270,7 +272,7 @@ Expression *parseRelationalExpression(TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseBitwiseExpression(TokenHandler &tokens) {
+static Expression *parseBitwiseExpression(TokenHandler &tokens) {
 
   Expression *left = parseRelationalExpression(tokens);
 
@@ -298,7 +300,7 @@ Expression *parseBitwiseExpression(TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseLogicalExpression(TokenHandler &tokens) {
+static Expression *parseLogicalExpression(TokenHandler &tokens) {
   Expression *left = parseBitwiseExpression(tokens);
 
   while (true) {
@@ -315,7 +317,7 @@ Expression *parseLogicalExpression(TokenHandler &tokens) {
   return left;
 }
 
-Expression *parseAssignmentExpression(TokenHandler &tokens) {
+static Expression *parseAssignmentExpression(TokenHandler &tokens) {
 
   Expression *const left = parseLogicalExpression(tokens);
   if (tokens.pop_if(TokenType::ASSIGN))
@@ -350,16 +352,16 @@ Expression *parseAssignmentExpression(TokenHandler &tokens) {
 }
 
 // assumes tokens holds only the tokens relevant to the expression
-Expression *parseExpression(TokenHandler &tokens) {
+static Expression *parseExpression(TokenHandler &tokens) {
   if (tokens.empty())
     return nullptr;
   return parseAssignmentExpression(tokens);
 }
 
-Statement *parseStatement(TokenHandler &tokens);
-Statement *parseScoped(TokenHandler &tokens);
+static Statement *parseStatement(TokenHandler &tokens);
+static Statement *parseScoped(TokenHandler &tokens);
 
-Statement *parseExpressionStatement(TokenHandler &tokens) {
+static Statement *parseExpressionStatement(TokenHandler &tokens) {
   if (tokens.pop_if(TokenType::SEMI_COLON))
     return new Statement(ExpressionStatement());
 
@@ -369,7 +371,7 @@ Statement *parseExpressionStatement(TokenHandler &tokens) {
   return new Statement(ExpressionStatement(parseExpression(until_semi)));
 }
 
-Statement *parseVarDecl(TokenHandler &tokens) {
+static Statement *parseVarDecl(TokenHandler &tokens) {
   Type type = parseType(tokens);
   std::string ident = parseIdentifier(tokens);
   if (!tokens.pop_if(TokenType::ASSIGN))
@@ -396,7 +398,7 @@ Statement *parseVarDecl(TokenHandler &tokens) {
 
 // for the statements below starting with a keyword,
 // that keyword has already been eaten
-Statement *parseIf(TokenHandler &tokens) {
+static Statement *parseIf(TokenHandler &tokens) {
   if (!tokens.pop_if(TokenType::LPAREN))
     throw std::runtime_error("Expected lparen in if statement condition");
 
@@ -415,22 +417,19 @@ Statement *parseIf(TokenHandler &tokens) {
   return new Statement(IfStatement(condition, true_branch, false_branch));
 }
 
-Statement *parseFor(TokenHandler &tokens) {
+static Statement *parseFor(TokenHandler &tokens) {
   if (!tokens.pop_if(TokenType::LPAREN))
     throw std::runtime_error("Expected opening parenthesis in for statement");
 
   TokenHandler betweenParen = tokens.getTokensBetweenParenthesis();
-  Statement *declOrAssignment;
-  if (betweenParen.peek().isPrimitive())
+  auto& p = betweenParen.peek();
+  Statement * declOrAssignment;
+
+  if (p.isPrimitive() || p.is(TokenType::LESS) || (p.is(TokenType::IDENTIFIER) && betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER)))
     declOrAssignment = parseVarDecl(betweenParen);
-  else if (betweenParen.peek_is(TokenType::IDENTIFIER)) {
-    if (betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER))
-      declOrAssignment = parseVarDecl(betweenParen);
-    else
-      declOrAssignment = parseExpressionStatement(betweenParen);
-  } else if (betweenParen.peek_is(TokenType::LESS)) {
-    declOrAssignment = parseVarDecl(betweenParen);
-  } else
+  else if (p.is(TokenType::IDENTIFIER))
+    declOrAssignment = parseExpressionStatement(betweenParen);
+  else
     throw std::runtime_error("Expected variable declaration or assignment in "
                              "first for loop statement");
 
@@ -445,7 +444,7 @@ Statement *parseFor(TokenHandler &tokens) {
       ForLoop(declOrAssignment, condition, iteration, loop_body));
 }
 
-Statement *parseWhile(TokenHandler &tokens) {
+static Statement *parseWhile(TokenHandler &tokens) {
 
   if (!tokens.pop_if(TokenType::LPAREN))
     throw std::runtime_error(
@@ -461,12 +460,12 @@ Statement *parseWhile(TokenHandler &tokens) {
   return new Statement(WhileLoop(condition, loop_body));
 }
 
-Statement *parseDoWhile([[maybe_unused]] TokenHandler &tokens) {
+static Statement *parseDoWhile([[maybe_unused]] TokenHandler &tokens) {
   throw std::runtime_error("Do While Loop unsupported");
 }
 
 // scoped may be {...} or one statement ;
-Statement *parseScoped(TokenHandler &tokens) {
+static Statement *parseScoped(TokenHandler &tokens) {
   std::vector<Statement *> statements;
   if (tokens.pop_if(TokenType::LBRACE)) {
     TokenHandler scopedTokens = tokens.getTokensBetweenBraces();
@@ -480,7 +479,7 @@ Statement *parseScoped(TokenHandler &tokens) {
   return new Statement(ScopedStatement(std::move(statements)));
 }
 
-Statement *parseReturn(TokenHandler &tokens) {
+static Statement *parseReturn(TokenHandler &tokens) {
   if (tokens.pop_if(TokenType::SEMI_COLON))
     return new Statement(ReturnStatement());
 
@@ -489,11 +488,11 @@ Statement *parseReturn(TokenHandler &tokens) {
   return new Statement(ReturnStatement(parseExpression(retval)));
 }
 
-Statement *parseSwitch([[maybe_unused]] TokenHandler &tokens) {
+static Statement *parseSwitch([[maybe_unused]] TokenHandler &tokens) {
   throw std::runtime_error("Switch Statement Unsupported");
 }
 
-Statement *parseStatement(TokenHandler &tokens) {
+static Statement *parseStatement(TokenHandler &tokens) {
 
   const Token &first = tokens.peek();
   if (first.isPrimitive())
@@ -534,7 +533,7 @@ Statement *parseStatement(TokenHandler &tokens) {
   }
 }
 
-std::vector<Statement *> parseStatements(TokenHandler &body_tokens) {
+static std::vector<Statement *> parseStatements(TokenHandler &body_tokens) {
 
   std::vector<Statement *> body_statements;
 
@@ -544,13 +543,13 @@ std::vector<Statement *> parseStatements(TokenHandler &body_tokens) {
   return body_statements;
 }
 
-ParsedGlobals parseGlobals(UnparsedGlobals &globals) {
+static ParsedGlobals parseGlobals(UnparsedGlobals &globals) {
 
   return {std::move(globals.declarations),
           parseStatements(globals.global_init_body)};
 }
 
-ParsedFunction parseFunction(UnparsedFunction &func) {
+static ParsedFunction parseFunction(UnparsedFunction &func) {
 
   return {std::move(func.return_value), std::move(func.name),
           std::move(func.parameter_list), parseStatements(func.body_tokens)};
@@ -566,10 +565,15 @@ ParsedTranslationUnit Parser::secondPassParsing(UnparsedTU &&unparsedtu) {
 
   ParsedTranslationUnit ptu{std::move(globals), std::move(parsed_funcs)};
 
+  if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::SECONDPARSE) {
+    ptu.print();
+    std::terminate();
+  }
+
   return ptu;
 }
 
-void ParsedTranslationUnit::print() {
+void ParsedTranslationUnit::print() const {
   global.print();
   std::cout << "\n\n";
 
@@ -579,7 +583,7 @@ void ParsedTranslationUnit::print() {
   }
 }
 
-void ParsedGlobals::print() {
+void ParsedGlobals::print() const {
   if (declarations.empty())
     return;
 
@@ -599,7 +603,7 @@ void ParsedGlobals::print() {
   std::cout << "\n}\n" << std::endl;
 }
 
-void ParsedFunction::print() {
+void ParsedFunction::print() const {
   printType(return_type);
   std::cout << " " << name << "(";
   for (auto &decl : parameter_list) {

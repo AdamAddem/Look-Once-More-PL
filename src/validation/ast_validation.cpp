@@ -4,6 +4,8 @@
 #include "symbol_table.hpp"
 #include <stdexcept>
 #include <variant>
+
+#include "debug_flags.hpp"
 using namespace Parser;
 
 /* Expressions */
@@ -13,31 +15,25 @@ struct ExpressionReturn {
   bool is_mutable;
 };
 
-ExpressionReturn
-validateExpression([[maybe_unused]] SymbolTable &table,
-                   [[maybe_unused]] const Expression *expression);
+ExpressionReturn validateExpression(
+  [[maybe_unused]] SymbolTable &table,
+  [[maybe_unused]] const Expression *expression);
 
-ExpressionReturn
-validateLiteralExpression([[maybe_unused]] SymbolTable &table,
-                          [[maybe_unused]] const LiteralExpression *literal) {
-  return {StrictType("temp"), false};
-}
+ExpressionReturn validateLiteralExpression(
+  [[maybe_unused]] SymbolTable &table,
+  [[maybe_unused]] const LiteralExpression *literal) { return {StrictType("temp"), false}; }
 
 ExpressionReturn validateIdentifierExpression(
     [[maybe_unused]] SymbolTable &table,
-    [[maybe_unused]] const IdentifierExpression *identifier) {
-  return {StrictType("temp"), false};
-}
+    [[maybe_unused]] const IdentifierExpression *identifier) { return {StrictType("temp"), false}; }
 
 ExpressionReturn validateSubscriptExpression(
     [[maybe_unused]] SymbolTable &table,
-    [[maybe_unused]] const SubscriptExpression *subscript) {
+    [[maybe_unused]] const SubscriptExpression *subscript) { return {StrictType("temp"), false}; }
 
-  return {StrictType("temp"), false};
-}
-
-ExpressionReturn validateCallingExpression([[maybe_unused]] SymbolTable &table,
-                                           const CallingExpression *calling) {
+ExpressionReturn validateCallingExpression(
+  [[maybe_unused]] SymbolTable &table,
+  const CallingExpression *calling) {
   auto expr_details = validateExpression(table, calling->func);
   auto type_details = table.detailsOfType(expr_details.type);
 
@@ -181,25 +177,25 @@ void validateVarDeclaration(SymbolTable &table,
 }
 
 void validateStatement(SymbolTable &table, const Statement *statement) {
-  if (auto s = std::get_if<VarDeclaration>(&statement->value))
+  if (const auto s = std::get_if<VarDeclaration>(&statement->value))
     validateVarDeclaration(table, s);
 
-  else if (auto s = std::get_if<IfStatement>(&statement->value))
+  else if (const auto s = std::get_if<IfStatement>(&statement->value))
     validateIfStatement(table, s);
 
-  else if (auto s = std::get_if<ForLoop>(&statement->value))
+  else if (const auto s = std::get_if<ForLoop>(&statement->value))
     validateForLoop(table, s);
 
-  else if (auto s = std::get_if<WhileLoop>(&statement->value))
+  else if (const auto s = std::get_if<WhileLoop>(&statement->value))
     validateWhileLoop(table, s);
 
-  else if (auto s = std::get_if<ScopedStatement>(&statement->value))
+  else if (const auto s = std::get_if<ScopedStatement>(&statement->value))
     validateScopedStatement(table, s);
 
-  else if (auto s = std::get_if<ReturnStatement>(&statement->value))
+  else if (const auto s = std::get_if<ReturnStatement>(&statement->value))
 
     validateReturnStatement(table, s);
-  else if (auto s = std::get_if<ExpressionStatement>(&statement->value))
+  else if (const auto s = std::get_if<ExpressionStatement>(&statement->value))
     validateExpressionStatement(table, s);
 }
 
@@ -221,7 +217,7 @@ void validateFunction(SymbolTable &table, ParsedFunction &func) {
   table.leaveScope();
 }
 
-void validateGlobals(SymbolTable &table, ParsedGlobals &globals) {
+void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
 
   for (auto &decl : globals.declarations)
     table.addGlobalVariable(decl.ident, decl.type);
@@ -233,8 +229,8 @@ void validateGlobals(SymbolTable &table, ParsedGlobals &globals) {
 }
 
 void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
-  unverified_tu.print();
-  return;
+  throw std::runtime_error("validation not complete yet");
+
   SymbolTable table;
   ParsedTranslationUnit ptu = std::move(unverified_tu);
 
@@ -243,5 +239,8 @@ void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
   for (auto &f : ptu.functions)
     validateFunction(table, f);
 
-  ptu.print();
+  if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::VALIDATION) {
+    ptu.print();
+    std::terminate();
+  }
 }

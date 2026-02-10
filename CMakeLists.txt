@@ -21,5 +21,6 @@ add_executable(LookOnceMore
 
         src/validation/symbol_table.cpp
         src/validation/ast_validation.cpp
+        src/debug_flags.hpp
 )
 

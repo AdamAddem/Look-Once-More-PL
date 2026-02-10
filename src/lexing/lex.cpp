@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+#include "../debug_flags.hpp"
 
 using namespace Lexer;
 
@@ -79,13 +80,13 @@ std::unordered_map<std::string, TokenType> stringToSymbol{
 
 struct FileInAnalysis {
   std::ifstream stream;
-  uint32_t needs_closing_paren;
+  uint32_t needs_closing_paren{0};
   std::vector<Token> token_list;
 };
 
 /* Lexer Functions */
 
-static char charToEscapeSequenceEquivalent(char c) {
+static int charToEscapeSequenceEquivalent(int c) {
   switch (c) {
   case 'n':
     return '\n';
@@ -117,9 +118,8 @@ static void grabStringLiteral(FileInAnalysis &file) {
   auto &[file_stream, add_closing_paren, token_list] = file;
   std::string literal;
   file_stream >> std::noskipws;
-  char c = 1;
+  int c = file_stream.get();
   while (true) { // stupid and dumb
-    c = file_stream.get();
     switch (c) {
     case '"':
       goto ending_quote_found;
@@ -136,8 +136,9 @@ static void grabStringLiteral(FileInAnalysis &file) {
       c = charToEscapeSequenceEquivalent(c);
       [[fallthrough]];
     default:
-      literal.push_back(c);
+      literal.push_back(static_cast<char>(c));
     }
+
   }
 
 ending_quote_found: // don't crucify me for this pls
@@ -151,8 +152,8 @@ static void grabCharLiteral(FileInAnalysis &file) {
   auto &[file_stream, add_closing_paren, token_list] = file;
   file_stream >> std::noskipws;
 
-  char c1 = file_stream.get();
-  char c2 = file_stream.get();
+  int c1 = file_stream.get();
+  const int c2 = file_stream.get();
 
   if (c1 == '\\') { // this is stupid
 
@@ -163,20 +164,20 @@ static void grabCharLiteral(FileInAnalysis &file) {
   } else if (c2 != '\'')
     throw std::runtime_error("Expected ending ' in char literal.");
 
-  token_list.emplace_back(TokenType::CHAR_LITERAL, std::string{c1});
+  token_list.emplace_back(TokenType::CHAR_LITERAL, std::string{static_cast<char>(c1)});
   file_stream >> std::ws;
 }
 
 static void grabSymbol(FileInAnalysis &file) {
   auto &[file_stream, add_closing_paren, token_list] = file;
   TokenType type;
-  char c = file_stream.get();
-  std::string symbol(1, c);
+  const int c = file_stream.get();
+  std::string symbol(1, static_cast<char>(c));
   switch (c) { // compound symbols up first, single char symbols down there
   case '+':
   case '-':
     if (file_stream.peek() == c) {
-      symbol.push_back(file_stream.get());
+      symbol.push_back(static_cast<char>(file_stream.get()));
       type = stringToSymbol[symbol];
       break;
     }
@@ -187,7 +188,7 @@ static void grabSymbol(FileInAnalysis &file) {
   case '%':
   case '<':
   case '>':
-    if (file_stream.peek() == '=') {
+    if (file_stream.peek() == '=') { //desugaring for x _= (...) -> x = x _ (...)
       const auto &d = token_list.back();
       if (d.type != TokenType::IDENTIFIER)
         throw std::runtime_error(
@@ -195,9 +196,11 @@ static void grabSymbol(FileInAnalysis &file) {
 
       token_list.emplace_back(TokenType::ASSIGN);
       token_list.emplace_back(d);
+      token_list.emplace_back(stringToSymbol[symbol]);
       token_list.emplace_back(TokenType::LPAREN);
-      stringToSymbol[symbol];
-      symbol.push_back(file_stream.get());
+      ++add_closing_paren;
+      file_stream.get();
+      return;
     }
     [[fallthrough]];
   case '=':
@@ -213,7 +216,7 @@ static void grabSymbol(FileInAnalysis &file) {
     break;
 
   case ';':
-    if (add_closing_paren) {
+    while (add_closing_paren) {
       token_list.emplace_back(TokenType::RPAREN);
       --add_closing_paren;
     }
@@ -229,7 +232,7 @@ static void grabSymbol(FileInAnalysis &file) {
 
   default:
     std::string error_msg("Invalid symbol found: ");
-    error_msg.append(1, c);
+    error_msg.append(1, static_cast<char>(c));
     throw std::runtime_error(error_msg);
   }
 
@@ -240,10 +243,10 @@ static void grabSymbol(FileInAnalysis &file) {
 static void grabNumber(FileInAnalysis &file) {
   auto &[file_stream, add_closing_paren, token_list] = file;
 
-  TokenType type = TokenType::INT_LITERAL;
+  auto type = TokenType::INT_LITERAL;
   TokenValue value;
-  std::string num;
-  char c;
+  std::string num_stringrep;
+  int c;
   while ((c = file_stream.get()) !=
          EOF) { // i hate file handling so much, replace
                 // this stupid monkey code eventually
@@ -254,27 +257,27 @@ static void grabNumber(FileInAnalysis &file) {
 
     if (c == '.') {
       type = TokenType::DOUBLE_LITERAL;
-      num += '.';
+      num_stringrep += '.';
       continue;
     }
 
     if (c < '0' || c > '9') {
-      file_stream.putback(c);
+      file_stream.putback(static_cast<char>(c));
       break;
     }
 
-    num += c;
+    num_stringrep += static_cast<char>(c);
   }
 
   switch (type) {
   case TokenType::INT_LITERAL:
-    value = std::stoi(num);
+    value = std::stoi(num_stringrep);
     break;
   case TokenType::FLOAT_LITERAL:
-    value = std::stof(num);
+    value = std::stof(num_stringrep);
     break;
   case TokenType::DOUBLE_LITERAL:
-    value = std::stod(num);
+    value = std::stod(num_stringrep);
     break;
 
   default:
@@ -325,26 +328,33 @@ TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
 
   auto &[file_stream, add_closing_paren, token_list] = file;
 
-  char c = 1;
-  while (c != EOF) {
+  while (true) {
     file_stream >> std::ws;
-    c = file_stream.peek();
+    const int c = file_stream.peek();
     if (c == EOF)
       break;
-    if (c >= '0' && c <= '9') {
+
+    if (c >= '0' && c <= '9')
       grabNumber(file);
-    } else if (std::isalpha(c)) {
+    else if (std::isalpha(c))
       grabIdentOrKeyword(file);
-    } else {
+    else
       grabSymbol(file);
-    }
+
   }
   file_stream.close();
+
 
   std::reverse(
       token_list.begin(),
       token_list
           .end()); // tokens now organized such that back is first-most token.
+
+  if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::LEXING) {
+    TokenHandler(std::move(token_list)).print();
+    std::terminate();
+  }
+
 
   return TokenHandler(std::move(token_list));
 }

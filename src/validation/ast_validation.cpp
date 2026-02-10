@@ -188,13 +188,12 @@ void validateStatement(SymbolTable &table, const Statement *statement) {
 
   else if (const auto s = std::get_if<ReturnStatement>(&statement->value))
     validateReturnStatement(table, s);
-  
+
   else if (const auto s = std::get_if<ExpressionStatement>(&statement->value))
     validateExpressionStatement(table, s);
 }
 
 /* Statements */
-
 
 void validateFunction(SymbolTable &table, ParsedFunction &func) {
 

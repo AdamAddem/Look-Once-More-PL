@@ -4,7 +4,6 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
-
 #include "../debug_flags.hpp"
 
 using namespace Lexer;
@@ -118,7 +117,6 @@ static int charToEscapeSequenceEquivalent(int c) {
 static void grabStringLiteral(FileInAnalysis &file) {
   auto &[file_stream, add_closing_paren, token_list] = file;
   std::string literal;
-
   file_stream >> std::noskipws;
   int c = file_stream.get();
   while (true) { // stupid and dumb
@@ -167,7 +165,6 @@ static void grabCharLiteral(FileInAnalysis &file) {
     throw std::runtime_error("Expected ending ' in char literal.");
 
   token_list.emplace_back(TokenType::CHAR_LITERAL, std::string{static_cast<char>(c1)});
-
   file_stream >> std::ws;
 }
 
@@ -239,7 +236,6 @@ static void grabSymbol(FileInAnalysis &file) {
     throw std::runtime_error(error_msg);
   }
 
-
   token_list.emplace_back(type);
 }
 
@@ -284,9 +280,9 @@ static void grabNumber(FileInAnalysis &file) {
     value = std::stod(num_stringrep);
     break;
 
-    default:
-      throw std::runtime_error(
-          "Invalid numeric literal type found? This shouldn't happen.");
+  default:
+    throw std::runtime_error(
+        "Invalid numeric literal type found? This shouldn't happen.");
   }
 
   token_list.emplace_back(type, std::move(value));
@@ -350,7 +346,10 @@ TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
   file_stream.close();
 
 
-  std::reverse( token_list.begin(), token_list.end()); // tokens now organized such that back is first-most token.
+  std::reverse(
+      token_list.begin(),
+      token_list
+          .end()); // tokens now organized such that back is first-most token.
 
   if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::LEXING) {
     TokenHandler(std::move(token_list)).print();

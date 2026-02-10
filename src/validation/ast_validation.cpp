@@ -10,28 +10,28 @@ using namespace Parser;
 
 /* Expressions */
 
-struct ExpressionResult {
+struct ExpressionReturn {
   StrictType type;
   bool is_mutable;
 };
 
-ExpressionReturn validateExpression(
+static ExpressionReturn validateExpression(
   [[maybe_unused]] SymbolTable &table,
   [[maybe_unused]] const Expression *expression);
 
-ExpressionReturn validateLiteralExpression(
+static ExpressionReturn validateLiteralExpression(
   [[maybe_unused]] SymbolTable &table,
   [[maybe_unused]] const LiteralExpression *literal) { return {StrictType("temp"), false}; }
 
-ExpressionReturn validateIdentifierExpression(
+static ExpressionReturn validateIdentifierExpression(
     [[maybe_unused]] SymbolTable &table,
     [[maybe_unused]] const IdentifierExpression *identifier) { return {StrictType("temp"), false}; }
 
-ExpressionReturn validateSubscriptExpression(
+static ExpressionReturn validateSubscriptExpression(
     [[maybe_unused]] SymbolTable &table,
     [[maybe_unused]] const SubscriptExpression *subscript) { return {StrictType("temp"), false}; }
 
-ExpressionReturn validateCallingExpression(
+static ExpressionReturn validateCallingExpression(
   [[maybe_unused]] SymbolTable &table,
   const CallingExpression *calling) {
   auto expr_details = validateExpression(table, calling->func);
@@ -59,7 +59,7 @@ validateBinaryExpression([[maybe_unused]] SymbolTable &table,
   return {StrictType("temp"), false};
 }
 
-static ExpressionResult validateUnaryExpression(SymbolTable &table, const UnaryExpression *unary) {
+static ExpressionReturn validateUnaryExpression(SymbolTable &table, const UnaryExpression *unary) {
   auto expr_details = validateExpression(table, unary->expr);
   const auto type_details = table.detailsOfType(expr_details.type);
   if (!type_details.arithmetic)
@@ -82,7 +82,7 @@ static ExpressionResult validateUnaryExpression(SymbolTable &table, const UnaryE
   return expr_details;
 }
 
-static ExpressionResult validateExpression(SymbolTable &table, const Expression *expression) {
+static ExpressionReturn validateExpression(SymbolTable &table, const Expression *expression) {
   if (const auto e = std::get_if<UnaryExpression>(&expression->value))
     return validateUnaryExpression(table, e);
   if (const auto e = std::get_if<BinaryExpression>(&expression->value))
@@ -196,7 +196,7 @@ void validateStatement(SymbolTable &table, const Statement *statement) {
 /* Statements */
 
 
-static void validateFunction(SymbolTable &table, ParsedFunction &func) {
+void validateFunction(SymbolTable &table, ParsedFunction &func) {
 
   //add return type functionality
   std::vector<Type> param_types;

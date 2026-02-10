@@ -1,6 +1,8 @@
 #include "lex.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <unordered_map>
+#include <functional>
 
 using namespace Lexer;
 
@@ -120,7 +122,7 @@ std::string Token::toString() {
     case TokenType::DOUBLE_LITERAL:
       return std::to_string(std::get<double>(value));
     case TokenType::CHAR_LITERAL:
-      return std::to_string((char)std::get<int>(value));
+      return std::to_string(static_cast<char>(std::get<int>(value)));
     case TokenType::STRING_LITERAL:
       return std::get<std::string>(value);
     case TokenType::BOOL_LITERAL:
@@ -268,18 +270,7 @@ TokenHandler TokenHandler::getAllTokensUntilLastOf(TokenType _type) {
   return TokenHandler(std::move(tokens));
 }
 
-void TokenHandler::for_all(std::function<void(Token &)> f) {
-
-  auto curr = token_list.rbegin();
-  auto end = token_list.rend();
-
-  while (curr != end) {
-    f(*curr);
-    ++curr;
-  }
-}
-
-void debugPrintList(std::vector<Token> &token_list) {
+void debugPrintList(const std::vector<Token> &token_list) {
   static std::unordered_map<TokenType, std::string> keywordToString = {
       KEYWORDS_TO_STRING_MAPPING};
   static std::unordered_map<TokenType, std::string> symbolToString = {

@@ -283,6 +283,10 @@ static void grabNumber(FileInAnalysis &file) {
   case TokenType::DOUBLE_LITERAL:
     value = std::stod(num_stringrep);
     break;
+
+    default:
+      throw std::runtime_error(
+          "Invalid numeric literal type found? This shouldn't happen.");
   }
 
   token_list.emplace_back(type, std::move(value));

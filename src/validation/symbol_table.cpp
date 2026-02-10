@@ -58,7 +58,7 @@ void SymbolTable::FunctionSignature::print() {
 }
 
 bool SymbolTable::containsVariable(const std::string &name) {
-  for (const auto m : locals) // order doesn't matter
+  for (const auto& m : locals) // order doesn't matter
     if (m.contains(name))
       return true;
 

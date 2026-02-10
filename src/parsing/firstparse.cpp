@@ -2,6 +2,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <variant>
+#include "../debug_flags.hpp"
 
 using namespace Parser;
 using namespace Lexer;
@@ -10,16 +11,19 @@ void UnparsedGlobals::print() {
   if (declarations.empty())
     return;
 
-  for (auto &decl : declarations)
+  for (auto &decl : declarations) {
     PrintStatementVisitor{}(decl);
+    std::cout << '\n';
+  }
 
-  std::cout << "globals{\n";
+  std::cout << "\nglobals{\n";
   global_init_body.print();
-  std::cout << "}" << std::endl;
+  std::cout << "}\n" << std::endl;
 }
 
 void UnparsedFunction::print() {
   printType(return_value);
+  std::cout << " " << name << "(";
   for (auto &decl : parameter_list) {
     printType(decl.type);
     std::cout << " " << decl.ident << ", ";
@@ -81,12 +85,12 @@ Type Parser::parseType(TokenHandler &tokens) {
 
       token = tokens.eat();
       if (token.isPrimitive()) {
-        types.emplace_back(StrictType(token.toString()));
+        types.emplace_back(token.toString());
         continue;
       }
 
       if (token.is(TokenType::IDENTIFIER)) {
-        types.emplace_back(StrictType(token.takeString()));
+        types.emplace_back(token.takeString());
         continue;
       }
 
@@ -229,6 +233,11 @@ UnparsedTU Parser::firstPassParsing(TokenHandler &&tokens) {
 
   while (!token_list.empty())
     parseGlobalFunctions(pass_one_tu, token_list);
+
+  if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::FIRSTPARSE) {
+    pass_one_tu.print();
+    std::terminate();
+  }
 
   return pass_one_tu;
 }

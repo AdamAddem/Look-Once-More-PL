@@ -1,5 +1,6 @@
 build/
 build.sh
 Text/
-Code.lom
+code.lom
 src/ToDo.txt
+.idea/

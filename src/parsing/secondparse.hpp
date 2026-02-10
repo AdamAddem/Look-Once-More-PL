@@ -16,7 +16,7 @@ struct ParsedGlobals {
       : declarations(std::move(other.declarations)),
         global_init_body(std::move(other.global_init_body)) {}
 
-  void print();
+  void print() const;
 };
 
 struct ParsedFunction {
@@ -38,7 +38,7 @@ struct ParsedFunction {
         parameter_list(std::move(other.parameter_list)),
         function_body(std::move(other.function_body)) {}
 
-  void print();
+  void print() const;
 };
 
 struct ParsedTranslationUnit {
@@ -49,7 +49,7 @@ struct ParsedTranslationUnit {
                         std::vector<ParsedFunction> &&_functions)
       : global(std::move(_global)), functions(std::move(_functions)) {}
 
-  void print();
+  void print() const;
 };
 
 struct UnparsedTU;

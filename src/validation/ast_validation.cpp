@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <variant>
 
-#include "lexing/lex.hpp"
+#include "debug_flags.hpp"
 using namespace Parser;
 
 /* Expressions */
@@ -15,17 +15,27 @@ struct ExpressionResult {
   bool is_mutable;
 };
 
-static ExpressionResult validateExpression(SymbolTable &table, const Expression *expression);
+ExpressionReturn validateExpression(
+  [[maybe_unused]] SymbolTable &table,
+  [[maybe_unused]] const Expression *expression);
 
-static ExpressionResult validateLiteralExpression(SymbolTable &table, const LiteralExpression *literal) {}
+ExpressionReturn validateLiteralExpression(
+  [[maybe_unused]] SymbolTable &table,
+  [[maybe_unused]] const LiteralExpression *literal) { return {StrictType("temp"), false}; }
 
-static ExpressionResult validateIdentifierExpression(SymbolTable &table, const IdentifierExpression *identifier) {}
+ExpressionReturn validateIdentifierExpression(
+    [[maybe_unused]] SymbolTable &table,
+    [[maybe_unused]] const IdentifierExpression *identifier) { return {StrictType("temp"), false}; }
 
-static ExpressionResult validateSubscriptExpression(SymbolTable &table, const SubscriptExpression *subscript) {}
+ExpressionReturn validateSubscriptExpression(
+    [[maybe_unused]] SymbolTable &table,
+    [[maybe_unused]] const SubscriptExpression *subscript) { return {StrictType("temp"), false}; }
 
-static ExpressionResult validateCallingExpression(SymbolTable &table, const CallingExpression *calling) {
-  const auto expr_details = validateExpression(table, calling->func);
-  const auto type_details = table.detailsOfType(expr_details.type);
+ExpressionReturn validateCallingExpression(
+  [[maybe_unused]] SymbolTable &table,
+  const CallingExpression *calling) {
+  auto expr_details = validateExpression(table, calling->func);
+  auto type_details = table.detailsOfType(expr_details.type);
 
   if (!type_details.callable)
     throw std::runtime_error("Call operator used on non-callable");
@@ -41,43 +51,12 @@ static ExpressionResult validateCallingExpression(SymbolTable &table, const Call
   return {table.returnTypeOfCall(identexpr->ident, provided_params), true};
 }
 
-static ExpressionResult validateBinaryExpression(SymbolTable &table, const BinaryExpression *binary) {
-  const auto lexpr_result = validateExpression(table, binary->expr_left);
-  const auto ltype_details = table.detailsOfType(lexpr_result.type);
-  const auto rexpr_result = validateExpression(table, binary->expr_right);
-  const auto rtype_details = table.detailsOfType(rexpr_result.type);
-
-  if(!ltype_details.arithmetic || !rtype_details.arithmetic) {
-     if(binary->opr != Operator::ASSIGN)
-       throw std::runtime_error("Non-assignment operator used on on-arithmetic type(s)");
-
-    if(!lexpr_result.is_mutable)
-      throw std::runtime_error("Assignment operator used on non-mutable left expression");
-
-    if(!convertibleFromTo(rexpr_result.type, lexpr_result.type)) 
-      throw std::runtime_error("Right expression not convertible to left expression in assignment");
-
-    return lexpr_result;
-  }
-
-  switch(binary->opr) {
-    case Operator::ADD:
-    case Operator::SUBTRACT:
-    case Operator::MULTIPLY:
-    case Operator::DIVIDE:
-    case Operator::POWER:
-    case Operator::MODULUS:
-      break;
-
-    case Operator::ADD_ASSIGN:
-    case Operator::SUB_ASSIGN:
-    case Operator::MULT_ASSIGN:
-    case Operator::DIV_ASSIGN:
-    case Operator::POW_ASSIGN:
-    case Operator::MOD_ASSIGN:
-      break;
-  }
-  
+ExpressionReturn
+validateBinaryExpression([[maybe_unused]] SymbolTable &table,
+                         [[maybe_unused]] const BinaryExpression *binary) {
+  // auto expr_details = validateExpression(table, binary->expr_left);
+  //  auto type_details = table.detailsOfType(expr_details.type);
+  return {StrictType("temp"), false};
 }
 
 static ExpressionResult validateUnaryExpression(SymbolTable &table, const UnaryExpression *unary) {
@@ -191,7 +170,7 @@ static void validateVarDeclaration(SymbolTable &table, const VarDeclaration *dec
   table.addLocalVariable(declaration->ident, declaration->type);
 }
 
-static void validateStatement(SymbolTable &table, const Statement *statement) {
+void validateStatement(SymbolTable &table, const Statement *statement) {
   if (const auto s = std::get_if<VarDeclaration>(&statement->value))
     validateVarDeclaration(table, s);
 
@@ -234,7 +213,8 @@ static void validateFunction(SymbolTable &table, ParsedFunction &func) {
   table.leaveScope();
 }
 
-static void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
+void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
+
   for (auto &decl : globals.declarations)
     table.addGlobalVariable(decl.ident, decl.type);
 
@@ -246,6 +226,8 @@ static void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
 
 void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
 
+  throw std::runtime_error("validation not complete yet");
+
   SymbolTable table;
   ParsedTranslationUnit ptu = std::move(unverified_tu);
 
@@ -254,5 +236,8 @@ void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
   for (auto &f : ptu.functions)
     validateFunction(table, f);
 
-  ptu.print();
+  if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::VALIDATION) {
+    ptu.print();
+    std::terminate();
+  }
 }

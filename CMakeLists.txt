@@ -3,12 +3,14 @@ project(LookOnceMore)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic")
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
 add_executable(LookOnceMore
         main.cpp
         src/lexing/lex.cpp
+        src/lexing/tokenhandler.cpp
 
         src/parsing/firstparse.cpp
         src/parsing/secondparse.cpp
@@ -19,5 +21,6 @@ add_executable(LookOnceMore
 
         src/validation/symbol_table.cpp
         src/validation/ast_validation.cpp
+        src/debug_flags.hpp
 )
 

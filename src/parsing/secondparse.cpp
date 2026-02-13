@@ -313,30 +313,6 @@ static Expression *parseAssignmentExpression(TokenHandler &tokens) {
     return new Expression(BinaryExpression(
         left, parseAssignmentExpression(tokens), Operator::ASSIGN));
 
-  if (tokens.pop_if(TokenType::PLUS_ASSIGN))
-    return new Expression(BinaryExpression(
-        left, parseAssignmentExpression(tokens), Operator::ADD_ASSIGN));
-
-  if (tokens.pop_if(TokenType::MINUS_ASSIGN))
-    return new Expression(BinaryExpression(
-        left, parseAssignmentExpression(tokens), Operator::SUB_ASSIGN));
-
-  if (tokens.pop_if(TokenType::DIV_ASSIGN))
-    return new Expression(BinaryExpression(
-        left, parseAssignmentExpression(tokens), Operator::DIV_ASSIGN));
-
-  if (tokens.pop_if(TokenType::MULT_ASSIGN))
-    return new Expression(BinaryExpression(
-        left, parseAssignmentExpression(tokens), Operator::MULT_ASSIGN));
-
-  if (tokens.pop_if(TokenType::MOD_ASSIGN))
-    return new Expression(BinaryExpression(
-        left, parseAssignmentExpression(tokens), Operator::MOD_ASSIGN));
-
-  if (tokens.pop_if(TokenType::POW_ASSIGN))
-    return new Expression(BinaryExpression(
-        left, parseAssignmentExpression(tokens), Operator::POW_ASSIGN));
-
   return left;
 }
 

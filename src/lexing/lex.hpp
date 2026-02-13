@@ -26,12 +26,6 @@ enum class TokenType {
   STAR,         // *
   POW,          // ^
   MOD,          // %
-  PLUS_ASSIGN,  // +=
-  MINUS_ASSIGN, // -=
-  MULT_ASSIGN,  // *=
-  DIV_ASSIGN,   // /=
-  POW_ASSIGN,   // ^=
-  MOD_ASSIGN,   // %=
   ASSIGN,       // =
   LPAREN,       // (
   RPAREN,       // )
@@ -113,7 +107,7 @@ enum class TokenType {
 
 using TokenValue = std::variant<int, float, double, std::string>;
 struct Token {
-  explicit Token(TokenType _type) : type(_type) {};
+  explicit Token(const TokenType _type) : type(_type) {};
   Token(TokenType _type, TokenValue &&_value)
       : type(_type), value(std::move(_value)) {};
 
@@ -131,10 +125,11 @@ struct Token {
   TokenType type;
   TokenValue value;
 
-  [[nodiscard]] bool is(TokenType _type) const { return type == _type; }
+  [[nodiscard]] bool is(const TokenType _type) const { return type == _type; }
   [[nodiscard]] bool isPrimitive() const;
   [[nodiscard]] bool isLiteral() const;
   [[nodiscard]] std::string toString();
+  [[nodiscard]] std::string toDebugString() const;
   [[nodiscard]] int getInt() const;
   [[nodiscard]] float getFloat() const;
   [[nodiscard]] double getDouble() const;

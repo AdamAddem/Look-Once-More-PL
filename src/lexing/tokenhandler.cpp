@@ -59,10 +59,7 @@ using namespace Lexer;
   {TokenType::PLUS, "+"}, {TokenType::PLUSPLUS, "++"},                         \
       {TokenType::MINUS, "-"}, {TokenType::MINUSMINUS, "--"},                  \
       {TokenType::SLASH, "/"}, {TokenType::STAR, "*"}, {TokenType::POW, "^"},  \
-      {TokenType::MOD, "%"}, {TokenType::PLUS_ASSIGN, "+="},                   \
-      {TokenType::MINUS_ASSIGN, "-="}, {TokenType::DIV_ASSIGN, "/="},          \
-      {TokenType::MULT_ASSIGN, "*="}, {TokenType::POW_ASSIGN, "^="},           \
-      {TokenType::MOD_ASSIGN, "%="}, {TokenType::ASSIGN, "="},                 \
+      {TokenType::MOD, "%"}, {TokenType::ASSIGN, "="},												\
       {TokenType::LPAREN, "("}, {TokenType::RPAREN, ")"},                      \
       {TokenType::LBRACE, "{"}, {TokenType::RBRACE, "}"},                      \
       {TokenType::LBRACKET, "["}, {TokenType::RBRACKET, "]"},                  \
@@ -136,6 +133,36 @@ std::string Token::toString() {
   return tokenToString[type];
 }
 
+
+std::string Token::toDebugString() const {
+  static std::unordered_map<TokenType, std::string> tokenToString{
+    KEYWORDS_TO_STRING_MAPPING SYMBOLS_TO_STRING_MAPPING};
+  if (type == TokenType::IDENTIFIER)
+    return std::string("id_") + std::get<std::string>(value);
+
+  if (isLiteral()) {
+    switch (type) {
+      case TokenType::INT_LITERAL:
+        return std::string("il_") + std::to_string(std::get<int>(value));
+      case TokenType::FLOAT_LITERAL:
+        return std::string("fl_") + std::to_string(std::get<float>(value));
+      case TokenType::DOUBLE_LITERAL:
+        return std::string("dl_") + std::to_string(std::get<double>(value));
+      case TokenType::CHAR_LITERAL:
+        return std::string("cl_") + std::to_string(static_cast<char>(std::get<int>(value)));
+      case TokenType::STRING_LITERAL:
+        return std::string("sl_") + std::get<std::string>(value);
+      case TokenType::BOOL_LITERAL:
+        return std::get<int>(value) ? "bl_true" : "bl_false";
+
+      default:
+        throw std::runtime_error("Error in isLiteral method");
+    }
+  }
+
+  return tokenToString[type];
+}
+
 int Token::getInt() const { return std::get<int>(value); }
 float Token::getFloat() const { return std::get<float>(value); }
 double Token::getDouble() const { return std::get<double>(value); }
@@ -150,15 +177,52 @@ std::string Token::takeString() {
 
 void TokenHandler::print() {
   auto curr = token_list.rbegin();
-  auto end = token_list.rend();
+  const auto end = token_list.rend();
 
+  auto indent{0uz};
+  auto withinParenthesis{0uz};
   while (curr != end) {
-    std::cout << curr->toString() << std::endl;
+    const auto type = curr->type;
+
+    //all this extra shit is just to make the output look somewhat pretty,
+    //otherwise its just a straight line of tokens
+    //probably
+    if (type == TokenType::LBRACE) {
+      std::cout << '{' << std::endl;
+      indent++;
+      std::cout << std::string(indent, ' ');
+    }
+    else if (type == TokenType::LPAREN) {
+      std::cout << "( ";
+      withinParenthesis++;
+    }
+    else if (type == TokenType::RPAREN) {
+      std::cout << ") ";
+      withinParenthesis--;
+    }
+
+    else if (type == TokenType::RBRACE) {
+      std::cout << "\b}\n" << std::endl;
+
+      indent--;
+      std::cout << std::string(indent, ' ');
+    }
+
+    else if (type == TokenType::SEMI_COLON) {
+      std::cout << "; ";
+      if (withinParenthesis == 0) {
+        std::cout << std::endl;
+        std::cout << std::string(indent, ' ');
+      }
+    }
+    else
+      std::cout << curr->toDebugString() << " ";
+
     ++curr;
   }
 }
 
-bool TokenHandler::pop_if(TokenType _type) {
+bool TokenHandler::pop_if(const TokenType _type) {
   if (token_list.empty())
     return false;
 
@@ -251,13 +315,13 @@ TokenHandler TokenHandler::getAllTokensUntilFirstOf(TokenType _type) {
 }
 
 TokenHandler TokenHandler::getAllTokensUntilLastOf(TokenType _type) {
-  auto last_of = std::find_if(token_list.begin(), token_list.end(),
+  const auto last_of = std::find_if(token_list.begin(), token_list.end(),
                               [_type](const Token &t) { return t.is(_type); });
 
   if (last_of == token_list.end())
     throw std::runtime_error("Did not find token in getAllTokensUntilLastOf");
 
-  size_t num = std::distance(last_of, token_list.end()) - 1;
+  const size_t num = std::distance(last_of, token_list.end()) - 1;
   std::vector<Token> tokens;
   tokens.reserve(num);
 
@@ -270,6 +334,7 @@ TokenHandler TokenHandler::getAllTokensUntilLastOf(TokenType _type) {
   return TokenHandler(std::move(tokens));
 }
 
+//not really used anymore
 void debugPrintList(const std::vector<Token> &token_list) {
   static std::unordered_map<TokenType, std::string> keywordToString = {
       KEYWORDS_TO_STRING_MAPPING};

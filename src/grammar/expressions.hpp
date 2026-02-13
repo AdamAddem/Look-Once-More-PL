@@ -19,12 +19,6 @@ enum class Operator {
   POST_DECREMENT,
 
   ASSIGN,
-  ADD_ASSIGN,
-  SUB_ASSIGN,
-  MULT_ASSIGN,
-  DIV_ASSIGN,
-  POW_ASSIGN,
-  MOD_ASSIGN,
 
   LESS,
   GREATER,
@@ -56,7 +50,7 @@ struct Expression;
 struct UnaryExpression {
   Expression *expr;
   Operator opr;
-  UnaryExpression(Expression *_expr, Operator _opr) : expr(_expr), opr(_opr) {}
+  UnaryExpression(Expression *_expr, const Operator _opr) : expr(_expr), opr(_opr) {}
 };
 
 struct BinaryExpression {
@@ -65,7 +59,7 @@ struct BinaryExpression {
   Operator opr;
 
   BinaryExpression(Expression *_expr_left, Expression *_expr_right,
-                   Operator _opr)
+                   const Operator _opr)
       : expr_left(_expr_left), expr_right(_expr_right), opr(_opr) {}
 };
 
@@ -113,11 +107,11 @@ struct Expression {
 };
 
 struct PrintExpressionVisitor {
-  void operator()(const UnaryExpression &) noexcept;
-  void operator()(const BinaryExpression &) noexcept;
-  void operator()(const CallingExpression &) noexcept;
-  void operator()(const SubscriptExpression &) noexcept;
-  void operator()(const IdentifierExpression &) noexcept;
-  void operator()(const LiteralExpression &) noexcept;
-  void operator()(const TemporaryExpr &) noexcept;
+  void operator()(const UnaryExpression &) const noexcept;
+  void operator()(const BinaryExpression &) const noexcept;
+  void operator()(const CallingExpression &) const noexcept;
+  void operator()(const SubscriptExpression &) const noexcept;
+  void operator()(const IdentifierExpression &) const noexcept;
+  void operator()(const LiteralExpression &) const noexcept;
+  void operator()(const TemporaryExpr &) const noexcept;
 };

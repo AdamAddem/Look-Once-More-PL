@@ -62,10 +62,7 @@ using namespace Lexer;
   {"+", TokenType::PLUS}, {"++", TokenType::PLUSPLUS},                         \
       {"-", TokenType::MINUS}, {"--", TokenType::MINUSMINUS},                  \
       {"/", TokenType::SLASH}, {"*", TokenType::STAR}, {"^", TokenType::POW},  \
-      {"%", TokenType::MOD}, {"+=", TokenType::PLUS_ASSIGN},                   \
-      {"-=", TokenType::MINUS_ASSIGN}, {"/=", TokenType::DIV_ASSIGN},          \
-      {"*=", TokenType::MULT_ASSIGN}, {"^=", TokenType::POW_ASSIGN},           \
-      {"%=", TokenType::MOD_ASSIGN}, {"=", TokenType::ASSIGN},                 \
+      {"%", TokenType::MOD}, {"=", TokenType::ASSIGN},												 \
       {"(", TokenType::LPAREN}, {")", TokenType::RPAREN},                      \
       {"{", TokenType::LBRACE}, {"}", TokenType::RBRACE},                      \
       {"[", TokenType::LBRACKET}, {"]", TokenType::RBRACKET},                  \
@@ -186,8 +183,7 @@ static void grabSymbol(FileInAnalysis &file) {
   case '*':
   case '^':
   case '%':
-  case '<':
-  case '>':
+
     if (file_stream.peek() == '=') { //desugaring for x _= (...) -> x = x _ (...)
       const auto &d = token_list.back();
       if (d.type != TokenType::IDENTIFIER)
@@ -203,6 +199,14 @@ static void grabSymbol(FileInAnalysis &file) {
       return;
     }
     [[fallthrough]];
+
+  case '<':
+  case '>':
+  	if (file_stream.peek() == '=') {
+  		symbol.push_back(static_cast<char>(file_stream.get()));
+  	}
+  	[[fallthrough]];
+
   case '=':
   case '(':
   case ')':

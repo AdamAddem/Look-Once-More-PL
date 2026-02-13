@@ -1,9 +1,9 @@
 #include "ast_validation.hpp"
-#include "../grammar/expressions.hpp"
-#include "../parsing/secondparse.hpp"
-#include "symbol_table.hpp"
 #include <stdexcept>
 #include <variant>
+#include "symbol_table.hpp"
+#include "../grammar/expressions.hpp"
+#include "../parsing/secondparse.hpp"
 
 #include "debug_flags.hpp"
 using namespace Parser;
@@ -35,7 +35,7 @@ static ExpressionReturn validateCallingExpression(
   [[maybe_unused]] SymbolTable &table,
   const CallingExpression *calling) {
   auto expr_details = validateExpression(table, calling->func);
-  auto type_details = table.detailsOfType(expr_details.type);
+  const auto type_details = table.detailsOfType(expr_details.type);
 
   if (!type_details.callable)
     throw std::runtime_error("Call operator used on non-callable");
@@ -51,8 +51,7 @@ static ExpressionReturn validateCallingExpression(
   return {table.returnTypeOfCall(identexpr->ident, provided_params), true};
 }
 
-ExpressionReturn
-validateBinaryExpression([[maybe_unused]] SymbolTable &table,
+ExpressionReturn validateBinaryExpression([[maybe_unused]] SymbolTable &table,
                          [[maybe_unused]] const BinaryExpression *binary) {
   // auto expr_details = validateExpression(table, binary->expr_left);
   //  auto type_details = table.detailsOfType(expr_details.type);
@@ -170,32 +169,32 @@ static void validateVarDeclaration(SymbolTable &table, const VarDeclaration *dec
   table.addLocalVariable(declaration->ident, declaration->type);
 }
 
-void validateStatement(SymbolTable &table, const Statement *statement) {
-  if (const auto s = std::get_if<VarDeclaration>(&statement->value))
-    validateVarDeclaration(table, s);
+static void validateStatement(SymbolTable &table, const Statement *statement) {
+  if (const auto var_stmt = std::get_if<VarDeclaration>(&statement->value))
+    validateVarDeclaration(table, var_stmt);
 
-  else if (const auto s = std::get_if<IfStatement>(&statement->value))
-    validateIfStatement(table, s);
+  else if (const auto if_stmt = std::get_if<IfStatement>(&statement->value))
+    validateIfStatement(table, if_stmt);
 
-  else if (const auto s = std::get_if<ForLoop>(&statement->value))
-    validateForLoop(table, s);
+  else if (const auto for_stmt = std::get_if<ForLoop>(&statement->value))
+    validateForLoop(table, for_stmt);
 
-  else if (const auto s = std::get_if<WhileLoop>(&statement->value))
-    validateWhileLoop(table, s);
+  else if (const auto while_stmt = std::get_if<WhileLoop>(&statement->value))
+    validateWhileLoop(table, while_stmt);
 
-  else if (const auto s = std::get_if<ScopedStatement>(&statement->value))
-    validateScopedStatement(table, s);
+  else if (const auto scoped_stmt = std::get_if<ScopedStatement>(&statement->value))
+    validateScopedStatement(table, scoped_stmt);
 
-  else if (const auto s = std::get_if<ReturnStatement>(&statement->value))
-    validateReturnStatement(table, s);
+  else if (const auto return_stmt = std::get_if<ReturnStatement>(&statement->value))
+    validateReturnStatement(table, return_stmt);
 
-  else if (const auto s = std::get_if<ExpressionStatement>(&statement->value))
-    validateExpressionStatement(table, s);
+  else if (const auto expr_stmt = std::get_if<ExpressionStatement>(&statement->value))
+    validateExpressionStatement(table, expr_stmt);
 }
 
 /* Statements */
 
-void validateFunction(SymbolTable &table, ParsedFunction &func) {
+static void validateFunction(SymbolTable &table, ParsedFunction &func) {
 
   //add return type functionality
   std::vector<Type> param_types;
@@ -212,7 +211,7 @@ void validateFunction(SymbolTable &table, ParsedFunction &func) {
   table.leaveScope();
 }
 
-void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
+static void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
 
   for (auto &decl : globals.declarations)
     table.addGlobalVariable(decl.ident, decl.type);
@@ -239,4 +238,5 @@ void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
     ptu.print();
     std::terminate();
   }
+
 }

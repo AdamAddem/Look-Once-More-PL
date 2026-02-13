@@ -1,0 +1,5 @@
+To Do:
+    -Refactor type system
+        -No Strict vs Variant type, just have one 'Type' that contains name, properties (arithmetic, array, callable, etc)
+        -Pass around a vector of types, vector being sz 1 means 'strict' type
+        -Maybe more efficient way? idk

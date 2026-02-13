@@ -30,7 +30,7 @@ struct SymbolTable {
 
     void addFunction(StrictType &&t, std::vector<Type> &&params);
 
-    StrictType returnTypeOfCall(const std::vector<Type> &provided_param);
+    StrictType returnTypeOfCall(const std::vector<Type> &provided_param) const;
 
     void print();
   };
@@ -41,7 +41,7 @@ struct SymbolTable {
     bool is_stolen{false};
 
     Variable(const Variable &) = default;
-    Variable(Type &&_t, bool _mut) : type(std::move(_t)), is_mutable(_mut) {}
+    Variable(Type &&_t, const bool _mut) : type(std::move(_t)), is_mutable(_mut) {}
     Variable(Variable &&other) noexcept
         : type(std::move(other.type)), is_mutable(other.is_mutable),
           is_stolen(other.is_stolen) {}
@@ -50,6 +50,7 @@ struct SymbolTable {
   struct TypeDetails {
     bool arithmetic;
     bool callable;
+  	bool array;
   };
 
   using GlobalEntry = std::variant<Variable, FunctionSignature>;
@@ -59,19 +60,19 @@ struct SymbolTable {
   std::unordered_map<std::string, TypeDetails> type_registry;
 
   SymbolTable() = default;
-  bool containsVariable(const std::string &name);
-  void addGlobalVariable(std::string name, Type type, bool is_const = false);
-  void addLocalVariable(std::string name, Type type, bool is_const = false);
+  bool            containsVariable(const std::string &name) const;
+  void            addGlobalVariable(std::string name, Type type, bool is_const = false);
+  void            addLocalVariable(std::string name, Type type, bool is_const = false);
   const Variable &closestVariable(const std::string &name);
-  void enterScope();
-  void leaveScope();
-  void addFunction(std::string name, StrictType type, std::vector<Type> &&parameter_types);
-  bool containsFunction(const std::string &name);
-  StrictType returnTypeOfCall(const std::string &name, const std::vector<Type> &provided_params);
-  bool isSymbolInCurrentScope(const std::string &name);
-  bool isAssignable(const std::string &var_name);
-  TypeDetails detailsOfType(const std::string &type_name);
-  TypeDetails detailsOfType(const StrictType &type);
+  void            enterScope();
+  void            leaveScope();
+  void            addFunction(std::string name, StrictType type, std::vector<Type> &&parameter_types);
+  bool            containsFunction(const std::string &name) const;
+  StrictType      returnTypeOfCall(const std::string &name, const std::vector<Type> &provided_params) const;
+  bool            isSymbolInCurrentScope(const std::string &name) const;
+  bool            isAssignable(const std::string &var_name);
+  TypeDetails     detailsOfType(const std::string &type_name) const;
+  TypeDetails     detailsOfType(const StrictType &type) const;
 
 
 

@@ -81,11 +81,11 @@ struct Statement {
 
 struct PrintStatementVisitor {
   unsigned indent{};
-  void operator()(const ExpressionStatement &) noexcept;
-  void operator()(const ReturnStatement &) noexcept;
-  void operator()(const ScopedStatement &) noexcept;
-  void operator()(const WhileLoop &) noexcept;
-  void operator()(const ForLoop &) noexcept;
-  void operator()(const IfStatement &) noexcept;
-  void operator()(const VarDeclaration &) noexcept;
+  void     operator()(const ExpressionStatement &) const noexcept;
+  void     operator()(const ReturnStatement &) const noexcept;
+  void     operator()(const ScopedStatement &) const noexcept;
+  void     operator()(const WhileLoop &) const noexcept;
+  void     operator()(const ForLoop &) const noexcept;
+  void     operator()(const IfStatement &) const noexcept;
+  void operator()(const VarDeclaration &) const noexcept;
 };

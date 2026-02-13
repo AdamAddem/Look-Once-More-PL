@@ -2,7 +2,7 @@
 #include <cassert>
 #include <iostream>
 
-void printOperator(Operator op) {
+static void printOperator(Operator op) {
   switch (op) {
 
   case Operator::PRE_INCREMENT:
@@ -37,24 +37,6 @@ void printOperator(Operator op) {
 
   case Operator::ASSIGN:
     std::cout << '=';
-    return;
-  case Operator::ADD_ASSIGN:
-    std::cout << "+=";
-    return;
-  case Operator::SUB_ASSIGN:
-    std::cout << "-=";
-    return;
-  case Operator::MULT_ASSIGN:
-    std::cout << "*=";
-    return;
-  case Operator::DIV_ASSIGN:
-    std::cout << "/=";
-    return;
-  case Operator::POW_ASSIGN:
-    std::cout << "^=";
-    return;
-  case Operator::MOD_ASSIGN:
-    std::cout << "%=";
     return;
 
   case Operator::AND:
@@ -105,7 +87,7 @@ void printOperator(Operator op) {
   }
 }
 
-bool isLeftAssociative(Operator op) {
+[[maybe_unused]] static bool isLeftAssociative(const Operator op) {
   switch (op) {
   case Operator::ADDRESS_OF:
   case Operator::CAST:
@@ -114,12 +96,6 @@ bool isLeftAssociative(Operator op) {
   case Operator::VERY_UNSAFE_CAST:
   case Operator::NOT:
   case Operator::ASSIGN:
-  case Operator::ADD_ASSIGN:
-  case Operator::SUB_ASSIGN:
-  case Operator::MULT_ASSIGN:
-  case Operator::DIV_ASSIGN:
-  case Operator::POW_ASSIGN:
-  case Operator::MOD_ASSIGN:
     return false;
 
   default:
@@ -127,7 +103,7 @@ bool isLeftAssociative(Operator op) {
   }
 }
 
-bool isPrefix(Operator op) {
+static bool isPrefix(const Operator op) {
   switch (op) {
   case Operator::PRE_INCREMENT:
   case Operator::PRE_DECREMENT:
@@ -142,7 +118,7 @@ bool isPrefix(Operator op) {
   }
 }
 
-bool returnsArithmetic(Operator op) {
+[[maybe_unused]] static bool returnsArithmetic(const Operator op) {
   switch (op) {
   case Operator::ADD:
   case Operator::PRE_INCREMENT:
@@ -176,7 +152,7 @@ bool returnsArithmetic(Operator op) {
   }
 }
 
-void PrintExpressionVisitor::operator()(const UnaryExpression &unary) noexcept {
+void PrintExpressionVisitor::operator()(const UnaryExpression &unary) const noexcept {
 
   if (isPrefix(unary.opr)) {
     printOperator(unary.opr);
@@ -188,7 +164,7 @@ void PrintExpressionVisitor::operator()(const UnaryExpression &unary) noexcept {
 }
 
 void PrintExpressionVisitor::operator()(
-    const BinaryExpression &binary) noexcept {
+    const BinaryExpression &binary) const noexcept {
   std::cout << "(";
   std::visit(PrintExpressionVisitor{}, binary.expr_left->value);
 
@@ -201,7 +177,7 @@ void PrintExpressionVisitor::operator()(
 }
 
 void PrintExpressionVisitor::operator()(
-    const CallingExpression &calling) noexcept {
+    const CallingExpression &calling) const noexcept {
   std::visit(PrintExpressionVisitor{}, calling.func->value);
   std::cout << "(";
   for (auto p : calling.parameters) {
@@ -215,7 +191,7 @@ void PrintExpressionVisitor::operator()(
 }
 
 void PrintExpressionVisitor::operator()(
-    const SubscriptExpression &subscript) noexcept {
+    const SubscriptExpression &subscript) const noexcept {
   std::visit(PrintExpressionVisitor{}, subscript.arr->value);
   std::cout << "[";
   std::visit(PrintExpressionVisitor{}, subscript.inside->value);
@@ -223,11 +199,11 @@ void PrintExpressionVisitor::operator()(
 }
 
 void PrintExpressionVisitor::operator()(
-    const IdentifierExpression &identifier) noexcept {
+    const IdentifierExpression &identifier) const noexcept {
   std::cout << identifier.ident;
 }
 void PrintExpressionVisitor::operator()(
-    const LiteralExpression &literal) noexcept {
+    const LiteralExpression &literal) const noexcept {
 
   switch (literal.type) {
   case LiteralExpression::INT:
@@ -259,6 +235,6 @@ void PrintExpressionVisitor::operator()(
   }
 }
 
-void PrintExpressionVisitor::operator()(const TemporaryExpr &) noexcept {
+void PrintExpressionVisitor::operator()(const TemporaryExpr &) const noexcept {
   std::cout << "temporaryexpr";
 }

@@ -20,7 +20,7 @@ void SymbolTable::FunctionSignature::addFunction(StrictType &&t, std::vector<Typ
   functions.emplace_back(std::move(t), std::move(params));
 }
 
-StrictType SymbolTable::FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) {
+StrictType SymbolTable::FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) const {
   bool is_valid{false};
   StrictType ret_type("placeholder");
   for (const auto &f : functions) {
@@ -57,7 +57,7 @@ void SymbolTable::FunctionSignature::print() {
   std::cout << "\b\b";
 }
 
-bool SymbolTable::containsVariable(const std::string &name) {
+bool SymbolTable::containsVariable(const std::string &name) const {
   for (const auto& m : locals) // order doesn't matter
     if (m.contains(name))
       return true;
@@ -67,7 +67,7 @@ bool SymbolTable::containsVariable(const std::string &name) {
   return false;
 }
 
-void SymbolTable::addGlobalVariable(std::string name, Type type, bool is_const) {
+void SymbolTable::addGlobalVariable(std::string name, Type type, const bool is_const) {
 
   if (globals.contains(name))
     throw std::runtime_error("Redefinition of global symbol with name: " +
@@ -76,7 +76,7 @@ void SymbolTable::addGlobalVariable(std::string name, Type type, bool is_const) 
   globals.emplace(std::move(name), Variable(std::move(type), is_const));
 }
 
-void SymbolTable::addLocalVariable(std::string name, Type type, bool is_const) {
+void SymbolTable::addLocalVariable(std::string name, Type type, const bool is_const) {
   if (locals.back().contains(name))
     throw std::runtime_error("Redefinition of local symbol with name: " + name);
 
@@ -118,13 +118,13 @@ void SymbolTable::addFunction(std::string name, StrictType ret_type, std::vector
       .addFunction(std::move(ret_type), std::move(parameter_types));
 }
 
-bool SymbolTable::containsFunction(const std::string &name) {
+bool SymbolTable::containsFunction(const std::string &name) const {
   if (globals.contains(name))
     return std::holds_alternative<FunctionSignature>(globals.at(name));
   return false;
 }
 
-StrictType SymbolTable::returnTypeOfCall(const std::string &name, const std::vector<Type> &provided_params) {
+StrictType SymbolTable::returnTypeOfCall(const std::string &name, const std::vector<Type> &provided_params) const {
   if (!containsFunction(name))
     throw std::runtime_error("Identifier not recognized as callable");
 
@@ -132,7 +132,7 @@ StrictType SymbolTable::returnTypeOfCall(const std::string &name, const std::vec
       .returnTypeOfCall(provided_params);
 }
 
-bool SymbolTable::isSymbolInCurrentScope(const std::string &name) {
+bool SymbolTable::isSymbolInCurrentScope(const std::string &name) const {
   if (locals.empty())
     return globals.contains(name);
 
@@ -146,14 +146,14 @@ bool SymbolTable::isAssignable(const std::string &var_name) {
   return closestVariable(var_name).is_mutable;
 }
 
-auto SymbolTable::detailsOfType(const std::string &type_name) -> TypeDetails {
+auto SymbolTable::detailsOfType(const std::string &type_name) const -> TypeDetails {
   if (!type_registry.contains(type_name))
     throw std::runtime_error("Type name not registered");
 
   return type_registry.at(type_name);
 }
 
-auto SymbolTable::detailsOfType(const StrictType &type) -> TypeDetails {
+auto SymbolTable::detailsOfType(const StrictType &type) const -> TypeDetails {
   return detailsOfType(type.type_name);
 }
 

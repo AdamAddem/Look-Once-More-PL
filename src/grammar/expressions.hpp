@@ -5,44 +5,45 @@
 
 enum class Operator {
 
+	/* Binary Ops */
   ADD,
   SUBTRACT,
   MULTIPLY,
   DIVIDE,
   POWER,
   MODULUS,
+	ASSIGN,
+	LESS,
+	GREATER,
+	LESS_EQUAL,
+	GREATER_EQUAL,
+	AND,
+	OR,
+	XOR,
+	BITAND,
+	BITOR,
+	BITXOR,
+	BITNOT,
+	EQUAL,
+	NOT_EQUAL,
+	/* Binary Ops */
 
+
+	/* Unary Ops */
   PRE_INCREMENT,
   POST_INCREMENT,
   UNARY_MINUS,
   PRE_DECREMENT,
   POST_DECREMENT,
-
-  ASSIGN,
-
-  LESS,
-  GREATER,
-  LESS_EQUAL,
-  GREATER_EQUAL,
-  EQUAL,
-  NOT_EQUAL,
-
-  AND,
-  OR,
-  XOR,
-  NOT,
-
-  BITAND,
-  BITOR,
-  BITXOR,
-  BITNOT,
+	ADDRESS_OF,
+	NOT,
+	/* Unary Ops */
 
   CAST,
   CAST_IF,
   UNSAFE_CAST,
   VERY_UNSAFE_CAST,
 
-  ADDRESS_OF,
 };
 
 struct Expression;

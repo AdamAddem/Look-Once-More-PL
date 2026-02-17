@@ -1,6 +1,7 @@
 #include "ast_validation.hpp"
 #include <stdexcept>
 #include <variant>
+#include <iostream>
 #include "symbol_table.hpp"
 #include "../grammar/expressions.hpp"
 #include "../parsing/secondparse.hpp"
@@ -11,7 +12,7 @@ using namespace Parser;
 /* Expressions */
 
 struct ExpressionReturn {
-  StrictType type;
+  Types type;
   bool is_mutable;
 };
 
@@ -19,66 +20,200 @@ static ExpressionReturn validateExpression(
   [[maybe_unused]] SymbolTable &table,
   [[maybe_unused]] const Expression *expression);
 
-static ExpressionReturn validateLiteralExpression(
-  [[maybe_unused]] SymbolTable &table,
-  [[maybe_unused]] const LiteralExpression *literal) { return {StrictType("temp"), false}; }
+ static ExpressionReturn validateLiteralExpression(
+   const LiteralExpression *literal) {
 
-static ExpressionReturn validateIdentifierExpression(
-    [[maybe_unused]] SymbolTable &table,
-    [[maybe_unused]] const IdentifierExpression *identifier) { return {StrictType("temp"), false}; }
+	switch (literal->type) {
+	case LiteralExpression::INT:
+		return {.type = {"int"}, .is_mutable = false};
+	case LiteralExpression::FLOAT:
+		return {.type = {"float"}, .is_mutable = false};
+	case LiteralExpression::DOUBLE:
+		return {.type = {"double"}, .is_mutable = false};
+	case LiteralExpression::BOOL:
+		return {.type = {"bool"}, .is_mutable = false};
+	case LiteralExpression::CHAR:
+		return {.type = {"char"}, .is_mutable = false};
+	case LiteralExpression::STRING:
+		return {.type = {"string"}, .is_mutable = false};
 
-static ExpressionReturn validateSubscriptExpression(
+	default:
+		throw std::runtime_error("Unrecognized literal expression type");
+	}
+}
+
+[[maybe_unused]] static ExpressionReturn validateIdentifierExpression(
+    [[maybe_unused]] const SymbolTable &table,
+    [[maybe_unused]] const IdentifierExpression *identifier) {
+	if (!table.containsVariable(identifier->ident))
+		throw std::runtime_error("Undeclared identifier");
+
+	const auto& v = table.closestVariable(identifier->ident);
+	if (v.is_stolen)
+		throw std::runtime_error("Stolen variable used");
+
+	return {.type = v.type, .is_mutable = v.is_mutable};
+}
+
+[[maybe_unused]] static ExpressionReturn validateSubscriptExpression(
     [[maybe_unused]] SymbolTable &table,
-    [[maybe_unused]] const SubscriptExpression *subscript) { return {StrictType("temp"), false}; }
+    [[maybe_unused]] const SubscriptExpression *subscript) {
+	throw std::runtime_error("Subscript expression not implemented yet");
+}
 
 static ExpressionReturn validateCallingExpression(
   [[maybe_unused]] SymbolTable &table,
   const CallingExpression *calling) {
-  auto expr_details = validateExpression(table, calling->func);
-  const auto type_details = table.detailsOfType(expr_details.type);
+  const auto [type, is_mutable] = validateExpression(table, calling->func);
+	if (type.size() != 1)
+		throw std::runtime_error("Call operator used on variant type");
 
-  if (!type_details.callable)
+	const auto [arithmetic, callable, array] = table.detailsOfType(type.front());
+
+  if (!callable)
     throw std::runtime_error("Call operator used on non-callable");
 
   const auto identexpr = std::get_if<IdentifierExpression>(&calling->func->value);
   if (identexpr == nullptr)
     throw std::runtime_error("Call operator used on non-identifier");
 
-  std::vector<Type> provided_params;
+  std::vector<Types> provided_params;
   for (const auto param : calling->parameters)
     provided_params.emplace_back(validateExpression(table, param).type);
 
-  return {table.returnTypeOfCall(identexpr->ident, provided_params), true};
+  return {{table.returnTypeOfCall(identexpr->ident, provided_params)}, true};
 }
 
+//current implementation returns the left expressions type for arithmetic operations
+//fix that shit lol
 ExpressionReturn validateBinaryExpression([[maybe_unused]] SymbolTable &table,
                          [[maybe_unused]] const BinaryExpression *binary) {
-  // auto expr_details = validateExpression(table, binary->expr_left);
-  //  auto type_details = table.detailsOfType(expr_details.type);
-  return {StrictType("temp"), false};
+	const auto [left_type, left_is_mutable] = validateExpression(table, binary->expr_left);
+	const auto [right_type, right_is_mutable] = validateExpression(table, binary->expr_right);
+	if (left_type.size() != 1 || right_type.size() != 1)
+		throw std::runtime_error("Binary operator used on variant type(s)");
+
+	const auto [left_arithmetic, left_callable, left_array] = table.detailsOfType(left_type.front());
+	const auto [right_arithmetic, right_callable, right_array] = table.detailsOfType(right_type.front());
+
+	switch (binary->opr) {
+	case Operator::ADD:
+	case Operator::SUBTRACT:
+	case Operator::MULTIPLY:
+	case Operator::DIVIDE:
+	case Operator::POWER:
+	case Operator::MODULUS:
+	case Operator::LESS:
+	case Operator::GREATER:
+	case Operator::LESS_EQUAL:
+	case Operator::GREATER_EQUAL:
+	case Operator::AND:
+	case Operator::OR:
+	case Operator::XOR:
+
+		if (!left_arithmetic || !right_arithmetic)
+			throw std::runtime_error("Non-arithmetic expression in arithmetic binary operation");
+
+		break;
+
+	case Operator::BITAND:
+	case Operator::BITOR:
+	case Operator::BITXOR:
+	case Operator::BITNOT:
+		if (!left_arithmetic || !right_arithmetic)
+			throw std::runtime_error("Non-arithmetic expression in arithmetic binary operation");
+
+		if (!are_types_convertible(right_type, left_type))
+			throw std::runtime_error("Bitwise operation on different types not allowed");
+
+		break;
+
+	case Operator::ASSIGN:
+		if (!left_is_mutable) {
+			std::cout << left_type.front() << std::endl;
+			throw std::runtime_error("Left expression in assignment non-mutable");
+		}
+
+		if (left_arithmetic && right_arithmetic)
+			break;
+
+		if (!are_types_convertible(right_type, left_type))
+			throw std::runtime_error("Assignment with non-convertible types");
+
+		break;
+
+	case Operator::EQUAL:
+	case Operator::NOT_EQUAL:
+		if ((left_arithmetic && right_arithmetic) || left_type == right_type)
+			break;
+
+		throw std::runtime_error("Equality operator used on different non-arithmetic types");
+
+	default:
+		throw std::runtime_error("Non binary operator set in binary expression. How?");
+	}
+
+	switch (binary->opr) {
+	case Operator::ADD:
+	case Operator::SUBTRACT:
+	case Operator::MULTIPLY:
+	case Operator::DIVIDE:
+	case Operator::POWER:
+	case Operator::MODULUS:
+		return {.type = {left_type}, .is_mutable = false};
+	case Operator::LESS:
+	case Operator::GREATER:
+	case Operator::LESS_EQUAL:
+	case Operator::GREATER_EQUAL:
+	case Operator::AND:
+	case Operator::OR:
+	case Operator::XOR:
+		return {.type = {"bool"}, .is_mutable = false};
+
+	case Operator::BITAND:
+	case Operator::BITOR:
+	case Operator::BITXOR:
+	case Operator::BITNOT:
+	case Operator::ASSIGN:
+		return {.type = {left_type}, .is_mutable = false};
+
+
+	case Operator::EQUAL:
+	case Operator::NOT_EQUAL:
+		return {.type = {"bool"}, .is_mutable = false};
+
+	default:
+		throw std::runtime_error("Non binary operator set in binary expression. How?");
+	}
 }
 
 static ExpressionReturn validateUnaryExpression(SymbolTable &table, const UnaryExpression *unary) {
-  auto expr_details = validateExpression(table, unary->expr);
-  const auto type_details = table.detailsOfType(expr_details.type);
-  if (!type_details.arithmetic)
+  const auto [type, is_mutable] = validateExpression(table, unary->expr);
+	if (type.size() != 1)
+		throw std::runtime_error("Unary operator used on variant type");
+
+	const auto [arithmetic, callable, array] = table.detailsOfType(type.front());
+  if (!arithmetic)
     throw std::runtime_error(
         "Unary operator used on non-arithmetic expresison");
 
   if (unary->opr == Operator::UNARY_MINUS) {
-    expr_details.is_mutable = false;
-    return expr_details;
+    return {.type = type, .is_mutable = false};
   }
 
-  if (!expr_details.is_mutable)
+	if (unary->opr == Operator::NOT) {
+		return {.type = {"bool"}, .is_mutable = false};
+	}
+
+  if (!is_mutable)
     throw std::runtime_error(
         "Pre/Postfix operator used on non-mutable expression");
 
   if (unary->opr == Operator::POST_INCREMENT ||
       unary->opr == Operator::POST_DECREMENT)
-    expr_details.is_mutable = false;
+  	return {.type = type, .is_mutable = false};
 
-  return expr_details;
+  return {.type = type, .is_mutable = is_mutable};
 }
 
 static ExpressionReturn validateExpression(SymbolTable &table, const Expression *expression) {
@@ -93,7 +228,9 @@ static ExpressionReturn validateExpression(SymbolTable &table, const Expression 
   if (const auto e = std::get_if<IdentifierExpression>(&expression->value))
     return validateIdentifierExpression(table, e);
   if (const auto e = std::get_if<LiteralExpression>(&expression->value))
-    return validateLiteralExpression(table, e);
+    return validateLiteralExpression(e);
+if (std::holds_alternative<TemporaryExpr>(expression->value))
+ 		std::cout << "Temporary!" << std::endl;
 
   throw std::runtime_error(
       "Impossible expression in validateExpression function");
@@ -111,9 +248,14 @@ static void validateExpressionStatement(SymbolTable &table, const ExpressionStat
 }
 
 static void validateReturnStatement(SymbolTable &table, const ReturnStatement *return_statement) {
-  // add return value validation
-  if (return_statement->return_value)
-    validateExpression(table, return_statement->return_value);
+  if (return_statement->return_value) {
+  	const auto [type, is_mutable] = validateExpression(table, return_statement->return_value);
+    if (!are_types_convertible(table.returnTypeOfCurrentScope(), type)) {
+    	std::cout << table.returnTypeOfCurrentScope() << std::endl;
+    	std::cout << type.front() << std::endl;
+			throw std::runtime_error("Return statement's type is not compatable with scope return type");
+    }
+  }
 }
 
 static void validateScopedStatement(SymbolTable &table, const ScopedStatement *scoped) {
@@ -122,9 +264,12 @@ static void validateScopedStatement(SymbolTable &table, const ScopedStatement *s
 }
 
 static void validateWhileLoop(SymbolTable &table, const WhileLoop *while_loop) {
-  const auto expr_details = validateExpression(table, while_loop->condition);
-  const auto type_details = table.detailsOfType(expr_details.type);
-  if (!type_details.arithmetic)
+  const auto [type, is_mutable] = validateExpression(table, while_loop->condition);
+	if (type.size() != 1)
+		throw std::runtime_error("Variant in while loop condition");
+
+	const auto [arithmetic, callable, array] = table.detailsOfType(type.front());
+  if (!arithmetic)
     throw std::runtime_error("While Loop condition non-convertible to boolean");
 
   validateStatement(table, while_loop->loop_body);
@@ -134,10 +279,13 @@ static void validateForLoop(SymbolTable &table, const ForLoop *for_loop) {
   validateStatement(table, for_loop->var_statement);
 
   if (for_loop->condition) {
-    const auto expr_details = validateExpression(table, for_loop->condition);
-    const auto type_details = table.detailsOfType(expr_details.type);
+    const auto [type, is_mutable] = validateExpression(table, for_loop->condition);
+  	if (type.size() != 1)
+  		throw std::runtime_error("Variant used in for loop condition");
 
-    if (!type_details.arithmetic)
+  	const auto [arithmetic, callable, array] = table.detailsOfType(type.front());
+
+    if (!arithmetic)
       throw std::runtime_error("For Loop condition non-convertible to boolean");
   }
 
@@ -148,9 +296,12 @@ static void validateForLoop(SymbolTable &table, const ForLoop *for_loop) {
 }
 
 static void validateIfStatement(SymbolTable &table, const IfStatement *if_statement) {
-  const auto expr_details = validateExpression(table, if_statement->condition);
-  const auto type_details = table.detailsOfType(expr_details.type);
-  if (!type_details.arithmetic)
+  const auto [type, is_mutable] = validateExpression(table, if_statement->condition);
+	if (type.size() != 1)
+		throw std::runtime_error("Variant type used in if statement condition");
+
+	const auto [arithmetic, callable, array] = table.detailsOfType(type.front());
+  if (!arithmetic)
     throw std::runtime_error(
         "If statement condition non-convertible to boolean");
 
@@ -165,8 +316,10 @@ static void validateVarDeclaration(SymbolTable &table, const VarDeclaration *dec
     throw std::runtime_error(
         "Redefinition of symbol name in variable declaration");
 
-  validateExpression(table, declaration->expr);
-  table.addLocalVariable(declaration->ident, declaration->type);
+	if (declaration->expr)
+		validateExpression(table, declaration->expr);
+
+	table.addLocalVariable(declaration->ident, declaration->type, true); //making all variables mutable FOR NOW
 }
 
 static void validateStatement(SymbolTable &table, const Statement *statement) {
@@ -196,25 +349,35 @@ static void validateStatement(SymbolTable &table, const Statement *statement) {
 
 static void validateFunction(SymbolTable &table, ParsedFunction &func) {
 
-  //add return type functionality
-  std::vector<Type> param_types;
-  table.enterScope();
+  std::vector<Types> param_types;
+  table.enterScope(func.return_type);
   for (auto &decl : func.parameter_list) {
     validateVarDeclaration(table, &decl);
     param_types.emplace_back(decl.type);
   }
   table.addFunction(func.name, func.return_type, std::move(param_types));
 
-  for (const auto statement : func.function_body)
+	const bool is_devoid_return = func.return_type.empty();
+	bool has_return_statement = false;
+  for (const auto statement : func.function_body) {
     validateStatement(table, statement);
 
-  table.leaveScope();
+		if (!is_devoid_return) {
+			if (std::holds_alternative<ReturnStatement>(statement->value)) {
+				has_return_statement = true;
+			}
+		}
+  }
+	if (!is_devoid_return && !has_return_statement)
+		throw std::runtime_error("Non-devoid returning function has no return statement");
+
+	table.leaveScope();
 }
 
 static void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
 
   for (auto &decl : globals.declarations)
-    table.addGlobalVariable(decl.ident, decl.type);
+    table.addGlobalVariable(decl.ident, decl.type, true); // TEMPORARY, CHANGE IS MUTABLE
 
   table.enterScope();
   for (const auto statement : globals.global_init_body)
@@ -223,8 +386,6 @@ static void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
 }
 
 void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
-
-  throw std::runtime_error("validation not complete yet");
 
   SymbolTable table;
   ParsedTranslationUnit ptu = std::move(unverified_tu);
@@ -236,6 +397,7 @@ void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
 
   if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::VALIDATION) {
     ptu.print();
+  	std::cout << "Validation stage passed!" << std::endl;
     std::terminate();
   }
 

@@ -337,7 +337,7 @@ static Statement *parseExpressionStatement(TokenHandler &tokens) {
 }
 
 static Statement *parseVarDecl(TokenHandler &tokens) {
-  Type type = parseType(tokens);
+  Types type = parseType(tokens);
   std::string ident = parseIdentifier(tokens);
   if (!tokens.pop_if(TokenType::ASSIGN))
     throw std::runtime_error("Expected assignment in variable declaration");
@@ -516,7 +516,7 @@ static ParsedGlobals parseGlobals(UnparsedGlobals &globals) {
 
 static ParsedFunction parseFunction(UnparsedFunction &func) {
 
-  return {std::move(func.return_value), std::move(func.name),
+  return {std::move(func.return_type), std::move(func.name),
           std::move(func.parameter_list), parseStatements(func.body_tokens)};
 }
 
@@ -569,7 +569,7 @@ void ParsedGlobals::print() const {
 }
 
 void ParsedFunction::print() const {
-  printType(return_type);
+  std::cout << return_type;
   std::cout << " " << name << "(";
   for (auto &decl : parameter_list) {
     printType(decl.type);
@@ -581,7 +581,7 @@ void ParsedFunction::print() const {
 
   std::cout << ") {\n" << std::endl;
 
-  for (auto s : function_body) {
+  for (const auto s : function_body) {
     std::visit(PrintStatementVisitor{1}, s->value);
     std::cout << "\n\n";
   }

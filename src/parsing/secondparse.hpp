@@ -20,16 +20,16 @@ struct ParsedGlobals {
 };
 
 struct ParsedFunction {
-  StrictType return_type;
+  std::string return_type;
   std::string name;
   std::vector<VarDeclaration>
       parameter_list; // VarDeclarations should have expr = nullptr
   std::vector<Statement *> function_body;
 
-  ParsedFunction(StrictType &&_return_value, std::string &&_name,
+  ParsedFunction(std::string &&_return_type, std::string &&_name,
                  std::vector<VarDeclaration> &&_parameter_list,
                  std::vector<Statement *> &&_function_body)
-      : return_type(std::move(_return_value)), name(std::move(_name)),
+      : return_type(std::move(_return_type)), name(std::move(_name)),
         parameter_list(std::move(_parameter_list)),
         function_body(std::move(_function_body)) {}
 

@@ -2,7 +2,7 @@
 #include <cassert>
 #include <iostream>
 
-static void printOperator(Operator op) {
+static void printOperator(const Operator op) {
   switch (op) {
 
   case Operator::PRE_INCREMENT:

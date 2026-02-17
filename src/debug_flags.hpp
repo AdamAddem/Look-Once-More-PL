@@ -7,7 +7,7 @@ namespace lom_debug {
 #ifdef NDEBUG
     inline constexpr auto stage_to_halt{halt_flags::NO_HALT};
 #else
-    inline constexpr auto stage_to_halt{halt_flags::SECONDPARSE};
+    inline constexpr auto stage_to_halt{halt_flags::VALIDATION};
 #endif
 
 }

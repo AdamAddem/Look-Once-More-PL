@@ -125,6 +125,9 @@ struct Token {
   TokenType type;
   TokenValue value;
 
+	void throw_if(TokenType unwanted_type, const char* err_message) const;
+	void throw_if_not(TokenType expected_type, const char* err_message) const;
+
   [[nodiscard]] bool is(const TokenType _type) const { return type == _type; }
   [[nodiscard]] bool isPrimitive() const;
   [[nodiscard]] bool isLiteral() const;
@@ -153,28 +156,30 @@ public:
     return *this;
   }
 
-  [[nodiscard]] const Lexer::Token &peek() const { return token_list.back(); };
-  [[nodiscard]] const Lexer::Token &peek_back() const { return token_list.front(); }
-  [[nodiscard]] bool peek_is(const TokenType _type) const {
-    return token_list.back().type == _type;
+  [[nodiscard]] const Token &peek() const { return token_list.back(); };
+  [[nodiscard]] const Token &peek_back() const { return token_list.front(); }
+  [[nodiscard]] bool peek_is(const TokenType type) const {
+    return token_list.back().type == type;
   }
-
-  [[nodiscard]] const Lexer::Token &peek_ahead(const std::size_t distance) {
+  [[nodiscard]] const Token &peek_ahead(const std::size_t distance) {
     return token_list.at(token_list.size() - distance - 1);
   }
 
-  Lexer::Token eat() {
-    Lexer::Token t = std::move(token_list.back());
+  Token eat() {
+    Token t = std::move(token_list.back());
     token_list.pop_back();
     return t;
   }
 
-  void pop() { token_list.pop_back(); }
   [[nodiscard]] bool check(TokenType _type) const { return token_list.back().type == _type; }
   [[nodiscard]] bool empty() const { return token_list.empty(); }
   [[nodiscard]] unsigned size() const { return token_list.size(); }
 
+  void pop() { token_list.pop_back(); }
   bool pop_if(TokenType _type);
+	void reject_then_pop(TokenType unwanted_type, const char* throw_message);
+	void expect_then_pop(TokenType expected_type, const char* throw_message);
+
   void print();
   TokenHandler getTokensBetweenBraces();
   TokenHandler getTokensBetweenParenthesis();

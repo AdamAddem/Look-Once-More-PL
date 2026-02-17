@@ -68,6 +68,17 @@ using namespace Lexer;
       {TokenType::SEMI_COLON, ";"}, {TokenType::ADDR, "@"},                    \
       {TokenType::COMMA, ","},
 
+
+void Token::throw_if(TokenType unwanted_type, const char* err_message)const {
+	if (type == unwanted_type)
+		throw std::runtime_error(err_message);
+}
+
+void Token::throw_if_not(TokenType expected_type, const char* err_message) const {
+	if (type != expected_type)
+		throw std::runtime_error(err_message);
+}
+
 bool Token::isPrimitive() const {
   switch (type) {
   case TokenType::KEYWORD_INT:
@@ -132,7 +143,6 @@ std::string Token::toString() {
 
   return tokenToString[type];
 }
-
 
 std::string Token::toDebugString() const {
   static std::unordered_map<TokenType, std::string> tokenToString{
@@ -232,6 +242,16 @@ bool TokenHandler::pop_if(const TokenType _type) {
   }
 
   return false;
+}
+
+void TokenHandler::reject_then_pop(TokenType unwanted_type, const char* throw_message) {
+	token_list.back().throw_if(unwanted_type, throw_message);
+	token_list.pop_back();
+}
+
+void TokenHandler::expect_then_pop(TokenType expected_type, const char* throw_message) {
+	token_list.back().throw_if_not(expected_type, throw_message);
+	token_list.pop_back();
 }
 
 TokenHandler TokenHandler::getTokensBetweenBraces() {

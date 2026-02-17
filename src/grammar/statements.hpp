@@ -9,11 +9,11 @@ struct Statement;
 
 struct VarDeclaration {
 
-  Type type;
+  Types type;
   std::string ident;
   Expression *expr; // nullptr indicates junk initialization
 
-  VarDeclaration(Type &&_type, std::string &&_ident,
+  VarDeclaration(Types &&_type, std::string &&_ident,
                  Expression *_expr = nullptr)
       : type(std::move(_type)), ident(std::move(_ident)), expr(_expr) {}
 
@@ -70,7 +70,7 @@ struct ReturnStatement {
 
 struct ExpressionStatement {
   Expression *expr; // may be nullptr
-  ExpressionStatement(Expression *_expr = nullptr) : expr(_expr) {}
+  explicit ExpressionStatement(Expression *_expr = nullptr) : expr(_expr) {}
 };
 
 struct Statement {
@@ -80,12 +80,12 @@ struct Statement {
 };
 
 struct PrintStatementVisitor {
-  unsigned indent{};
-  void     operator()(const ExpressionStatement &) const noexcept;
-  void     operator()(const ReturnStatement &) const noexcept;
-  void     operator()(const ScopedStatement &) const noexcept;
-  void     operator()(const WhileLoop &) const noexcept;
-  void     operator()(const ForLoop &) const noexcept;
-  void     operator()(const IfStatement &) const noexcept;
+	unsigned indent{};
+  void operator()(const ExpressionStatement &) const noexcept;
+  void operator()(const ReturnStatement &) const noexcept;
+  void operator()(const ScopedStatement &) const noexcept;
+  void operator()(const WhileLoop &) const noexcept;
+  void operator()(const ForLoop &) const noexcept;
+  void operator()(const IfStatement &) const noexcept;
   void operator()(const VarDeclaration &) const noexcept;
 };

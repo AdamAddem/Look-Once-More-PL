@@ -31,15 +31,11 @@ Some of the main problems with C++ LOM intends to address are:
   * move
   * tuple
   * string (arguably)
-<br>
-<br>
 
 * Operators and Keywords with varying meanings in varying contexts
   * static and inline are probably the best examples
   * \* used for multiplication, pointer declaration, and pointer dereference
   * new, operator new, placement new
-<br>
-<br>
 
 * Pointer and Reference semantics are very unintuitive
     ```c++

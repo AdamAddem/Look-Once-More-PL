@@ -40,7 +40,6 @@ Some of the main problems with C++ LOM intends to address are:
     ```c++
     int * const * x; //mutable pointer to const pointer to mutable int
     int& foo() { static int* ptr = new int; return *ptr; } //must dereference to create a reference ```
-
 * Bad defaults and too many implicit features
   * noexcept, const, and explicit are everywhere and not the default
   * Implicit junk initialization if you don't specify a value when declaring a trivial type (int x;)
@@ -59,7 +58,6 @@ Enough complaining, here is what I want to bring to the table:
     
     f32 z = junk; //explicit junk initialization required
     f32 w; //error ```
-  
 * Improved pointer syntax, with multiple special pointer types
     ```
     //Pointer declarations are read left to right
@@ -67,12 +65,10 @@ Enough complaining, here is what I want to bring to the table:
     unique -> i32 y = null; //Pointer to an int w/ compile time enforcement for ownership and destruction
     vague -> z = null; //void* equivalent
     mut raw -> raw -> mut i32 x = null; //mutable pointer to const pointer to mutable int ```
-  
 * Native variant and nullable types
     ```
     <string, u32> name_or_id = 5; // May hold a string or int value
     <string, devoid> first_member = getFirstClubMember(); //Nullable type can be represented with 'devoid' ```
-    
 * Strict and explicit global variables
     ```
     // Global variables must be defined at top of file
@@ -87,7 +83,6 @@ Enough complaining, here is what I want to bring to the table:
     }
   
     //no global variables allowed to be declared after global body ```
-    
 * Scoped imports without flooding namespace
     ```
     from standard: vector as vec;
@@ -96,7 +91,6 @@ Enough complaining, here is what I want to bring to the table:
     fn foo() {
         from other_lib: only_used_here;
     } ```
-    
 * 'steal' semantics
     ```
     fn foo(Resource param) {...}

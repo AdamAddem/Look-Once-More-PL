@@ -43,7 +43,7 @@ Below are some major examples of the problems that C++ has accrued over the year
 * Bad defaults and too many implicit features
   * noexcept, const, constexpr, \[\[nodiscard\]\], and explicit are everywhere in modern codebases leading to massive walls of text that just declare a single function
   * Implicit junk initialization if you don't specify a value when declaring a trivial type (int x;)
-  * Compiler will generate move construction / assignment for you that **just copies** raw pointers, very dangerous
+  * Compiler can generate move construction / assignment for you that shallow copies raw pointers, dangerous
 * Header/source files and build systems
   * Modules exist, yes, but if a feature is released in a standard and noone is around to use it, did it really make an impact? 
 

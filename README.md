@@ -22,7 +22,7 @@ Some of the main problems with C++ LOM intends to address are:
   ```c++ 
     int (Foo::*)(int (&)[5]) ptr; 
     requires requires { typename T::foo; };
-    noexcept(noexcept(a.~T())) ```
+    noexcept(noexcept(a.~T()))
 * Standard library features that should be features of the language
   * unique_ptr
   * Many type-traits and concepts
@@ -39,7 +39,7 @@ Some of the main problems with C++ LOM intends to address are:
 * Pointer and Reference semantics are very unintuitive
     ```c++
     int * const * x; //mutable pointer to const pointer to mutable int
-    int& foo() { static int* ptr = new int; return *ptr; } //must dereference to create a reference ```
+    int& foo() { static int* ptr = new int; return *ptr; } //must dereference to create a reference
 * Bad defaults and too many implicit features
   * noexcept, const, and explicit are everywhere and not the default
   * Implicit junk initialization if you don't specify a value when declaring a trivial type (int x;)
@@ -57,18 +57,18 @@ Enough complaining, here is what I want to bring to the table:
     mut i32 y = 4;
     
     f32 z = junk; //explicit junk initialization required
-    f32 w; //error ```
+    f32 w; //error
 * Improved pointer syntax, with multiple special pointer types
     ```
     //Pointer declarations are read left to right
     raw -> i32 x = null; //Raw pointer to an int
     unique -> i32 y = null; //Pointer to an int w/ compile time enforcement for ownership and destruction
     vague -> z = null; //void* equivalent
-    mut raw -> raw -> mut i32 x = null; //mutable pointer to const pointer to mutable int ```
+    mut raw -> raw -> mut i32 x = null; //mutable pointer to const pointer to mutable int
 * Native variant and nullable types
     ```
     <string, u32> name_or_id = 5; // May hold a string or int value
-    <string, devoid> first_member = getFirstClubMember(); //Nullable type can be represented with 'devoid' ```
+    <string, devoid> first_member = getFirstClubMember(); //Nullable type can be represented with 'devoid'
 * Strict and explicit global variables
     ```
     // Global variables must be defined at top of file
@@ -82,7 +82,7 @@ Enough complaining, here is what I want to bring to the table:
         y = 4.f;
     }
   
-    //no global variables allowed to be declared after global body ```
+    //no global variables allowed to be declared after global body
 * Scoped imports without flooding namespace
     ```
     from standard: vector as vec;
@@ -90,7 +90,7 @@ Enough complaining, here is what I want to bring to the table:
   
     fn foo() {
         from other_lib: only_used_here;
-    } ```
+    }
 * 'steal' semantics
     ```
     fn foo(Resource param) {...}
@@ -99,15 +99,15 @@ Enough complaining, here is what I want to bring to the table:
         Resource x = ...;
         foo(steal x);
         x.doThing() //error: x no longer exists within this scope
-    } ```
+    }
 * Miscellaneous
-  * Changed void to devoid, which is a pedantic change, but I think it is a better word
+  * Changed void to devoid, which is a very pedantic change, but I think it fits better to describe that without type or value
   * Any functions can be called with the . operator on the first parameter
     * Ex: 
       ```
       fn doThing(Resource arg) {...} 
-      fn main() -> i32 { Resource x; x.doThing(); } ```
+      fn main() -> i32 { Resource x; x.doThing(); }
   * Mutable variables may become const at some point within the same scope, syntax remains undecided
   * Native tuples
   
-There exist more features, but these are the ones i'm mostly certain on. 
+There exist more features, but these are the ones that are significant/distinct enough to mention. 

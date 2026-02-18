@@ -76,19 +76,19 @@ Here are some features of LOM, some unique to the language, and some generally a
     ```
     //Pointer declarations are simply read left to right
     
-    raw -> i32 x = null;                   Raw pointer to an integer
-    unique -> i32 y = null;                Pointer to an integer w/ compile time enforcement for ownership and destruction
-    vague -> mut z = null;                 Pointer to anything mutable (void* equivalent)
-    mut raw -> raw -> mut i32 x = null;    Mutable pointer to const pointer to mutable int
+    raw -> i32 x = null;                   //Raw pointer to an integer
+    unique -> i32 y = null;                //Pointer to an integer w/ compile time enforcement for ownership and destruction
+    vague -> mut z = null;                 //Pointer to anything mutable (void* equivalent)
+    mut raw -> raw -> mut i32 x = null;    //Mutable pointer to const pointer to mutable int
 * Native variant and nullable types
     ```
-    <string, u32> name_or_id = 5;                           May hold a string or unsigned value
-    <string, devoid> first_member = getFirstClubMember();   Nullable type can be represented with 'devoid' keyword
+    <string, u32> name_or_id = 5;                           //May hold a string or unsigned value
+    <string, devoid> first_member = getFirstClubMember();   //Nullable type can be represented with 'devoid' keyword
 * Strict and explicit global variables
     ```
-    Global variables must be defined at top of file
-    Global variables cannot be initialized using anything outside of the file
-    Global variables must be defined in a global initialization body (syntax still iffy on)
+    //Global variables must be defined at top of file
+    //Global variables cannot be initialized using anything outside of the file
+    //Global variables must be defined in a global initialization body (syntax still iffy)
 
     mut i32 x = global;
     mut f32 y = global;
@@ -97,7 +97,7 @@ Here are some features of LOM, some unique to the language, and some generally a
         y = 4.f;
     }
   
-    No global variables allowed to be declared after global initialization body
+    //No global variables allowed to be declared after global initialization body
 * Scoped imports without flooding namespace
     ```
     from standard: vector as vec;
@@ -133,5 +133,5 @@ and the addition is an afterthought. This interpretation is likely not how the a
 
 So while C++ is really C again, I encourage us all to Look Once More (badumtss).
 
-The name is not just a pun. It also represents the goal of the language: to not let things of the past keep their relevance purely for the purposes of comfort, 'backwards compatability', or because 'is the way that it is'.
-We should actively revisit these things with a critical eye and determine whether they hold up to modern standards and uses.
+The name is not just a pun. It represents the goal of the language: to not let things of the past keep their relevance purely for the purposes of comfort, 'backwards compatability', or because 'is the way that it is'.
+We should actively revisit the old with new eyes and determine whether they hold up to modern standards.

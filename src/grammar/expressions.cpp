@@ -1,90 +1,50 @@
 #include "expressions.hpp"
 #include <cassert>
 #include <iostream>
+#include <utility>
 
 static void printOperator(const Operator op) {
-  switch (op) {
 
-  case Operator::PRE_INCREMENT:
-  case Operator::POST_INCREMENT:
-    std::cout << '+';
-    [[fallthrough]];
-  case Operator::ADD:
-    std::cout << '+';
-    return;
+  static constexpr const char *opToString[]{"BEGIN_BINARY_OPS",
+                                            "+",
+                                            "-",
+                                            "*",
+                                            "/",
+                                            "^",
+                                            "%",
+                                            "=",
+                                            "<",
+                                            ">",
+                                            "<=",
+                                            ">=",
+                                            "and",
+                                            "or",
+                                            "xor",
+                                            "bitand",
+                                            "bitor",
+                                            "bitxor",
+                                            "bitnot",
+                                            "eq",
+                                            "not_eq",
+                                            "END_BINARY_OPS",
 
-  case Operator::PRE_DECREMENT:
-  case Operator::POST_DECREMENT:
-    std::cout << '-';
-    [[fallthrough]];
-  case Operator::SUBTRACT:
-  case Operator::UNARY_MINUS:
-    std::cout << '-';
-    return;
+                                            "BEGIN_UNARY_OPS",
+                                            "++",
+                                            "++",
+                                            "-",
+                                            "--",
+                                            "--",
+                                            "@",
+                                            "NOT",
+                                            "END_UNARY_OPS",
 
-  case Operator::DIVIDE:
-    std::cout << '/';
-    return;
-  case Operator::MULTIPLY:
-    std::cout << '*';
-    return;
-  case Operator::POWER:
-    std::cout << '^';
-    return;
-  case Operator::MODULUS:
-    std::cout << '%';
-    return;
+                                            "BEGIN_CASTS",
+                                            "cast",
+                                            "cast_if",
+                                            "unsafe_cast",
+                                            "END_CASTS"};
 
-  case Operator::ASSIGN:
-    std::cout << '=';
-    return;
-
-  case Operator::AND:
-    std::cout << "and";
-    return;
-  case Operator::OR:
-    std::cout << "or";
-    return;
-  case Operator::XOR:
-    std::cout << "xor";
-    return;
-  case Operator::NOT:
-    std::cout << "not";
-    return;
-
-  case Operator::BITAND:
-    std::cout << "bitand";
-    return;
-  case Operator::BITOR:
-    std::cout << "bitor";
-    return;
-  case Operator::BITXOR:
-    std::cout << "bitxor";
-    return;
-  case Operator::BITNOT:
-    std::cout << "bitnot";
-    return;
-
-  case Operator::LESS:
-    std::cout << '<';
-    return;
-  case Operator::LESS_EQUAL:
-    std::cout << "<=";
-    return;
-  case Operator::GREATER:
-    std::cout << '>';
-    return;
-  case Operator::GREATER_EQUAL:
-    std::cout << ">=";
-    return;
-  case Operator::EQUAL:
-    std::cout << "equals";
-    return;
-
-  default:
-    std::cout << "undefined_op";
-    return;
-  }
+  std::cout << opToString[std::to_underlying(op)];
 }
 
 [[maybe_unused]] static bool isLeftAssociative(const Operator op) {
@@ -93,7 +53,6 @@ static void printOperator(const Operator op) {
   case Operator::CAST:
   case Operator::CAST_IF:
   case Operator::UNSAFE_CAST:
-  case Operator::VERY_UNSAFE_CAST:
   case Operator::NOT:
   case Operator::ASSIGN:
     return false;
@@ -110,7 +69,6 @@ static bool isPrefix(const Operator op) {
   case Operator::CAST:
   case Operator::CAST_IF:
   case Operator::UNSAFE_CAST:
-  case Operator::VERY_UNSAFE_CAST:
     return true;
 
   default:
@@ -152,8 +110,8 @@ static bool isPrefix(const Operator op) {
   }
 }
 
-void PrintExpressionVisitor::operator()(const UnaryExpression &unary) const noexcept {
-
+void PrintExpressionVisitor::operator()(
+    const UnaryExpression &unary) const noexcept {
   if (isPrefix(unary.opr)) {
     printOperator(unary.opr);
     std::visit(PrintExpressionVisitor{}, unary.expr->value);
@@ -180,7 +138,7 @@ void PrintExpressionVisitor::operator()(
     const CallingExpression &calling) const noexcept {
   std::visit(PrintExpressionVisitor{}, calling.func->value);
   std::cout << "(";
-  for (auto p : calling.parameters) {
+  for (const auto p : calling.parameters) {
     std::visit(PrintExpressionVisitor{}, p->value);
     std::cout << ", ";
   }
@@ -202,9 +160,9 @@ void PrintExpressionVisitor::operator()(
     const IdentifierExpression &identifier) const noexcept {
   std::cout << identifier.ident;
 }
+
 void PrintExpressionVisitor::operator()(
     const LiteralExpression &literal) const noexcept {
-
   switch (literal.type) {
   case LiteralExpression::INT:
     std::cout << std::get<int>(literal.value);

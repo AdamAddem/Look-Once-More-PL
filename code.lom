@@ -3,7 +3,7 @@ float y = global;
 
 globals{
     x = 2;
-    y = 3;
+    y = 3.f;
 }
 
 
@@ -11,6 +11,11 @@ int foo(<char, float> x)
 {
   string tmp = junk;
   string tmp2 = tmp;
+  int y += 2*3;
+
+  if(y != y) {
+
+  }
 
   for(int i=0; i<20; ++i)
   {

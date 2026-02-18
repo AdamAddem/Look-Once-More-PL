@@ -1,10 +1,11 @@
 #include "lex.hpp"
+#include "../debug_flags.hpp"
 #include <cctype>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
-#include "../debug_flags.hpp"
 
 using namespace Lexer;
 
@@ -12,57 +13,55 @@ using namespace Lexer;
 #define STRING_TO_KEYWORDS_MAPPING                                             \
   {"and", TokenType::KEYWORD_AND}, {"or", TokenType::KEYWORD_OR},              \
       {"xor", TokenType::KEYWORD_XOR}, {"not", TokenType::KEYWORD_NOT},        \
-      {"equals", TokenType::KEYWORD_EQUALS},                                   \
+      {"eq", TokenType::KEYWORD_EQUALS},                                       \
+      {"not_eq", TokenType::KEYWORD_NOT_EQUAL},                                \
       {"bitand", TokenType::KEYWORD_BITAND},                                   \
       {"bitor", TokenType::KEYWORD_BITOR},                                     \
       {"bitxor", TokenType::KEYWORD_BITXOR},                                   \
-      {"bitnot", TokenType::KEYWORD_BITNOT}, {"int", TokenType::KEYWORD_INT},  \
-      {"uint", TokenType::KEYWORD_UINT}, {"float", TokenType::KEYWORD_FLOAT},  \
-      {"double", TokenType::KEYWORD_DOUBLE},                                   \
-      {"char", TokenType::KEYWORD_CHAR}, {"uchar", TokenType::KEYWORD_UCHAR},  \
-      {"bool", TokenType::KEYWORD_BOOL},                                       \
+      {"bitnot", TokenType::KEYWORD_BITNOT},                                   \
+                                                                               \
+      {"i8", TokenType::KEYWORD_i8}, {"i16", TokenType::KEYWORD_i16},          \
+      {"i32", TokenType::KEYWORD_i32}, {"i64", TokenType::KEYWORD_i64},        \
+      {"u8", TokenType::KEYWORD_u8}, {"u16", TokenType::KEYWORD_u16},          \
+      {"u32", TokenType::KEYWORD_u32}, {"u64", TokenType::KEYWORD_u64},        \
+      {"f32", TokenType::KEYWORD_f32}, {"f64", TokenType::KEYWORD_f64},        \
+      {"char", TokenType::KEYWORD_CHAR},                                       \
       {"string", TokenType::KEYWORD_STRING},                                   \
-      {"short", TokenType::KEYWORD_SHORT}, {"long", TokenType::KEYWORD_LONG},  \
-      {"signed", TokenType::KEYWORD_SIGNED},                                   \
-      {"unsigned", TokenType::KEYWORD_UNSIGNED},                               \
-      {"null", TokenType::KEYWORD_NULL},                                       \
+      {"bool", TokenType::KEYWORD_BOOL},                                       \
       {"devoid", TokenType::KEYWORD_DEVOID},                                   \
-      {"junk", TokenType::KEYWORD_JUNK},                                       \
+                                                                               \
+      {"null", TokenType::KEYWORD_NULL}, {"junk", TokenType::KEYWORD_JUNK},    \
       {"selfish", TokenType::KEYWORD_SELFISH},                                 \
       {"sharing", TokenType::KEYWORD_SHARING},                                 \
       {"watching", TokenType::KEYWORD_WATCHING},                               \
       {"raw", TokenType::KEYWORD_RAW}, {"vague", TokenType::KEYWORD_VAGUE},    \
+                                                                               \
       {"if", TokenType::KEYWORD_IF}, {"else", TokenType::KEYWORD_ELSE},        \
-      {"elif", TokenType::KEYWORD_ELIF}, {"for", TokenType::KEYWORD_FOR},      \
-      {"while", TokenType::KEYWORD_WHILE}, {"do", TokenType::KEYWORD_DO},      \
-      {"return", TokenType::KEYWORD_RETURN},                                   \
+      {"for", TokenType::KEYWORD_FOR}, {"while", TokenType::KEYWORD_WHILE},    \
+      {"do", TokenType::KEYWORD_DO}, {"return", TokenType::KEYWORD_RETURN},    \
       {"switch", TokenType::KEYWORD_SWITCH},                                   \
       {"case", TokenType::KEYWORD_CASE},                                       \
       {"default", TokenType::KEYWORD_DEFAULT},                                 \
       {"goto", TokenType::KEYWORD_GOTO}, {"break", TokenType::KEYWORD_BREAK},  \
       {"continue", TokenType::KEYWORD_CONTINUE},                               \
+                                                                               \
       {"cast", TokenType::KEYWORD_CAST},                                       \
       {"cast_if", TokenType::KEYWORD_CAST_IF},                                 \
       {"unsafe_cast", TokenType::KEYWORD_UNSAFE_CAST},                         \
-      {"very_unsafe_cast", TokenType::KEYWORD_VERY_UNSAFE_CAST},               \
       {"steal", TokenType::KEYWORD_STEAL},                                     \
       {"build_new", TokenType::KEYWORD_BUILD_NEW},                             \
       {"allocate", TokenType::KEYWORD_ALLOCATE},                               \
       {"construct", TokenType::KEYWORD_CONSTRUCT},                             \
-      {"auto", TokenType::KEYWORD_AUTO}, {"const", TokenType::KEYWORD_CONST},  \
-      {"except", TokenType::KEYWORD_EXCEPT},                                   \
-      {"static", TokenType::KEYWORD_STATIC},                                   \
-      {"extern", TokenType::KEYWORD_EXTERN},                                   \
-      {"true", TokenType::KEYWORD_TRUE}, {"false", TokenType::KEYWORD_FALSE},  \
-      {"from", TokenType::KEYWORD_FROM}, {"as", TokenType::KEYWORD_AS},        \
-      {"global", TokenType::KEYWORD_GLOBAL},                                   \
+      {"mut", TokenType::KEYWORD_MUT}, {"from", TokenType::KEYWORD_FROM},      \
+      {"as", TokenType::KEYWORD_AS}, {"global", TokenType::KEYWORD_GLOBAL},    \
       {"globals", TokenType::KEYWORD_GLOBALS},
 
 #define STRING_TO_SYMBOLS_MAPPING                                              \
   {"+", TokenType::PLUS}, {"++", TokenType::PLUSPLUS},                         \
       {"-", TokenType::MINUS}, {"--", TokenType::MINUSMINUS},                  \
       {"/", TokenType::SLASH}, {"*", TokenType::STAR}, {"^", TokenType::POW},  \
-      {"%", TokenType::MOD}, {"=", TokenType::ASSIGN},												 \
+      {"%", TokenType::MOD}, {"=", TokenType::ASSIGN},                         \
+      {"==", TokenType::KEYWORD_EQUALS}, {"!=", TokenType::KEYWORD_NOT_EQUAL}, \
       {"(", TokenType::LPAREN}, {")", TokenType::RPAREN},                      \
       {"{", TokenType::LBRACE}, {"}", TokenType::RBRACE},                      \
       {"[", TokenType::LBRACKET}, {"]", TokenType::RBRACKET},                  \
@@ -116,15 +115,16 @@ static void grabStringLiteral(FileInAnalysis &file) {
   std::string literal;
   file_stream >> std::noskipws;
   int c = file_stream.get();
-  while (true) { // stupid and dumb
+  while (true) {
+    // stupid and dumb
     switch (c) {
     case '"':
       goto ending_quote_found;
 
     /*case '\n': Enable this to restrict string literals to one line.
-    case '\r':
-    case '\n\r': \n\r is a weird edge case for windows, not sure how to solve
-    that.*/
+case '\r':
+case '\n\r': \n\r is a weird edge case for windows, not sure how to solve
+that.*/
     case EOF:
       throw std::runtime_error("Expected ending \" in string literal");
 
@@ -135,7 +135,6 @@ static void grabStringLiteral(FileInAnalysis &file) {
     default:
       literal.push_back(static_cast<char>(c));
     }
-
   }
 
 ending_quote_found: // don't crucify me for this pls
@@ -152,16 +151,15 @@ static void grabCharLiteral(FileInAnalysis &file) {
   int c1 = file_stream.get();
   const int c2 = file_stream.get();
 
-  if (c1 == '\\') { // this is stupid
-
+  if (c1 == '\\') {
     c1 = charToEscapeSequenceEquivalent(c2);
-
     if (file_stream.get() != '\'')
       throw std::runtime_error("Expected ending ' in char literal.");
   } else if (c2 != '\'')
     throw std::runtime_error("Expected ending ' in char literal.");
 
-  token_list.emplace_back(TokenType::CHAR_LITERAL, std::string{static_cast<char>(c1)});
+  token_list.emplace_back(TokenType::CHAR_LITERAL,
+                          std::string{static_cast<char>(c1)});
   file_stream >> std::ws;
 }
 
@@ -170,7 +168,8 @@ static void grabSymbol(FileInAnalysis &file) {
   TokenType type;
   const int c = file_stream.get();
   std::string symbol(1, static_cast<char>(c));
-  switch (c) { // compound symbols up first, single char symbols down there
+  switch (c) {
+  // compound symbols up first, single char symbols down there
   case '+':
   case '-':
     if (file_stream.peek() == c) {
@@ -183,8 +182,8 @@ static void grabSymbol(FileInAnalysis &file) {
   case '*':
   case '^':
   case '%':
-
-    if (file_stream.peek() == '=') { //desugaring for x _= (...) -> x = x _ (...)
+    if (file_stream.peek() == '=') {
+      // desugaring for x _= (...) -> x = x _ (...)
       const auto &d = token_list.back();
       if (d.type != TokenType::IDENTIFIER)
         throw std::runtime_error(
@@ -200,14 +199,14 @@ static void grabSymbol(FileInAnalysis &file) {
     }
     [[fallthrough]];
 
+  case '!':
+  case '=':
   case '<':
   case '>':
-  	if (file_stream.peek() == '=') {
-  		symbol.push_back(static_cast<char>(file_stream.get()));
-  	}
-  	[[fallthrough]];
+    if (file_stream.peek() == '=')
+      symbol.push_back(static_cast<char>(file_stream.get()));
+    [[fallthrough]];
 
-  case '=':
   case '(':
   case ')':
   case '{':
@@ -251,9 +250,9 @@ static void grabNumber(FileInAnalysis &file) {
   TokenValue value;
   std::string num_stringrep;
   int c;
-  while ((c = file_stream.get()) !=
-         EOF) { // i hate file handling so much, replace
-                // this stupid monkey code eventually
+  while ((c = file_stream.get()) != EOF) {
+    // i hate file handling so much, replace
+    // this stupid monkey code eventually
     if (c == 'f') {
       type = TokenType::FLOAT_LITERAL;
       break;
@@ -294,35 +293,38 @@ static void grabNumber(FileInAnalysis &file) {
 
 // first letter in front of file
 static void grabIdentOrKeyword(FileInAnalysis &file) {
-
   auto &[file_stream, add_closing_paren, token_list] = file;
-  TokenType type;
-  TokenValue value;
 
-  std::string word;
   char c;
   file_stream.get(c);
-  word += c;
+  std::string word(1, c);
   while (file_stream.get(c)) {
     if (!std::isalnum(c))
       break;
 
-    word += c;
+    word.push_back(c);
   }
   file_stream.putback(c);
 
-  if (word == "true" || word == "false") {
-    type = TokenType::BOOL_LITERAL;
-    value = (word == "true" ? 1 : 0);
+  if (keywords.contains(word)) {
+    token_list.emplace_back(keywords[word]);
+    return;
   }
-  else if (keywords.contains(word))
-    type = keywords[word];
-  else {
-    type = TokenType::IDENTIFIER;
-    value = word;
+  if (word == "elif") {
+    token_list.emplace_back(TokenType::KEYWORD_ELSE);
+    token_list.emplace_back(TokenType::KEYWORD_IF);
+    return;
+  }
+  if (word == "true") [[unlikely]] {
+    token_list.emplace_back(TokenType::BOOL_LITERAL, TokenValue(1));
+    return;
+  }
+  if (word == "false") [[unlikely]] {
+    token_list.emplace_back(TokenType::BOOL_LITERAL, TokenValue(0));
+    return;
   }
 
-  token_list.emplace_back(type, std::move(value));
+  token_list.emplace_back(TokenType::IDENTIFIER, TokenValue(std::move(word)));
 }
 
 TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
@@ -345,21 +347,19 @@ TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
       grabIdentOrKeyword(file);
     else
       grabSymbol(file);
-
   }
   file_stream.close();
-
 
   std::reverse(
       token_list.begin(),
       token_list
           .end()); // tokens now organized such that back is first-most token.
 
-  if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::LEXING) {
+  if (lom_debug::output_lexing) {
     TokenHandler(std::move(token_list)).print();
-    std::terminate();
+    std::cout << "Lexing stage passed!" << std::endl;
+    std::exit(0);
   }
-
 
   return TokenHandler(std::move(token_list));
 }

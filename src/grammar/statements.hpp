@@ -8,7 +8,6 @@ struct Expression;
 struct Statement;
 
 struct VarDeclaration {
-
   Types type;
   std::string ident;
   Expression *expr; // nullptr indicates junk initialization
@@ -51,6 +50,7 @@ struct ForLoop {
 struct WhileLoop {
   Expression *condition;
   Statement *loop_body;
+
   WhileLoop(Expression *_condition, Statement *_loop_body)
       : condition(_condition), loop_body(_loop_body) {}
 };
@@ -80,7 +80,8 @@ struct Statement {
 };
 
 struct PrintStatementVisitor {
-	unsigned indent{};
+  unsigned indent{};
+
   void operator()(const ExpressionStatement &) const noexcept;
   void operator()(const ReturnStatement &) const noexcept;
   void operator()(const ScopedStatement &) const noexcept;

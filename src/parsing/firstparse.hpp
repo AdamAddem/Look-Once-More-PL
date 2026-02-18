@@ -3,7 +3,6 @@
 #include "../lexing/lex.hpp"
 
 namespace Parser {
-
 struct UnparsedGlobals {
   std::vector<VarDeclaration> declarations;
   Lexer::TokenHandler global_init_body;
@@ -36,10 +35,13 @@ struct UnparsedTU {
   std::vector<UnparsedFunction> functions;
 
   void registerGlobal(Types &&_type, std::string &&_name);
+
   void registerGlobalsFuncBody(Lexer::TokenHandler &&_body);
+
   void registerFunction(std::string _return_type, std::string _name,
                         std::vector<VarDeclaration> _decl,
                         Lexer::TokenHandler _body);
+
   void print();
 
   UnparsedTU() = default;

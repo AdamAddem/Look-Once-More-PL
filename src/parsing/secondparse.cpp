@@ -11,66 +11,6 @@
 using namespace Parser;
 using namespace Lexer;
 
-[[maybe_unused]] static Operator tokenToOperator(TokenType t) {
-  switch (t) {
-  case TokenType::PLUS:
-    return Operator::ADD;
-  case TokenType::MINUS:
-    return Operator::SUBTRACT;
-  case TokenType::STAR:
-    return Operator::MULTIPLY;
-  case TokenType::SLASH:
-    return Operator::DIVIDE;
-  case TokenType::POW:
-    return Operator::POWER;
-  case TokenType::MOD:
-    return Operator::MODULUS;
-
-  case TokenType::ASSIGN:
-    return Operator::ASSIGN;
-  case TokenType::LESS:
-    return Operator::LESS;
-  case TokenType::GTR:
-    return Operator::GREATER;
-  case TokenType::LESSEQ:
-    return Operator::LESS_EQUAL;
-  case TokenType::GTREQ:
-    return Operator::GREATER_EQUAL;
-  case TokenType::KEYWORD_AND:
-    return Operator::AND;
-  case TokenType::KEYWORD_OR:
-    return Operator::OR;
-  case TokenType::KEYWORD_XOR:
-    return Operator::XOR;
-  case TokenType::KEYWORD_NOT:
-    return Operator::NOT;
-  case TokenType::KEYWORD_EQUALS:
-    return Operator::EQUAL;
-  case TokenType::KEYWORD_BITAND:
-    return Operator::BITAND;
-  case TokenType::KEYWORD_BITOR:
-    return Operator::BITOR;
-  case TokenType::KEYWORD_BITXOR:
-    return Operator::BITXOR;
-  case TokenType::KEYWORD_BITNOT:
-    return Operator::BITNOT;
-  case TokenType::KEYWORD_CAST:
-    return Operator::CAST;
-  case TokenType::KEYWORD_CAST_IF:
-    return Operator::CAST_IF;
-  case TokenType::KEYWORD_UNSAFE_CAST:
-    return Operator::UNSAFE_CAST;
-  case TokenType::KEYWORD_VERY_UNSAFE_CAST:
-    return Operator::VERY_UNSAFE_CAST;
-  case TokenType::ADDR:
-    return Operator::ADDRESS_OF;
-
-  default:
-    throw std::runtime_error("Token to Operator conversion either unsupported, "
-                             "or context dependent");
-  }
-}
-
 static Expression *parseExpression(TokenHandler &tokens);
 
 static std::vector<Expression *> parseParameters(TokenHandler &tokens) {
@@ -134,7 +74,6 @@ static Expression *parsePostfixExpression(TokenHandler &tokens) {
   Expression *left = parsePrimaryExpression(tokens);
 
   while (true) {
-
     if (tokens.pop_if(TokenType::PLUSPLUS))
       left = new Expression(UnaryExpression(left, Operator::PRE_INCREMENT));
 
@@ -144,14 +83,10 @@ static Expression *parsePostfixExpression(TokenHandler &tokens) {
     else if (tokens.pop_if(TokenType::LPAREN)) {
       TokenHandler t = tokens.getTokensBetweenParenthesis();
       left = new Expression(CallingExpression(left, parseParameters(t)));
-    }
-
-    else if (tokens.pop_if(TokenType::LBRACKET)) {
+    } else if (tokens.pop_if(TokenType::LBRACKET)) {
       TokenHandler t = tokens.getTokensBetweenBrackets();
       left = new Expression(SubscriptExpression(left, parseExpression(t)));
-    }
-
-    else
+    } else
       break;
   }
 
@@ -159,7 +94,6 @@ static Expression *parsePostfixExpression(TokenHandler &tokens) {
 }
 
 static Expression *parsePrefixExpression(TokenHandler &tokens) {
-
   if (tokens.pop_if(TokenType::PLUSPLUS))
     return new Expression(UnaryExpression(parsePrefixExpression(tokens),
                                           Operator::PRE_INCREMENT));
@@ -216,7 +150,6 @@ static Expression *parseTermExpression(TokenHandler &tokens) {
   Expression *l = parseFactorExpression(tokens);
 
   while (true) {
-
     if (tokens.pop_if(TokenType::PLUS))
       l = new Expression(
           BinaryExpression(l, parseFactorExpression(tokens), Operator::ADD));
@@ -238,19 +171,18 @@ static Expression *parseRelationalExpression(TokenHandler &tokens) {
     if (tokens.pop_if(TokenType::KEYWORD_EQUALS))
       left = new Expression(
           BinaryExpression(left, parseTermExpression(tokens), Operator::EQUAL));
-
+    else if (tokens.pop_if(TokenType::KEYWORD_NOT_EQUAL))
+      left = new Expression(BinaryExpression(left, parseTermExpression(tokens),
+                                             Operator::NOT_EQUAL));
     else if (tokens.pop_if(TokenType::LESS))
       left = new Expression(
           BinaryExpression(left, parseTermExpression(tokens), Operator::LESS));
-
     else if (tokens.pop_if(TokenType::GTR))
       left = new Expression(BinaryExpression(left, parseTermExpression(tokens),
                                              Operator::GREATER));
-
     else if (tokens.pop_if(TokenType::LESSEQ))
       left = new Expression(BinaryExpression(left, parseTermExpression(tokens),
                                              Operator::LESS_EQUAL));
-
     else if (tokens.pop_if(TokenType::GTREQ))
       left = new Expression(BinaryExpression(left, parseTermExpression(tokens),
                                              Operator::GREATER_EQUAL));
@@ -262,7 +194,6 @@ static Expression *parseRelationalExpression(TokenHandler &tokens) {
 }
 
 static Expression *parseBitwiseExpression(TokenHandler &tokens) {
-
   Expression *left = parseRelationalExpression(tokens);
 
   while (true) {
@@ -307,7 +238,6 @@ static Expression *parseLogicalExpression(TokenHandler &tokens) {
 }
 
 static Expression *parseAssignmentExpression(TokenHandler &tokens) {
-
   Expression *const left = parseLogicalExpression(tokens);
   if (tokens.pop_if(TokenType::ASSIGN))
     return new Expression(BinaryExpression(
@@ -324,6 +254,7 @@ static Expression *parseExpression(TokenHandler &tokens) {
 }
 
 static Statement *parseStatement(TokenHandler &tokens);
+
 static Statement *parseScoped(TokenHandler &tokens);
 
 static Statement *parseExpressionStatement(TokenHandler &tokens) {
@@ -387,10 +318,12 @@ static Statement *parseFor(TokenHandler &tokens) {
     throw std::runtime_error("Expected opening parenthesis in for statement");
 
   TokenHandler betweenParen = tokens.getTokensBetweenParenthesis();
-  auto& p = betweenParen.peek();
-  Statement * declOrAssignment;
+  auto &p = betweenParen.peek();
+  Statement *declOrAssignment;
 
-  if (p.isPrimitive() || p.is(TokenType::LESS) || (p.is(TokenType::IDENTIFIER) && betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER)))
+  if (p.isPrimitive() || p.is(TokenType::LESS) ||
+      (p.is(TokenType::IDENTIFIER) &&
+       betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER)))
     declOrAssignment = parseVarDecl(betweenParen);
   else if (p.is(TokenType::IDENTIFIER))
     declOrAssignment = parseExpressionStatement(betweenParen);
@@ -410,7 +343,6 @@ static Statement *parseFor(TokenHandler &tokens) {
 }
 
 static Statement *parseWhile(TokenHandler &tokens) {
-
   if (!tokens.pop_if(TokenType::LPAREN))
     throw std::runtime_error(
         "Expected open parenthesis in while loop condition");
@@ -458,7 +390,6 @@ static Statement *parseSwitch([[maybe_unused]] TokenHandler &tokens) {
 }
 
 static Statement *parseStatement(TokenHandler &tokens) {
-
   const Token &first = tokens.peek();
   if (first.isPrimitive())
     return parseVarDecl(tokens);
@@ -499,7 +430,6 @@ static Statement *parseStatement(TokenHandler &tokens) {
 }
 
 static std::vector<Statement *> parseStatements(TokenHandler &body_tokens) {
-
   std::vector<Statement *> body_statements;
 
   while (!body_tokens.empty())
@@ -509,19 +439,16 @@ static std::vector<Statement *> parseStatements(TokenHandler &body_tokens) {
 }
 
 static ParsedGlobals parseGlobals(UnparsedGlobals &globals) {
-
   return {std::move(globals.declarations),
           parseStatements(globals.global_init_body)};
 }
 
 static ParsedFunction parseFunction(UnparsedFunction &func) {
-
   return {std::move(func.return_type), std::move(func.name),
           std::move(func.parameter_list), parseStatements(func.body_tokens)};
 }
 
 ParsedTranslationUnit Parser::secondPassParsing(UnparsedTU &&unparsedtu) {
-
   ParsedGlobals globals = parseGlobals(unparsedtu.globals);
 
   std::vector<ParsedFunction> parsed_funcs;
@@ -530,9 +457,11 @@ ParsedTranslationUnit Parser::secondPassParsing(UnparsedTU &&unparsedtu) {
 
   ParsedTranslationUnit ptu{std::move(globals), std::move(parsed_funcs)};
 
-  if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::SECONDPARSE) {
+  if (lom_debug::output_secondparse) {
     ptu.print();
-    std::terminate();
+    std::cout << "SecondParse stage passed!" << std::endl;
+
+    std::exit(0);
   }
 
   return ptu;

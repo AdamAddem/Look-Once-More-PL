@@ -2,7 +2,6 @@
 #include "../grammar/statements.hpp"
 
 namespace Parser {
-
 struct ParsedGlobals {
   std::vector<VarDeclaration> declarations;
   std::vector<Statement *> global_init_body;
@@ -53,6 +52,6 @@ struct ParsedTranslationUnit {
 };
 
 struct UnparsedTU;
-ParsedTranslationUnit secondPassParsing(UnparsedTU &&tu);
 
+ParsedTranslationUnit secondPassParsing(UnparsedTU &&tu);
 } // namespace Parser

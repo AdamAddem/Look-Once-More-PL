@@ -1,8 +1,8 @@
 #include "firstparse.hpp"
 
+#include "../debug_flags.hpp"
 #include <iostream>
 #include <stdexcept>
-#include "../debug_flags.hpp"
 
 using namespace Parser;
 using namespace Lexer;
@@ -16,9 +16,9 @@ void UnparsedGlobals::print() {
     std::cout << '\n';
   }
 
-  std::cout << "\nglobals{\n";
-  global_init_body.print();
-  std::cout << "}\n" << std::endl;
+  std::cout << "\nglobals{\n ";
+  global_init_body.print(1);
+  std::cout << "\b\b}\n" << std::endl;
 }
 
 void UnparsedFunction::print() {
@@ -29,11 +29,11 @@ void UnparsedFunction::print() {
     std::cout << " " << decl.ident << ", ";
   }
 
-  std::cout << ") {" << std::endl;
+  std::cout << ") {" << std::endl << " ";
 
-  body_tokens.print();
+  body_tokens.print(1);
 
-  std::cout << "}" << std::endl;
+  std::cout << "\b}" << std::endl;
 }
 
 void UnparsedTU::registerGlobal(Types &&_type, std::string &&_name) {
@@ -50,13 +50,13 @@ void UnparsedTU::registerGlobalsFuncBody(TokenHandler &&_body) {
 
 void UnparsedTU::registerFunction(std::string _return_type, std::string _name,
                                   std::vector<VarDeclaration> _decl,
-																	TokenHandler _body) {
+                                  TokenHandler _body) {
   std::vector<Types> param_types;
   for (auto &decl : _decl)
     param_types.emplace_back(decl.type); // this is stupid
 
-  functions.emplace_back(std::move(_return_type), std::move(_name), std::move(_decl),
-                         std::move(_body));
+  functions.emplace_back(std::move(_return_type), std::move(_name),
+                         std::move(_decl), std::move(_body));
 }
 
 void UnparsedTU::print() {
@@ -73,10 +73,11 @@ Types Parser::parseType(TokenHandler &tokens) {
   if (token.isPrimitive())
     return {token.toString()};
 
-  if (token.is(TokenType::IDENTIFIER)) //custom type
+  if (token.is(TokenType::IDENTIFIER)) // custom type
     return {token.takeString()};
 
-  if (token.is(TokenType::LESS)) { // allows for the same type multiple times
+  if (token.is(TokenType::LESS)) {
+    // allows for the same type multiple times, change this
     Types types;
     do {
       if (tokens.empty())
@@ -94,14 +95,12 @@ Types Parser::parseType(TokenHandler &tokens) {
       }
 
       if (token.is(TokenType::KEYWORD_DEVOID)) {
-      	types.emplace_back("");
+        types.emplace_back("");
         continue;
       }
 
       if (!token.is(TokenType::COMMA) && !token.is(TokenType::GTR))
         throw std::runtime_error("Expected comma in variant type list");
-
-
     } while (!token.is(TokenType::GTR));
 
     return types;
@@ -138,15 +137,16 @@ std::vector<VarDeclaration> parseParameterDecl(TokenHandler &tokens) {
     if (tokens.pop_if(TokenType::RPAREN))
       return parameter_list;
 
-    tokens.expect_then_pop(TokenType::COMMA, "Expected ending parenthesis or comma in parameter list");
+    tokens.expect_then_pop(
+        TokenType::COMMA,
+        "Expected ending parenthesis or comma in parameter list");
   }
 }
 
 void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
-
-	std::string return_type;
-	if (tokens.pop_if(TokenType::KEYWORD_DEVOID)) {}
-	else {
+  std::string return_type;
+  if (tokens.pop_if(TokenType::KEYWORD_DEVOID)) {
+  } else {
     Types t = parseType(tokens);
     if (t.size() > 1)
       throw std::runtime_error("Variant used as return type of function.");
@@ -157,25 +157,30 @@ void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
   std::string ident = parseIdentifier(tokens);
   const Token third = tokens.eat();
 
-	third.throw_if(TokenType::ASSIGN, "Global declaration not allowed after globals "
-														 "initialization specified"); // global var declaration
+  third.throw_if(TokenType::ASSIGN,
+                 "Global declaration not allowed after globals "
+                 "initialization specified"); // global var declaration
 
-  third.throw_if_not(TokenType::LPAREN, "Expected lparen in function declaration");
+  third.throw_if_not(TokenType::LPAREN,
+                     "Expected lparen in function declaration");
 
   std::vector<VarDeclaration> parameter_list = parseParameterDecl(tokens);
 
-	tokens.expect_then_pop(TokenType::LBRACE, "Expected lbrace in function declaration");
+  tokens.expect_then_pop(TokenType::LBRACE,
+                         "Expected lbrace in function declaration");
 
   tu.registerFunction(std::move(return_type), std::move(ident),
                       std::move(parameter_list),
                       tokens.getTokensBetweenBraces());
 }
 
-//returns false when we're done parsing globals
+// returns false when we're done parsing globals
 bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
-  if (tokens.pop_if(TokenType::KEYWORD_GLOBALS)) { // global func definition
+  if (tokens.pop_if(TokenType::KEYWORD_GLOBALS)) {
+    // global func definition
 
-    tokens.expect_then_pop(TokenType::LBRACE, "Expected lbrace in global initialization body");
+    tokens.expect_then_pop(TokenType::LBRACE,
+                           "Expected lbrace in global initialization body");
 
     if (!tu.globalsDeclared)
       throw std::runtime_error(
@@ -189,7 +194,8 @@ bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
     if (tu.globalsDeclared)
       throw std::runtime_error("Expected global initialization body");
 
-    return false; //we're done parsing globals, we've detected something else, likely a function
+    return false; // we're done parsing globals, we've detected something else,
+                  // likely a function
   }
 
   Types type = parseType(tokens);
@@ -201,28 +207,28 @@ bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
     throw std::runtime_error("Global declaration not allowed after globals "
                              "initialization specified");
 
-
   tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected keyword global");
-  tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon after global declaration");
+  tokens.expect_then_pop(TokenType::SEMI_COLON,
+                         "Expected semicolon after global declaration");
 
   tu.registerGlobal(std::move(type), std::move(ident));
   return true;
 }
 
 UnparsedTU Parser::firstPassParsing(TokenHandler &&tokens) {
-
   TokenHandler token_list(std::move(tokens));
   UnparsedTU pass_one_tu;
 
-  while (parseGlobals(pass_one_tu, token_list))
-    ;
+  while (parseGlobals(pass_one_tu, token_list)) {
+  }
 
   while (!token_list.empty())
     parseGlobalFunctions(pass_one_tu, token_list);
 
-  if constexpr (lom_debug::stage_to_halt == lom_debug::halt_flags::FIRSTPARSE) {
+  if (lom_debug::output_firstparse) {
     pass_one_tu.print();
-    std::terminate();
+    std::cout << "FirstParse stage passed!" << std::endl;
+    std::exit(0);
   }
 
   return pass_one_tu;

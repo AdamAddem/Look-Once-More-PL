@@ -12,7 +12,8 @@ void PrintStatementVisitor::operator()(
   std::cout << ";";
 }
 
-void PrintStatementVisitor::operator()(const ReturnStatement &stmt) const noexcept {
+void PrintStatementVisitor::operator()(
+    const ReturnStatement &stmt) const noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
   std::cout << "return ";
@@ -22,8 +23,8 @@ void PrintStatementVisitor::operator()(const ReturnStatement &stmt) const noexce
   std::cout << ";";
 }
 
-void PrintStatementVisitor::operator()(const ScopedStatement &stmt) const noexcept {
-
+void PrintStatementVisitor::operator()(
+    const ScopedStatement &stmt) const noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
@@ -51,7 +52,6 @@ void PrintStatementVisitor::operator()(const WhileLoop &stmt) const noexcept {
 }
 
 void PrintStatementVisitor::operator()(const ForLoop &stmt) const noexcept {
-
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
@@ -69,7 +69,6 @@ void PrintStatementVisitor::operator()(const ForLoop &stmt) const noexcept {
 }
 
 void PrintStatementVisitor::operator()(const IfStatement &stmt) const noexcept {
-
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
@@ -85,8 +84,8 @@ void PrintStatementVisitor::operator()(const IfStatement &stmt) const noexcept {
   }
 }
 
-void PrintStatementVisitor::operator()(const VarDeclaration &stmt) const noexcept {
-
+void PrintStatementVisitor::operator()(
+    const VarDeclaration &stmt) const noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 

@@ -4,46 +4,44 @@
 #include <vector>
 
 enum class Operator {
-
-	/* Binary Ops */
+  BEGIN_BINARY_OPS,
   ADD,
   SUBTRACT,
   MULTIPLY,
   DIVIDE,
   POWER,
   MODULUS,
-	ASSIGN,
-	LESS,
-	GREATER,
-	LESS_EQUAL,
-	GREATER_EQUAL,
-	AND,
-	OR,
-	XOR,
-	BITAND,
-	BITOR,
-	BITXOR,
-	BITNOT,
-	EQUAL,
-	NOT_EQUAL,
-	/* Binary Ops */
+  ASSIGN,
+  LESS,
+  GREATER,
+  LESS_EQUAL,
+  GREATER_EQUAL,
+  AND,
+  OR,
+  XOR,
+  BITAND,
+  BITOR,
+  BITXOR,
+  BITNOT,
+  EQUAL,
+  NOT_EQUAL,
+  END_BINARY_OPS,
 
-
-	/* Unary Ops */
+  BEGIN_UNARY_OPS,
   PRE_INCREMENT,
   POST_INCREMENT,
   UNARY_MINUS,
   PRE_DECREMENT,
   POST_DECREMENT,
-	ADDRESS_OF,
-	NOT,
-	/* Unary Ops */
+  ADDRESS_OF,
+  NOT,
+  END_UNARY_OPS,
 
+  BEGIN_CASTS,
   CAST,
   CAST_IF,
   UNSAFE_CAST,
-  VERY_UNSAFE_CAST,
-
+  END_CASTS,
 };
 
 struct Expression;
@@ -51,7 +49,9 @@ struct Expression;
 struct UnaryExpression {
   Expression *expr;
   Operator opr;
-  UnaryExpression(Expression *_expr, const Operator _opr) : expr(_expr), opr(_opr) {}
+
+  UnaryExpression(Expression *_expr, const Operator _opr)
+      : expr(_expr), opr(_opr) {}
 };
 
 struct BinaryExpression {
@@ -89,7 +89,9 @@ struct IdentifierExpression {
 
 struct LiteralExpression {
   using LiteralValue = std::variant<int, float, double, std::string>;
+
   enum LiteralType { INT, FLOAT, DOUBLE, BOOL, CHAR, STRING };
+
   LiteralValue value;
   LiteralType type;
 
@@ -97,7 +99,8 @@ struct LiteralExpression {
       : value(std::move(_v)), type(_t) {}
 };
 
-struct TemporaryExpr { // finish
+struct TemporaryExpr {
+  // finish
 };
 
 struct Expression {
@@ -109,10 +112,16 @@ struct Expression {
 
 struct PrintExpressionVisitor {
   void operator()(const UnaryExpression &) const noexcept;
+
   void operator()(const BinaryExpression &) const noexcept;
+
   void operator()(const CallingExpression &) const noexcept;
+
   void operator()(const SubscriptExpression &) const noexcept;
+
   void operator()(const IdentifierExpression &) const noexcept;
+
   void operator()(const LiteralExpression &) const noexcept;
+
   void operator()(const TemporaryExpr &) const noexcept;
 };

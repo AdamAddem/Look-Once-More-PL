@@ -75,8 +75,8 @@ Enough complaining, here is what I want to bring to the table:
     // Global variables cannot be initialized using anything outside of the file
     // Global variables must be defined in a global initialization body
 
-    i32 x = global;
-    f32 y = global;
+    mut i32 x = global;
+    mut f32 y = global;
     globals{
         x = 2;
         y = 4.f;

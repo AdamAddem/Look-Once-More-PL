@@ -13,12 +13,12 @@ struct UnparsedGlobals {
 };
 
 struct UnparsedFunction {
-  std::string return_type;
+  Type return_type;
   std::string name;
   std::vector<VarDeclaration> parameter_list;
   Lexer::TokenHandler body_tokens;
 
-  UnparsedFunction(std::string &&_return_type, std::string &&_name,
+  UnparsedFunction(Type &&_return_type, std::string &&_name,
                    std::vector<VarDeclaration> &&_parameter_list,
                    Lexer::TokenHandler &&_body_tokens)
       : return_type(std::move(_return_type)), name(std::move(_name)),
@@ -34,11 +34,11 @@ struct UnparsedTU {
   bool parsedGlobalBody = false;
   std::vector<UnparsedFunction> functions;
 
-  void registerGlobal(Types &&_type, std::string &&_name);
+  void registerGlobal(Type &&_type, std::string &&_name);
 
   void registerGlobalsFuncBody(Lexer::TokenHandler &&_body);
 
-  void registerFunction(std::string _return_type, std::string _name,
+  void registerFunction(Type&& _return_type, std::string _name,
                         std::vector<VarDeclaration> _decl,
                         Lexer::TokenHandler _body);
 
@@ -48,6 +48,6 @@ struct UnparsedTU {
 };
 
 [[nodiscard]] std::string parseIdentifier(Lexer::TokenHandler &tokens);
-[[nodiscard]] Types parseType(Lexer::TokenHandler &tokens);
+[[nodiscard]] Type parseType(Lexer::TokenHandler &tokens);
 [[nodiscard]] UnparsedTU firstPassParsing(Lexer::TokenHandler &&tokens);
 } // namespace Parser

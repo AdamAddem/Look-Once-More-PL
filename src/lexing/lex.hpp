@@ -1,124 +1,20 @@
 #pragma once
+#include "tokentype.hpp"
 #include <string>
 #include <variant>
 #include <vector>
 
 namespace Lexer {
 
-//because i'm a monkey, if you want to change this enum, make sure the order is exactly the same
-//then, add your enum to the macros in lex.cpp
-//then, add your string representation of your enum in tokenhandler.cpp in the EXACT spot you put it here
-//reflection cannot come fast enough istg
-enum class TokenType : unsigned {
-  INVALID_TOKEN,
-  IDENTIFIER,
-  BEGIN_LITERALS,
-  INT_LITERAL,
-  FLOAT_LITERAL,
-  DOUBLE_LITERAL,
-  STRING_LITERAL,
-  CHAR_LITERAL,
-  BOOL_LITERAL,
-  END_LITERALS,
-  BEGIN_SYMBOLS,
-  PLUS,
-  PLUSPLUS,
-  MINUS,
-  MINUSMINUS,
-  SLASH,
-  STAR,
-  POW,
-  MOD,
-  ASSIGN,
-  LPAREN,
-  RPAREN,
-  LBRACE,
-  RBRACE,
-  LBRACKET,
-  RBRACKET,
-  LESS,
-  GTR,
-  LESSEQ,
-  GTREQ,
-  SEMI_COLON,
-  ADDR,
-  COMMA,
-  END_SYMBOLS,
-  BEGIN_COMP_BITWISE,
-  KEYWORD_AND,
-  KEYWORD_OR,
-  KEYWORD_XOR,
-  KEYWORD_NOT,
-  KEYWORD_EQUALS,
-  KEYWORD_NOT_EQUAL,
-  KEYWORD_BITAND,
-  KEYWORD_BITOR,
-  KEYWORD_BITXOR,
-  KEYWORD_BITNOT,
-  END_COMP_BITWISE,
-  BEGIN_PRIMITIVES,
-  KEYWORD_i8,
-  KEYWORD_i16,
-  KEYWORD_i32,
-  KEYWORD_i64,
-  KEYWORD_u8,
-  KEYWORD_u16,
-  KEYWORD_u32,
-  KEYWORD_u64,
-  KEYWORD_f32,
-  KEYWORD_f64,
-  KEYWORD_CHAR,
-  KEYWORD_STRING,
-  KEYWORD_BOOL,
-  KEYWORD_DEVOID,
-  END_PRIMITIVES,
-  BEGIN_POINTERS,
-  KEYWORD_SELFISH,
-  KEYWORD_SHARING,
-  KEYWORD_WATCHING,
-  KEYWORD_RAW,
-  KEYWORD_VAGUE,
-  END_POINTERS,
-  BEGIN_CONTROL_FLOW,
-  KEYWORD_IF,
-  KEYWORD_ELSE,
-  KEYWORD_FOR,
-  KEYWORD_WHILE,
-  KEYWORD_DO,
-  KEYWORD_RETURN,
-  KEYWORD_SWITCH,
-  KEYWORD_CASE,
-  KEYWORD_DEFAULT,
-  KEYWORD_GOTO,
-  KEYWORD_BREAK,
-  KEYWORD_CONTINUE,
-  END_CONTROL_FLOW,
-  BEGIN_CAST,
-  KEYWORD_CAST,
-  KEYWORD_CAST_IF,
-  KEYWORD_UNSAFE_CAST,
-  END_CAST,
-  BEGIN_ALLOC_LIFETIMES,
-  KEYWORD_STEAL,
-  KEYWORD_BUILD_NEW,
-  KEYWORD_ALLOCATE,
-  KEYWORD_CONSTRUCT,
-  END_ALLOC_LIFETIMES,
-  KEYWORD_FROM,
-  KEYWORD_AS,
-  KEYWORD_GLOBAL,
-  KEYWORD_GLOBALS,
-  KEYWORD_MUT,
-  KEYWORD_NULL,
-  KEYWORD_JUNK
-};
-
 using TokenValue = std::variant<int, float, double, std::string>;
 
 struct Token {
+  TokenType type;
+  TokenValue value;
+
   explicit Token(const TokenType _type) : type(_type) {};
 
-  Token(TokenType _type, TokenValue &&_value)
+  Token(const TokenType _type, TokenValue &&_value)
       : type(_type), value(std::move(_value)) {};
 
   Token(const Token &) = default;
@@ -134,31 +30,23 @@ struct Token {
     return *this;
   }
 
-  TokenType type;
-  TokenValue value;
 
   void throw_if(TokenType unwanted_type, const char *err_message) const;
-
   void throw_if_not(TokenType expected_type, const char *err_message) const;
 
-  [[nodiscard]] bool is(const TokenType _type) const { return type == _type; }
-
-  [[nodiscard]] bool isPrimitive() const;
-
-  [[nodiscard]] bool isLiteral() const;
+  [[nodiscard]] constexpr bool is(const TokenType _type) const { return type == _type; }
+  [[nodiscard]] constexpr bool isPrimitive() const {return isCategoryPRIMITIVES(type);}
+  [[nodiscard]] constexpr bool isLiteral() const {return isCategoryLITERALS(type);}
+  [[nodiscard]] constexpr bool isPointer() const {return isCategoryPOINTERS(type);}
+  [[nodiscard]] constexpr bool isTypeModifier() const {return isCategoryTYPE_MODIFIERS(type);}
 
   [[nodiscard]] std::string toString();
-
   [[nodiscard]] std::string toDebugString() const;
 
   [[nodiscard]] int getInt() const;
-
   [[nodiscard]] float getFloat() const;
-
   [[nodiscard]] double getDouble() const;
-
   [[nodiscard]] bool getBool() const;
-
   [[nodiscard]] std::string takeString();
 };
 
@@ -196,7 +84,7 @@ public:
     return t;
   }
 
-  [[nodiscard]] bool check(TokenType _type) const {
+  [[nodiscard]] bool check(const TokenType _type) const {
     return token_list.back().type == _type;
   }
   [[nodiscard]] bool empty() const { return token_list.empty(); }
@@ -212,15 +100,32 @@ public:
 
   void print(unsigned initial_indent = 0);
 
-  TokenHandler getTokensBetweenBraces();
 
-  TokenHandler getTokensBetweenParenthesis();
+  //expects that opening_token has already been popped
+  //does NOT include opening and closing token in returned Handler
+  //will pop closing_token, do not use for opening / closing tokens with a value that matters to you, it WILL be lost
+  [[nodiscard]] TokenHandler getTokensBetween(TokenType opening_token, TokenType closing_token);
 
-  TokenHandler getTokensBetweenBrackets();
+  [[nodiscard]] TokenHandler getTokensBetweenBraces() {
+    return getTokensBetween(TokenType::LBRACE, TokenType::RBRACE);
+  }
 
-  TokenHandler getAllTokensUntilFirstOf(TokenType _type);
+  [[nodiscard]] TokenHandler getTokensBetweenParenthesis() {
+    return getTokensBetween(TokenType::LPAREN, TokenType::RPAREN);
+  }
 
-  TokenHandler getAllTokensUntilLastOf(TokenType _type);
+  [[nodiscard]] TokenHandler getTokensBetweenBrackets() {
+    return getTokensBetween(TokenType::LBRACKET, TokenType::RBRACKET);
+  }
+
+  [[nodiscard]] TokenHandler getTokensBetweenAngleBrackets() {
+    return getTokensBetween(TokenType::LESS, TokenType::GTR);
+  }
+
+
+  //Does not return the type specified, but will keep it
+  [[nodiscard]] TokenHandler getAllTokensUntilFirstOf(TokenType _type);
+  [[nodiscard]] TokenHandler getAllTokensUntilLastOf(TokenType _type);
 };
 
 [[nodiscard]] TokenHandler tokenizeFile(const std::string &file_path);

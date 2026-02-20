@@ -9,71 +9,6 @@
 
 using namespace Lexer;
 
-// this is so stupid
-#define STRING_TO_KEYWORDS_MAPPING                                             \
-  {"and", TokenType::KEYWORD_AND}, {"or", TokenType::KEYWORD_OR},              \
-      {"xor", TokenType::KEYWORD_XOR}, {"not", TokenType::KEYWORD_NOT},        \
-      {"eq", TokenType::KEYWORD_EQUALS},                                       \
-      {"not_eq", TokenType::KEYWORD_NOT_EQUAL},                                \
-      {"bitand", TokenType::KEYWORD_BITAND},                                   \
-      {"bitor", TokenType::KEYWORD_BITOR},                                     \
-      {"bitxor", TokenType::KEYWORD_BITXOR},                                   \
-      {"bitnot", TokenType::KEYWORD_BITNOT},                                   \
-                                                                               \
-      {"i8", TokenType::KEYWORD_i8}, {"i16", TokenType::KEYWORD_i16},          \
-      {"i32", TokenType::KEYWORD_i32}, {"i64", TokenType::KEYWORD_i64},        \
-      {"u8", TokenType::KEYWORD_u8}, {"u16", TokenType::KEYWORD_u16},          \
-      {"u32", TokenType::KEYWORD_u32}, {"u64", TokenType::KEYWORD_u64},        \
-      {"f32", TokenType::KEYWORD_f32}, {"f64", TokenType::KEYWORD_f64},        \
-      {"char", TokenType::KEYWORD_CHAR},                                       \
-      {"string", TokenType::KEYWORD_STRING},                                   \
-      {"bool", TokenType::KEYWORD_BOOL},                                       \
-      {"devoid", TokenType::KEYWORD_DEVOID},                                   \
-                                                                               \
-      {"null", TokenType::KEYWORD_NULL}, {"junk", TokenType::KEYWORD_JUNK},    \
-      {"selfish", TokenType::KEYWORD_SELFISH},                                 \
-      {"sharing", TokenType::KEYWORD_SHARING},                                 \
-      {"watching", TokenType::KEYWORD_WATCHING},                               \
-      {"raw", TokenType::KEYWORD_RAW}, {"vague", TokenType::KEYWORD_VAGUE},    \
-                                                                               \
-      {"if", TokenType::KEYWORD_IF}, {"else", TokenType::KEYWORD_ELSE},        \
-      {"for", TokenType::KEYWORD_FOR}, {"while", TokenType::KEYWORD_WHILE},    \
-      {"do", TokenType::KEYWORD_DO}, {"return", TokenType::KEYWORD_RETURN},    \
-      {"switch", TokenType::KEYWORD_SWITCH},                                   \
-      {"case", TokenType::KEYWORD_CASE},                                       \
-      {"default", TokenType::KEYWORD_DEFAULT},                                 \
-      {"goto", TokenType::KEYWORD_GOTO}, {"break", TokenType::KEYWORD_BREAK},  \
-      {"continue", TokenType::KEYWORD_CONTINUE},                               \
-                                                                               \
-      {"cast", TokenType::KEYWORD_CAST},                                       \
-      {"cast_if", TokenType::KEYWORD_CAST_IF},                                 \
-      {"unsafe_cast", TokenType::KEYWORD_UNSAFE_CAST},                         \
-      {"steal", TokenType::KEYWORD_STEAL},                                     \
-      {"build_new", TokenType::KEYWORD_BUILD_NEW},                             \
-      {"allocate", TokenType::KEYWORD_ALLOCATE},                               \
-      {"construct", TokenType::KEYWORD_CONSTRUCT},                             \
-      {"mut", TokenType::KEYWORD_MUT}, {"from", TokenType::KEYWORD_FROM},      \
-      {"as", TokenType::KEYWORD_AS}, {"global", TokenType::KEYWORD_GLOBAL},    \
-      {"globals", TokenType::KEYWORD_GLOBALS},
-
-#define STRING_TO_SYMBOLS_MAPPING                                              \
-  {"+", TokenType::PLUS}, {"++", TokenType::PLUSPLUS},                         \
-      {"-", TokenType::MINUS}, {"--", TokenType::MINUSMINUS},                  \
-      {"/", TokenType::SLASH}, {"*", TokenType::STAR}, {"^", TokenType::POW},  \
-      {"%", TokenType::MOD}, {"=", TokenType::ASSIGN},                         \
-      {"==", TokenType::KEYWORD_EQUALS}, {"!=", TokenType::KEYWORD_NOT_EQUAL}, \
-      {"(", TokenType::LPAREN}, {")", TokenType::RPAREN},                      \
-      {"{", TokenType::LBRACE}, {"}", TokenType::RBRACE},                      \
-      {"[", TokenType::LBRACKET}, {"]", TokenType::RBRACKET},                  \
-      {"<", TokenType::LESS}, {">", TokenType::GTR},                           \
-      {"<=", TokenType::LESSEQ}, {">=", TokenType::GTREQ},                     \
-      {";", TokenType::SEMI_COLON}, {"@", TokenType::ADDR},                    \
-      {",", TokenType::COMMA},
-
-std::unordered_map<std::string, TokenType> keywords{STRING_TO_KEYWORDS_MAPPING};
-std::unordered_map<std::string, TokenType> stringToSymbol{
-    STRING_TO_SYMBOLS_MAPPING};
-
 struct FileInAnalysis {
   std::ifstream stream;
   uint32_t needs_closing_paren{0};
@@ -174,7 +109,13 @@ static void grabSymbol(FileInAnalysis &file) {
   case '-':
     if (file_stream.peek() == c) {
       symbol.push_back(static_cast<char>(file_stream.get()));
-      type = stringToSymbol[symbol];
+      type = stringToTokenType.at(symbol);
+      break;
+    }
+
+    if (c == '-' && file_stream.peek() == '>') {
+      file_stream.get();
+      type = TokenType::ARROW;
       break;
     }
     [[fallthrough]];
@@ -191,7 +132,7 @@ static void grabSymbol(FileInAnalysis &file) {
 
       token_list.emplace_back(TokenType::ASSIGN);
       token_list.emplace_back(d);
-      token_list.emplace_back(stringToSymbol[symbol]);
+      token_list.emplace_back(stringToTokenType.at(symbol));
       token_list.emplace_back(TokenType::LPAREN);
       ++add_closing_paren;
       file_stream.get();
@@ -199,8 +140,7 @@ static void grabSymbol(FileInAnalysis &file) {
     }
     [[fallthrough]];
 
-  case '!':
-  case '=':
+
   case '<':
   case '>':
     if (file_stream.peek() == '=')
@@ -215,8 +155,26 @@ static void grabSymbol(FileInAnalysis &file) {
   case ']':
   case '@':
   case ',':
-    type = stringToSymbol[symbol];
+    type = stringToTokenType.at(symbol);
     break;
+
+  case '!':
+    if (file_stream.peek() == '=') [[likely]] {
+      file_stream.get();
+      type = TokenType::KEYWORD_NOT_EQUAL;
+      break;
+    }
+    throw std::runtime_error("! token not supported");
+
+  case '=':
+    if (file_stream.peek() == '=') {
+      file_stream.get();
+      type = TokenType::KEYWORD_EQUALS;
+    }
+    else
+      type = TokenType::ASSIGN;
+    break;
+
 
   case ';':
     while (add_closing_paren) {
@@ -306,8 +264,8 @@ static void grabIdentOrKeyword(FileInAnalysis &file) {
   }
   file_stream.putback(c);
 
-  if (keywords.contains(word)) {
-    token_list.emplace_back(keywords[word]);
+  if (stringToTokenType.contains(word)) {
+    token_list.emplace_back(stringToTokenType.at(word));
     return;
   }
   if (word == "elif") {

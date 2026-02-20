@@ -268,7 +268,8 @@ static Statement *parseExpressionStatement(TokenHandler &tokens) {
 }
 
 static Statement *parseVarDecl(TokenHandler &tokens) {
-  Types type = parseType(tokens);
+
+  Type type = parseType(tokens);
   std::string ident = parseIdentifier(tokens);
   if (!tokens.pop_if(TokenType::ASSIGN))
     throw std::runtime_error("Expected assignment in variable declaration");
@@ -286,6 +287,7 @@ static Statement *parseVarDecl(TokenHandler &tokens) {
   if (expression_tokens.empty())
     throw std::runtime_error(
         "Expected initializing expression in variable declaration");
+
   tokens.pop();
   Expression *const expr = parseExpression(expression_tokens);
 
@@ -318,22 +320,18 @@ static Statement *parseFor(TokenHandler &tokens) {
     throw std::runtime_error("Expected opening parenthesis in for statement");
 
   TokenHandler betweenParen = tokens.getTokensBetweenParenthesis();
-  auto &p = betweenParen.peek();
-  Statement *declOrAssignment;
 
-  if (p.isPrimitive() || p.is(TokenType::LESS) ||
-      (p.is(TokenType::IDENTIFIER) &&
-       betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER)))
+  auto& first = betweenParen.peek();
+  Statement *declOrAssignment;
+  if (first.isTypeModifier() ||
+    (betweenParen.peek_is(TokenType::IDENTIFIER) && betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER))
+    )
     declOrAssignment = parseVarDecl(betweenParen);
-  else if (p.is(TokenType::IDENTIFIER))
-    declOrAssignment = parseExpressionStatement(betweenParen);
   else
-    throw std::runtime_error("Expected variable declaration or assignment in "
-                             "first for loop statement");
+    declOrAssignment = parseExpressionStatement(betweenParen);
 
   Expression *const condition = parseExpression(betweenParen);
-  if (!betweenParen.pop_if(TokenType::SEMI_COLON))
-    throw std::runtime_error("Expected semicolon after condition in forloop");
+  betweenParen.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon after condition in for loop");
 
   Expression *const iteration = parseExpression(betweenParen);
   Statement *const loop_body = parseScoped(tokens);
@@ -417,10 +415,11 @@ static Statement *parseStatement(TokenHandler &tokens) {
   case TokenType::LBRACE:
     return parseScoped(tokens);
 
+  case TokenType::KEYWORD_MUT:
   case TokenType::LESS:
     return parseVarDecl(tokens);
 
-  case TokenType::IDENTIFIER:
+  case TokenType::IDENTIFIER: //this is problematic as FUCK
     if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER))
       return parseVarDecl(tokens);
     [[fallthrough]];
@@ -498,17 +497,18 @@ void ParsedGlobals::print() const {
 }
 
 void ParsedFunction::print() const {
-  std::cout << return_type;
-  std::cout << " " << name << "(";
+  std::cout << "fn " << name << "(";
   for (auto &decl : parameter_list) {
-    printType(decl.type);
+    decl.type.print();
     std::cout << " " << decl.ident << ", ";
   }
 
   if (!parameter_list.empty())
     std::cout << "\b\b";
 
-  std::cout << ") {\n" << std::endl;
+  std::cout << ") -> ";
+  return_type.print();
+  std::cout << " {\n" << std::endl;
 
   for (const auto s : function_body) {
     std::visit(PrintStatementVisitor{1}, s->value);

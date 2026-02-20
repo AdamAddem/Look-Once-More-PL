@@ -25,8 +25,14 @@ void PrintStatementVisitor::operator()(
 
 void PrintStatementVisitor::operator()(
     const ScopedStatement &stmt) const noexcept {
+
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
+
+  if (stmt.scope_body.empty()) {
+    std::cout << "{ }";
+    return;
+  }
 
   std::cout << "{\n";
 
@@ -48,7 +54,7 @@ void PrintStatementVisitor::operator()(const WhileLoop &stmt) const noexcept {
   std::cout << "while (";
   std::visit(PrintExpressionVisitor{}, stmt.condition->value);
   std::cout << ")\n";
-  std::visit(PrintStatementVisitor{indent + 1}, stmt.loop_body->value);
+  std::visit(PrintStatementVisitor{indent}, stmt.loop_body->value);
 }
 
 void PrintStatementVisitor::operator()(const ForLoop &stmt) const noexcept {
@@ -74,13 +80,16 @@ void PrintStatementVisitor::operator()(const IfStatement &stmt) const noexcept {
 
   std::cout << "if (";
   std::visit(PrintExpressionVisitor{}, stmt.condition->value);
-  std::cout << ") \n";
+  std::cout << ")\n";
 
-  std::visit(PrintStatementVisitor{indent + 1}, stmt.true_branch->value);
+  std::visit(PrintStatementVisitor{indent}, stmt.true_branch->value);
 
   if (stmt.false_branch) {
-    std::cout << "\n else \n";
-    std::visit(PrintStatementVisitor{indent + 1}, stmt.false_branch->value);
+    std::cout << '\n';
+    for (unsigned i{}; i < indent; ++i)
+      std::cout << "  ";
+    std::cout << "else\n";
+    std::visit(PrintStatementVisitor{indent}, stmt.false_branch->value);
   }
 }
 
@@ -89,7 +98,7 @@ void PrintStatementVisitor::operator()(
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
-  printType(stmt.type);
+  stmt.type.print();
   std::cout << " " << stmt.ident << " = ";
 
   if (stmt.expr == nullptr)

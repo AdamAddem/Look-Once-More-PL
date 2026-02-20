@@ -8,11 +8,11 @@ struct Expression;
 struct Statement;
 
 struct VarDeclaration {
-  Types type;
+  Type type;
   std::string ident;
   Expression *expr; // nullptr indicates junk initialization
 
-  VarDeclaration(Types &&_type, std::string &&_ident,
+  VarDeclaration(Type &&_type, std::string &&_ident,
                  Expression *_expr = nullptr)
       : type(std::move(_type)), ident(std::move(_ident)), expr(_expr) {}
 

@@ -6,146 +6,15 @@
 
 using namespace Lexer;
 
-//this is so fucking dumb
-static constexpr const char *tokenToString[] = {"INVALID_TOKEN",
-                                                "IDENTIFIER",
-                                                "BEGIN_LITERALS",
-                                                "INT_LITERAL",
-                                                "FLOAT_LITERAL",
-                                                "DOUBLE_LITERAL",
-                                                "STRING_LITERAL",
-                                                "CHAR_LITERAL",
-                                                "BOOL_LITERAL",
-                                                "END_LITERALS",
-
-                                                "BEGIN_SYMBOLS",
-                                                "+",
-                                                "++",
-                                                "-",
-                                                "--",
-                                                "/",
-                                                "*",
-                                                "^",
-                                                "%",
-                                                "=",
-                                                "(",
-                                                ")",
-                                                "{",
-                                                "}",
-                                                "[",
-                                                "]",
-                                                "<",
-                                                ">",
-                                                "<=",
-                                                ">=",
-                                                ";",
-                                                "@",
-                                                ",",
-                                                "END_SYMBOLS",
-
-                                                "BEGIN_COMP_BITWISE",
-                                                "and",
-                                                "or",
-                                                "xor",
-                                                "not",
-                                                "eq",
-                                                "not_eq",
-                                                "bitand",
-                                                "bitor",
-                                                "bitxor",
-                                                "bitnot",
-                                                "END_COMP_BITWISE",
-
-                                                "BEGIN_PRIMITIVES",
-                                                "i8",
-                                                "i16",
-                                                "i32",
-                                                "i64",
-                                                "u8",
-                                                "u16",
-                                                "u32",
-                                                "u64",
-                                                "f32",
-                                                "f64",
-                                                "char",
-                                                "string",
-                                                "bool",
-                                                "devoid",
-                                                "END_PRIMITIVES",
-
-                                                "BEGIN_POINTERS",
-                                                "selfish",
-                                                "sharing",
-                                                "watching",
-                                                "raw",
-                                                "vague",
-                                                "END_POINTERS",
-
-                                                "BEGIN_CONTROL_FLOW",
-                                                "if",
-                                                "else",
-                                                "for",
-                                                "while",
-                                                "do",
-                                                "return",
-                                                "switch",
-                                                "case",
-                                                "default",
-                                                "goto",
-                                                "break",
-                                                "continue",
-                                                "END_CONTROL_FLOW",
-
-                                                "BEGIN_CAST",
-                                                "cast",
-                                                "cast_if",
-                                                "unsafe_cast",
-                                                "end_cast",
-
-                                                "BEGIN_ALLOC_LIFETIMES",
-                                                "steal",
-                                                "build_new",
-                                                "allocate",
-                                                "construct",
-                                                "END_ALLOC_LIFETIMES",
-
-                                                "from",
-                                                "as",
-                                                "global",
-                                                "globals",
-                                                "mut",
-                                                "null",
-                                                "junk"};
-
-void Token::throw_if(TokenType unwanted_type, const char *err_message) const {
+void Token::throw_if(const TokenType unwanted_type, const char *err_message) const {
   if (type == unwanted_type)
     throw std::runtime_error(err_message);
 }
 
-void Token::throw_if_not(TokenType expected_type,
+void Token::throw_if_not(const TokenType expected_type,
                          const char *err_message) const {
   if (type != expected_type)
     throw std::runtime_error(err_message);
-}
-
-bool Token::isPrimitive() const {
-  const auto underlying_value = std::to_underlying(type);
-  static constexpr auto primitives_min =
-      std::to_underlying(TokenType::BEGIN_PRIMITIVES);
-  static constexpr auto primitives_max =
-      std::to_underlying(TokenType::END_PRIMITIVES);
-
-  return underlying_value > primitives_min && underlying_value < primitives_max;
-}
-
-bool Token::isLiteral() const {
-  const auto underlying_value = std::to_underlying(type);
-  static constexpr auto literals_min =
-      std::to_underlying(TokenType::BEGIN_LITERALS);
-  static constexpr auto literals_max =
-      std::to_underlying(TokenType::END_LITERALS);
-
-  return underlying_value > literals_min && underlying_value < literals_max;
 }
 
 std::string Token::toString() {
@@ -172,12 +41,12 @@ std::string Token::toString() {
     }
   }
 
-  return tokenToString[std::to_underlying(type)];
+  return tokenTypeToString(type);
 }
 
 std::string Token::toDebugString() const {
   if (type == TokenType::IDENTIFIER)
-    return std::string("id_") + std::get<std::string>(value);
+    return std::string("id::") + std::get<std::string>(value);
 
   if (isLiteral()) {
     switch (type) {
@@ -200,7 +69,11 @@ std::string Token::toDebugString() const {
     }
   }
 
-  return tokenToString[std::to_underlying(type)];
+  if (type == TokenType::KEYWORD_DEVOID) [[unlikely]]
+    return "devoid";
+
+
+  return tokenTypeToString(type);
 }
 
 int Token::getInt() const { return std::get<int>(value); }
@@ -267,83 +140,44 @@ bool TokenHandler::pop_if(const TokenType _type) {
   return false;
 }
 
-void TokenHandler::reject_then_pop(TokenType unwanted_type,
+void TokenHandler::reject_then_pop(const TokenType unwanted_type,
                                    const char *throw_message) {
   token_list.back().throw_if(unwanted_type, throw_message);
   token_list.pop_back();
 }
 
-void TokenHandler::expect_then_pop(TokenType expected_type,
+void TokenHandler::expect_then_pop(const TokenType expected_type,
                                    const char *throw_message) {
   token_list.back().throw_if_not(expected_type, throw_message);
   token_list.pop_back();
 }
 
-TokenHandler TokenHandler::getTokensBetweenBraces() {
-  std::vector<Lexer::Token> body;
-  int openbrace = 1;
-  while (openbrace) {
-    if (token_list.empty())
-      throw std::runtime_error("Expected closing rbrace");
 
-    if (token_list.back().type == TokenType::LBRACE)
-      ++openbrace;
-    else if (token_list.back().type == TokenType::RBRACE)
-      --openbrace;
+TokenHandler TokenHandler::getTokensBetween(const TokenType opening_token,
+                                            const TokenType closing_token) {
+  std::vector<Token> body;
+  int open = 1;
+  while (open) {
+    if (token_list.empty())
+      throw std::runtime_error("Expected closing token!");
+
+    if (token_list.back().type == opening_token)
+      ++open;
+    else if (token_list.back().type == closing_token)
+      --open;
 
     body.emplace_back(std::move(token_list.back()));
     token_list.pop_back();
   }
+
   body.pop_back();
   std::reverse(body.begin(), body.end()); // stackify
 
   return TokenHandler(std::move(body));
 }
 
-TokenHandler TokenHandler::getTokensBetweenParenthesis() {
-  std::vector<Lexer::Token> body;
-  int openbrace = 1;
-  while (openbrace) {
-    if (token_list.empty())
-      throw std::runtime_error("Expected closing rparen");
 
-    if (token_list.back().type == TokenType::LPAREN)
-      ++openbrace;
-    else if (token_list.back().type == TokenType::RPAREN)
-      --openbrace;
-
-    body.emplace_back(std::move(token_list.back()));
-    token_list.pop_back();
-  }
-  body.pop_back();
-
-  std::reverse(body.begin(), body.end()); // stackify
-
-  return TokenHandler(std::move(body));
-}
-
-TokenHandler TokenHandler::getTokensBetweenBrackets() {
-  std::vector<Lexer::Token> body;
-  int openbracket = 1;
-  while (openbracket) {
-    if (token_list.empty())
-      throw std::runtime_error("Expected closing rparen");
-
-    if (token_list.back().type == TokenType::LBRACKET)
-      ++openbracket;
-    else if (token_list.back().type == TokenType::RBRACKET)
-      --openbracket;
-
-    body.emplace_back(std::move(token_list.back()));
-    token_list.pop_back();
-  }
-  body.pop_back();
-  std::reverse(body.begin(), body.end()); // stackify
-
-  return TokenHandler(std::move(body));
-}
-
-TokenHandler TokenHandler::getAllTokensUntilFirstOf(TokenType _type) {
+TokenHandler TokenHandler::getAllTokensUntilFirstOf(const TokenType _type) {
   std::vector<Token> tokens;
 
   while (!token_list.back().is(_type)) {

@@ -6,10 +6,10 @@
 
 struct SymbolTable {
   struct Function {
-    std::string return_type;
-    std::vector<Types> parameter_types;
+    Type return_type;
+    std::vector<Type> parameter_types;
 
-    Function(std::string &&_return_type, std::vector<Types> &&_param_types)
+    Function(Type &&_return_type, std::vector<Type> &&_param_types)
         : return_type(std::move(_return_type)),
           parameter_types(std::move(_param_types)) {}
 
@@ -28,34 +28,29 @@ struct SymbolTable {
   struct FunctionSignature {
     std::vector<Function> functions;
 
-    explicit FunctionSignature(Function &&f) noexcept {
-      functions.emplace_back(std::move(f));
-    }
+    explicit FunctionSignature(Function &&f) noexcept { functions.emplace_back(std::move(f)); }
     FunctionSignature(FunctionSignature &&other) noexcept
         : functions(std::move(other.functions)) {}
 
-    void addFunction(std::string &&return_type,
-                     std::vector<Types> &&param_types);
+    void addFunction(Type &&return_type,
+                     std::vector<Type> &&param_types);
 
-    [[nodiscard]] std::string
-    returnTypeOfCall(const std::vector<Types> &provided_param) const;
+    [[nodiscard]] Type
+    returnTypeOfCall(const std::vector<Type> &provided_param) const;
 
     void print() const;
   };
 
   struct Variable {
-    Types type;
-    bool is_mutable;
+    Type type;
     bool is_stolen{false};
 
     Variable(const Variable &) = default;
 
-    Variable(Types &&_t, const bool _mut)
-        : type(std::move(_t)), is_mutable(_mut) {}
+    Variable(Type &&_t) : type(std::move(_t)) {}
 
     Variable(Variable &&other) noexcept
-        : type(std::move(other.type)), is_mutable(other.is_mutable),
-          is_stolen(other.is_stolen) {}
+        : type(std::move(other.type)), is_stolen(other.is_stolen) {}
   };
 
   struct TypeDetails {
@@ -65,53 +60,56 @@ struct SymbolTable {
   };
 
   struct LocalScope {
-    explicit LocalScope(std::string ret_type)
+    explicit LocalScope(Type ret_type)
         : expected_return_type(std::move(ret_type)) {}
+
     std::unordered_map<std::string, Variable> variables;
-    std::string expected_return_type;
+    Type expected_return_type;
   };
 
-  using GlobalEntry = std::variant<Variable, FunctionSignature>;
-  std::unordered_map<std::string, GlobalEntry> globals;
+  using Symbol = std::variant<Variable, FunctionSignature>;
+  std::unordered_map<std::string, Symbol> globals;
   std::vector<LocalScope> locals;
   std::unordered_map<std::string, TypeDetails> type_registry;
-  std::vector<std::string> expected_return_types;
+  std::vector<Type> expected_return_types;
 
   SymbolTable();
 
   bool containsVariable(const std::string &name) const;
-
-  void addGlobalVariable(std::string name, Types type, bool is_mutable = false);
-
-  void addLocalVariable(std::string name, Types type, bool is_mutable = false);
-
+  void addGlobalVariable(std::string name, Type type);
+  void addLocalVariable(std::string name, Type type);
   const Variable &closestVariable(const std::string &name) const;
-
-  Types typeOfClosestVariable(const std::string &name) const;
-
-  void enterScope(std::string expected_return_type = "devoid");
-
-  void leaveScope();
-
-  std::string returnTypeOfCurrentScope() const;
-
-  void addFunction(const std::string &name, std::string type,
-                   std::vector<Types> &&parameter_types);
+  Type closestVariableType(const std::string &name) const;
+  bool isVarMutable(const std::string &var_name) const;
 
   bool containsFunction(const std::string &name) const;
+  void addFunction(const std::string &name, Type return_type, std::vector<Type> &&parameter_types);
+  Type returnTypeOfCall(const std::string &name, const std::vector<Type> &provided_params) const;
 
-  std::string returnTypeOfCall(const std::string &name,
-                               const std::vector<Types> &provided_params) const;
+  bool containsSymbol(const std::string &name) const {return containsVariable(name) || containsFunction(name);}
+  Type closestSymbolType(const std::string &name) const { //revisit this sack of shit eventually
+    if (containsVariable(name))
+      return closestVariableType(name);
 
+    if (containsFunction(name))
+      return Type(Type::function, name);
+
+    throw std::runtime_error("Symbol not found");
+  }
+
+  void enterScope(Type expected_return_type = devoid_type);
+  void leaveScope();
+  Type returnTypeOfCurrentScope() const;
   bool isSymbolInCurrentScope(const std::string &name) const;
-
-  bool isAssignable(const std::string &var_name) const;
-
-  TypeDetails detailsOfType(const std::string &type_name) const;
-
   void clearLocalTable();
 
-  void printGlobals();
 
+
+  TypeDetails detailsOfType(const std::string &type_name) const;
+  [[nodiscard]] bool isRegisteredType(const std::string& type_name) const noexcept {return type_registry.contains(type_name);}
+  [[nodiscard]] bool isRegisteredType(const Type& t) const noexcept;
+
+
+  void printGlobals();
   void printLocals();
 };

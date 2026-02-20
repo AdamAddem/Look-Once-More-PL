@@ -1,7 +1,7 @@
 Lexer:
+    Add debug info to tokens for better error handling
 
 FirstParse:
-    -parseType function allows for multiple of the same type in variant type
 
 SecondParse:
 

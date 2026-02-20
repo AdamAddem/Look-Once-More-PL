@@ -1,25 +1,28 @@
-int x = global;
-float y = global;
+mut i32 x = global;
+mut f32 y = global;
 
 globals{
     x = 2;
     y = 3.f;
 }
 
+fn fib(i32 num) -> i32 {
+    if(num eq 0) return 0;
+    if(num eq 1) return 1;
 
-int foo(<char, float> x)
-{
-  string tmp = junk;
-  string tmp2 = tmp;
-  int y += 2*3;
+    return fib(num - 1) + fib(num - 2);
+}
 
-  if(y != y) {
+fn foo(<char, string> x) -> i32 {
+
+  { }
+  while(true) { }
+  for( mut i32 i = 0; i<20; ++i ) { }
+  if(true) {
 
   }
-
-  for(int i=0; i<20; ++i)
-  {
-  }
+  else
+    ;
 
 
     return 5;

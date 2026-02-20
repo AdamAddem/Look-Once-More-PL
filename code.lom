@@ -15,15 +15,7 @@ fn fib(i32 num) -> i32 {
 
 fn foo(<char, string> x) -> i32 {
 
-  { }
-  while(true) { }
-  for( mut i32 i = 0; i<20; ++i ) { }
-  if(true) {
-
-  }
-  else
-    ;
-
+    char dick = 'f';
 
     return 5;
 }

@@ -50,16 +50,13 @@ static void grabStringLiteral(FileInAnalysis &file) {
   std::string literal;
   file_stream >> std::noskipws;
   int c = file_stream.get();
-  while (true) {
+  while (c != EOF) {
     // stupid and dumb
     switch (c) {
-    case '"':
+    case '\"':
       goto ending_quote_found;
 
-    /*case '\n': Enable this to restrict string literals to one line.
-case '\r':
-case '\n\r': \n\r is a weird edge case for windows, not sure how to solve
-that.*/
+    case '\n':
     case EOF:
       throw std::runtime_error("Expected ending \" in string literal");
 
@@ -70,6 +67,7 @@ that.*/
     default:
       literal.push_back(static_cast<char>(c));
     }
+    c = file_stream.get();
   }
 
 ending_quote_found: // don't crucify me for this pls
@@ -93,8 +91,7 @@ static void grabCharLiteral(FileInAnalysis &file) {
   } else if (c2 != '\'')
     throw std::runtime_error("Expected ending ' in char literal.");
 
-  token_list.emplace_back(TokenType::CHAR_LITERAL,
-                          std::string{static_cast<char>(c1)});
+  token_list.emplace_back(TokenType::CHAR_LITERAL, c1);
   file_stream >> std::ws;
 }
 

@@ -8,7 +8,7 @@ My main goal is to provide a language that mirrors the performance and freedoms 
 I want to prioritize improvements to the language and progression over all else, as opposed to being held back by tradition or long-term backwards compatability.
 
 The following two sections cover my motivation in making this language. 
-If you don't care, skip them to get to the language features. The TL:DR is: C++ sucks.
+If you don't care, skip them to get to the language features. The TL:DR is that C++ sucks and making a language is fun.
 
 
 ### Motivation

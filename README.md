@@ -16,7 +16,7 @@ I have a love / hate relationship with C++, and I am certainly not special in th
 much of that beauty comes from the various colors of duct tape that have been layered through the years to keep it functional.
 
 C++'s overemphasis on backwards compatability has led to a mixed bag of features with a massive age gap. 
-The lack of will to change/deprecate what has already been added to the language leads to the creation of many new features with the sole purpose of improving the old.
+The extreme hesitancy to change/deprecate/remove what has already been added to the language leads to the creation of many new features with the sole purpose of improving the old.
 At best, a new feature does improve the language, but ends up coexisting with old features anyways because it never truly changed the way things are done
 (Ex: Concepts are great but are essentially just a convenience feature that doesn't actually change anything; Most uses of concepts still require type_traits).
 At worst a new feature will release just to end up being more inconvenient / wordy / restrictive than the old version.

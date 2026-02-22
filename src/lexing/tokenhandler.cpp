@@ -57,9 +57,9 @@ std::string Token::toDebugString() const {
     case TokenType::DOUBLE_LITERAL:
       return std::to_string(std::get<double>(value)) + std::string("d");
     case TokenType::CHAR_LITERAL:
-      return static_cast<char>(std::get<int>(value)) + std::string("c");
+      return std::string("\'") + static_cast<char>(std::get<int>(value)) + std::string("\'");
     case TokenType::STRING_LITERAL:
-      return std::get<std::string>(value) + std::string("s");
+      return std::string("\"") + std::get<std::string>(value) + std::string("\"");
     case TokenType::BOOL_LITERAL:
       return std::get<int>(value) ? "true_b" : "false_b";
 

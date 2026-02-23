@@ -2,13 +2,9 @@ Lexer:
     Add debug info to tokens for better error handling
 
 FirstParse:
-
 SecondParse:
 
 General:
-    -Currently, int x += 2; is valid. Make that an error.
-    -Make it so functions can return variant types
-        -Actually, make it so that variant types even have functionality
-
+    -Add variant functionality
     -Add cast functionality
     -Add @ functionality

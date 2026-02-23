@@ -681,13 +681,15 @@ static void printFunction(const ParsedFunction& func) {
 
 static void printTU(const ParsedTranslationUnit& tu) {
   if (tu.globals.empty())
-    return;
+    goto noglobals;
 
   for (const auto &decl : tu.globals) {
     PrintStatementVisitor{}(decl);
     std::cout << "\n";
   }
   std::cout << "\n\n";
+
+  noglobals:
 
   for (const auto &f : tu.functions) {
     printFunction(f);

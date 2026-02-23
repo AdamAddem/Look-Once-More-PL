@@ -33,4 +33,3 @@ add_executable(LookOnceMore
 
 )
 
-add_executable(tokentype_genrator src/lexing/tokentype_generator.cpp)

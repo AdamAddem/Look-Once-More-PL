@@ -11,6 +11,7 @@ using TokenValue = std::variant<int, float, double, std::string>;
 struct Token {
   TokenType type;
   TokenValue value;
+  unsigned line_number{};
 
   explicit Token(const TokenType _type) : type(_type) {};
 

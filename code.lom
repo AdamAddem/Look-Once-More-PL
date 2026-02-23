@@ -1,20 +1,7 @@
-global mut i32 x = junk;
-global mut f32 y = junk;
-
-fn fib(i32 num) -> i32 {
-    if(num eq 0) return 0;
-    if(num eq 1) return 1;
-
-    return fib(num - 1) + fib(num - 2);
-}
-
-fn asshole() {
-
-}
-
 fn foo(<char, string> x) -> i32 {
 
     char dick = 'f';
+    i32 asshole *= 5;
 
     return 5;
 }

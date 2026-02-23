@@ -16,10 +16,8 @@ add_executable(LookOnceMore
         src/lexing/tokenhandler.cpp
         src/lexing/tokentype.hpp
 
-        src/parsing/firstparse.cpp
-        src/parsing/firstparse.hpp
-        src/parsing/secondparse.cpp
-        src/parsing/secondparse.hpp
+        src/parsing/parse.cpp
+        src/parsing/parse.hpp
 
         src/grammar/statements.cpp
         src/grammar/statements.hpp

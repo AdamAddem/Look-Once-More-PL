@@ -6,6 +6,10 @@
 // this probably shouldn't be here
 // and also should be done way better idk
 SymbolTable::SymbolTable() {
+  type_registry[""] = {
+    .arithmetic = false, .callable = false, .array = false
+  };
+
   type_registry["i8"] = {
       .arithmetic = true, .callable = false, .array = false};
   type_registry["i16"] = {

@@ -88,7 +88,6 @@ enum class TokenType : unsigned {
   KEYWORD_FROM,
   KEYWORD_AS,
   KEYWORD_GLOBAL,
-  KEYWORD_GLOBALS,
   KEYWORD_NULL,
   KEYWORD_JUNK,
   KEYWORD_FN,
@@ -124,8 +123,8 @@ inline const std::unordered_map<std::string, TokenType> stringToTokenType{
 	{"continue", TokenType::KEYWORD_CONTINUE}, {"cast", TokenType::KEYWORD_CAST}, {"cast_if", TokenType::KEYWORD_CAST_IF}, 
 	{"unsafe_cast", TokenType::KEYWORD_UNSAFE_CAST}, {"steal", TokenType::KEYWORD_STEAL}, {"build_new", TokenType::KEYWORD_BUILD_NEW}, 
 	{"allocate", TokenType::KEYWORD_ALLOCATE}, {"construct", TokenType::KEYWORD_CONSTRUCT}, {"from", TokenType::KEYWORD_FROM}, 
-	{"as", TokenType::KEYWORD_AS}, {"global", TokenType::KEYWORD_GLOBAL}, {"globals", TokenType::KEYWORD_GLOBALS}, 
-	{"null", TokenType::KEYWORD_NULL}, {"junk", TokenType::KEYWORD_JUNK}, {"fn", TokenType::KEYWORD_FN}, 
+	{"as", TokenType::KEYWORD_AS}, {"global", TokenType::KEYWORD_GLOBAL}, {"null", TokenType::KEYWORD_NULL}, 
+	{"junk", TokenType::KEYWORD_JUNK}, {"fn", TokenType::KEYWORD_FN}, 
 };
 
 
@@ -159,8 +158,8 @@ constexpr const char* toString[] = {
 	"continue","cast","cast_if",
 	"unsafe_cast","steal","build_new",
 	"allocate","construct","from",
-	"as","global","globals",
-	"null","junk","fn",
+	"as","global","null",
+	"junk","fn",
 };
 	return toString[std::to_underlying(e)];
 }
@@ -182,6 +181,6 @@ constexpr bool isCategoryCAST(const TokenType e) { return std::to_underlying(e) 
 
 constexpr bool isCategoryALLOC_LIFETIMES(const TokenType e) { return std::to_underlying(e) >= 76 && std::to_underlying(e) < 80; }
 
-constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 31 && std::to_underlying(e) < 87; }
+constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 31 && std::to_underlying(e) < 86; }
 
 }; //namespace Lexer

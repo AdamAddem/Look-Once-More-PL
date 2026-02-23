@@ -1,16 +1,93 @@
-#include "secondparse.hpp"
 #include "../grammar/expressions.hpp"
 #include "../grammar/statements.hpp"
-#include "firstparse.hpp"
+#include "parse.hpp"
 
 #include <iostream>
 #include <stdexcept>
+#include <unordered_set>
 
 #include "../debug_flags.hpp"
+#include "lexing/lex.hpp"
 
 using namespace Parser;
 using namespace Lexer;
 
+
+/* Type and Identifier */
+static Type parseType(TokenHandler &tokens) {
+  Token token = tokens.eat();
+  bool is_mutable{false};
+  if (token.is(TokenType::KEYWORD_MUT)) {
+    token = tokens.eat();
+    is_mutable = true;
+  }
+
+  if (token.isPrimitive() || token.is(TokenType::IDENTIFIER)) {
+    if (token.is(TokenType::KEYWORD_DEVOID))
+      return devoid_type;
+
+    if (token.isPointer()) { // add reference support eventually
+      tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration");
+      return {token.toString(), is_mutable, new Type(parseType(tokens))};
+    }
+
+    std::string s = token.toString();
+    return {std::move(s), is_mutable};
+  }
+
+
+  if (token.is(TokenType::LESS)) {
+    TokenHandler variant_types_tokens = tokens.getTokensBetweenAngleBrackets();
+
+    Type variant_types(Type::variant, parseType(variant_types_tokens));
+    variant_types.is_mutable = is_mutable;
+
+    std::unordered_set<std::string> typenames; //prevent duplicate types
+
+    while (variant_types_tokens.pop_if(TokenType::COMMA)) {
+      Type type = parseType(variant_types_tokens);
+      if (type.isVariant())
+        throw std::runtime_error("Nested variant types not allowed");
+
+      if (type.isDevoid()) {
+        typenames.emplace("");
+        variant_types.addTypeToVariantList(std::move(type));
+        continue;
+      }
+
+      if (type.is_mutable)
+        throw std::runtime_error("Mutability cannot be specified within variant type list, must be specified prior to type list");
+
+      if (typenames.contains(type.getTypename()))
+        throw std::runtime_error("Duplicate types specified in variant declaration");
+
+      typenames.emplace(type.getTypename());
+
+      variant_types.addTypeToVariantList(std::move(type));
+    }
+
+    if (variant_types.numVariantTypes() < 2)
+      throw std::runtime_error("Two or more types must be specified in variant type list");
+    return variant_types;
+  }
+
+  std::string error_msg = "Expected typename, got: ";
+  error_msg += token.toString();
+  throw std::runtime_error(error_msg);
+}
+
+static std::string parseIdentifier(TokenHandler &tokens) {
+  Token token = tokens.eat();
+
+  if (token.is(TokenType::IDENTIFIER))
+    return token.takeString();
+
+  std::cout << token.toString() << std::endl;
+  throw std::runtime_error("Expected identifier");
+}
+/* Type and Identifier */
+
+/* Expressions */
 static Expression *parseExpression(TokenHandler &tokens);
 
 static std::vector<Expression *> parseParameters(TokenHandler &tokens) {
@@ -252,6 +329,9 @@ static Expression *parseExpression(TokenHandler &tokens) {
     return nullptr;
   return parseAssignmentExpression(tokens);
 }
+/* Expressions */
+
+
 
 static Statement *parseStatement(TokenHandler &tokens);
 
@@ -267,6 +347,7 @@ static Statement *parseExpressionStatement(TokenHandler &tokens) {
   return new Statement(ExpressionStatement(parseExpression(until_semi)));
 }
 
+
 static Statement *parseVarDecl(TokenHandler &tokens) {
 
   Type type = parseType(tokens);
@@ -275,6 +356,9 @@ static Statement *parseVarDecl(TokenHandler &tokens) {
     throw std::runtime_error("Expected assignment in variable declaration");
 
   if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
+    if (!type.is_mutable)
+      throw std::runtime_error("Non-mutable variables may not be junk initialized");
+
     if (!tokens.pop_if(TokenType::SEMI_COLON))
       throw std::runtime_error(
           "Expected semicolon ending variable declaration");
@@ -437,83 +521,181 @@ static std::vector<Statement *> parseStatements(TokenHandler &body_tokens) {
   return body_statements;
 }
 
-static ParsedGlobals parseGlobals(UnparsedGlobals &globals) {
-  return {std::move(globals.declarations),
-          parseStatements(globals.global_init_body)};
-}
+
+struct UnparsedFunction {
+  Type return_type;
+  std::string name;
+  std::vector<VarDeclaration> parameter_list;
+  TokenHandler body_tokens;
+
+  UnparsedFunction(Type &&_return_type, std::string &&_name,
+                   std::vector<VarDeclaration> &&_parameter_list,
+                   TokenHandler &&_body_tokens)
+      : return_type(std::move(_return_type)), name(std::move(_name)),
+        parameter_list(std::move(_parameter_list)),
+        body_tokens(std::move(_body_tokens)) {}
+};
+
+struct UnparsedTU {
+  bool globalsDeclared = false;
+  std::vector<VarDeclaration> globals;
+  std::vector<UnparsedFunction> functions;
+
+  void registerFunction(Type&& _return_type, std::string _name,
+                        std::vector<VarDeclaration> _decl,
+                        TokenHandler _body) {
+    std::vector<Type> param_types;
+    for (auto &decl : _decl)
+      param_types.emplace_back(decl.type); // this is stupid
+
+    functions.emplace_back(std::move(_return_type), std::move(_name),
+                           std::move(_decl), std::move(_body));
+  }
+};
 
 static ParsedFunction parseFunction(UnparsedFunction &func) {
   return {std::move(func.return_type), std::move(func.name),
           std::move(func.parameter_list), parseStatements(func.body_tokens)};
 }
 
-ParsedTranslationUnit Parser::secondPassParsing(UnparsedTU &&unparsedtu) {
-  ParsedGlobals globals = parseGlobals(unparsedtu.globals);
+static ParsedTranslationUnit secondPassParsing(UnparsedTU &&unparsedtu) {
 
   std::vector<ParsedFunction> parsed_funcs;
   for (auto &f : unparsedtu.functions)
     parsed_funcs.emplace_back(parseFunction(f));
 
-  ParsedTranslationUnit ptu{std::move(globals), std::move(parsed_funcs)};
+  ParsedTranslationUnit ptu{std::move(unparsedtu.globals), std::move(parsed_funcs)};
 
-  if (lom_debug::output_secondparse) {
-    ptu.print();
-    std::cout << "SecondParse stage passed!" << std::endl;
 
+  return ptu;
+}
+
+
+
+std::vector<VarDeclaration> parseParameterDecl(TokenHandler &tokens) {
+  if (tokens.empty())
+    return {};
+
+  std::vector<VarDeclaration> parameter_list;
+
+  while (true) {
+    Type type = parseType(tokens);
+    std::string ident = parseIdentifier(tokens);
+
+    parameter_list.emplace_back(std::move(type), std::move(ident));
+
+    if (tokens.empty())
+      return parameter_list;
+
+    tokens.expect_then_pop(
+        TokenType::COMMA,
+        "Expected ending parenthesis or comma in parameter list");
+  }
+}
+
+// returns false when we're done
+bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
+  if (tokens.peek_is(TokenType::KEYWORD_FN))
+    return false;
+
+  tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration");
+  Statement* v = parseVarDecl(tokens);
+
+  tu.globals.emplace_back(std::get<VarDeclaration>(std::move(v->value)));
+  delete v;
+  return true;
+}
+
+void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
+  tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function");
+
+  std::string ident = parseIdentifier(tokens);
+  tokens.expect_then_pop(TokenType::LPAREN, "Expected lparen in function declaration");
+
+  TokenHandler parameter_tokens = tokens.getTokensBetweenParenthesis();
+  std::vector<VarDeclaration> parameter_list = parseParameterDecl(parameter_tokens);
+
+  Type return_type{devoid_type};
+  if (tokens.pop_if(TokenType::ARROW))
+    return_type = parseType(tokens);
+
+  tokens.expect_then_pop(TokenType::LBRACE,
+                         "Expected lbrace in function declaration");
+
+  tu.registerFunction(std::move(return_type), std::move(ident),
+                      std::move(parameter_list),
+                      tokens.getTokensBetweenBraces());
+}
+
+static UnparsedTU firstPassParsing(TokenHandler &&tokens) {
+  TokenHandler token_list(std::move(tokens));
+  UnparsedTU pass_one_tu;
+
+  while (parseGlobals(pass_one_tu, token_list)) {}
+
+  while (!token_list.empty())
+    parseGlobalFunctions(pass_one_tu, token_list);
+
+
+  return pass_one_tu;
+}
+
+static void printTU(const ParsedTranslationUnit& tu);
+ParsedTranslationUnit Parser::parseTokens(TokenHandler &&tokens) {
+  ParsedTranslationUnit ptu = secondPassParsing(firstPassParsing(std::move(tokens)));
+
+  if (lom_debug::output_parse) {
+    printTU(ptu);
+    std::cout << "Parsing stage passed!" << std::endl;
     std::exit(0);
   }
 
   return ptu;
 }
 
-void ParsedTranslationUnit::print() const {
-  global.print();
-  std::cout << "\n\n";
 
-  for (auto &f : functions) {
-    f.print();
-    std::cout << "\n\n";
-  }
-}
-
-void ParsedGlobals::print() const {
-  if (declarations.empty())
-    return;
-
-  for (auto &decl : declarations) {
-    PrintStatementVisitor{}(decl);
-    std::cout << "\n";
-  }
-  std::cout << "\n";
-
-  std::cout << "globals{\n\n";
-
-  for (auto s : global_init_body) {
-    std::visit(PrintStatementVisitor{1}, s->value);
-    std::cout << "\n";
-  }
-
-  std::cout << "\n}\n" << std::endl;
-}
-
-void ParsedFunction::print() const {
-  std::cout << "fn " << name << "(";
-  for (auto &decl : parameter_list) {
+static void printFunction(const ParsedFunction& func) {
+  std::cout << "fn " << func.name << "(";
+  for (auto &decl : func.parameter_list) {
     decl.type.print();
     std::cout << " " << decl.ident << ", ";
   }
 
-  if (!parameter_list.empty())
+  if (!func.parameter_list.empty())
     std::cout << "\b\b";
 
-  std::cout << ") -> ";
-  return_type.print();
+  std::cout << ")";
+  if (!func.return_type.isDevoid()) {
+    std::cout << " -> ";
+    func.return_type.print();
+  }
   std::cout << " {\n" << std::endl;
 
-  for (const auto s : function_body) {
+  for (const auto s : func.function_body) {
     std::visit(PrintStatementVisitor{1}, s->value);
     std::cout << "\n\n";
   }
 
   std::cout << "}" << std::endl;
 }
+
+static void printTU(const ParsedTranslationUnit& tu) {
+  if (tu.globals.empty())
+    return;
+
+  for (const auto &decl : tu.globals) {
+    PrintStatementVisitor{}(decl);
+    std::cout << "\n";
+  }
+  std::cout << "\n\n";
+
+  for (const auto &f : tu.functions) {
+    printFunction(f);
+    std::cout << "\n\n";
+  }
+
+}
+
+
+
+

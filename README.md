@@ -78,9 +78,10 @@ Here are some features of LOM, some unique to the language, and some generally a
     i32 const_num = 5;  
     mut i32 mutable_num = 4;
     
-    f32 not_initialized = junk; //explicit junk initialization required
-    f32 not_allowed; //error
-* Improved pointer syntax, with multiple special pointer types
+    mut f32 not_initialized = junk; //explicit junk initialization required
+    mut f32 not_allowed; //error
+    f32 const_not_allowed = junk; //error
+* Improved pointer syntax, with multiple specialized pointer types
     ```
     //Pointer declarations are simply read left to right
     
@@ -94,22 +95,20 @@ Here are some features of LOM, some unique to the language, and some generally a
     <string, devoid> first_member = getFirstClubMember();   //Nullable type can be represented with 'devoid' keyword
 * Strict and explicit global variables
     ```
-    //Global variables must be defined at top of file
-    //Global variables cannot be initialized using anything outside of the file
-    //Global variables must be defined in a global initialization body (syntax still iffy)
+    //Global variables must be defined before any functions
+    //Global variables cannot be initialized using any values outside the Translation Unit
 
-    mut i32 x = global;
-    mut f32 y = global;
-    globals{
-        x = 2;
-        y = 4.f;
-    }
+    global mut i32 x = junk;
+    global mut f32 y = 4.0f;
   
-    //No global variables allowed to be declared after global initialization body
-* Scoped imports without flooding namespace
+    fn foo() {...}  
+    
+    global i32 not_allowed = 5; //error
+  
+* Scoped imports 
     ```
     from standard: vector as vec;
-    from my_lib: all;
+    from my_lib; //import all
   
     fn foo() {
         from other_lib: only_used_here;
@@ -124,7 +123,7 @@ Here are some features of LOM, some unique to the language, and some generally a
         x.doThing() //error: x no longer exists within this scope
     }
 * Miscellaneous
-  * Changed void to devoid, which is a very pedantic but I think it better describes something without type or value
+  * Adopted devoid instead of devoid to better describe something without type or value
   * Any function can be called with the . operator on the first parameter
     * Ex: 
       ```
@@ -136,8 +135,8 @@ Here are some features of LOM, some unique to the language, and some generally a
 There exist many more features, but these are the ones that are significant/distinct enough to mention.
 
 ## The Name
-'C++; is a play on 'C'. Ironically, since the ++ is used as a postfix operator, this implies that when someone uses C++ all they're really getting is C,
-and the addition is an afterthought. This interpretation is likely not how the author intended, but I do think its consistent with the language as a whole. 
+'C++; is a play on 'C'. Funnily enough, since the ++ is used as a postfix operator, this implies that when someone uses C++ all they're really getting is C;
+the addition is an afterthought. This interpretation is likely not how the author intended, but I do think its consistent with the language as a whole. 
 
 So while C++ is really C again, I encourage us all to Look Once More (badumtss).
 

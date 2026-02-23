@@ -1,22 +1,11 @@
 #pragma once
 #include "../grammar/statements.hpp"
 
+namespace Lexer {
+  struct TokenHandler;
+}
+
 namespace Parser {
-struct ParsedGlobals {
-  std::vector<VarDeclaration> declarations;
-  std::vector<Statement *> global_init_body;
-
-  ParsedGlobals(std::vector<VarDeclaration> &&_globals,
-                std::vector<Statement *> _globals_body)
-      : declarations(std::move(_globals)),
-        global_init_body(std::move(_globals_body)) {}
-
-  ParsedGlobals(ParsedGlobals &&other) noexcept
-      : declarations(std::move(other.declarations)),
-        global_init_body(std::move(other.global_init_body)) {}
-
-  void print() const;
-};
 
 struct ParsedFunction {
   Type return_type;
@@ -37,21 +26,18 @@ struct ParsedFunction {
         parameter_list(std::move(other.parameter_list)),
         function_body(std::move(other.function_body)) {}
 
-  void print() const;
 };
 
 struct ParsedTranslationUnit {
-  ParsedGlobals global;
+  std::vector<VarDeclaration> globals;
   std::vector<ParsedFunction> functions;
 
-  ParsedTranslationUnit(ParsedGlobals &&_global,
+  ParsedTranslationUnit(std::vector<VarDeclaration> &&_global,
                         std::vector<ParsedFunction> &&_functions)
-      : global(std::move(_global)), functions(std::move(_functions)) {}
+      : globals(std::move(_global)), functions(std::move(_functions)) {}
 
-  void print() const;
 };
 
-struct UnparsedTU;
 
-ParsedTranslationUnit secondPassParsing(UnparsedTU &&tu);
+[[nodiscard]] ParsedTranslationUnit parseTokens(Lexer::TokenHandler &&tokens);
 } // namespace Parser

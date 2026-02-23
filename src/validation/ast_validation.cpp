@@ -1,6 +1,6 @@
 #include "ast_validation.hpp"
 #include "../grammar/expressions.hpp"
-#include "../parsing/secondparse.hpp"
+#include "../parsing/parse.hpp"
 #include "symbol_table.hpp"
 #include <iostream>
 #include <stdexcept>
@@ -381,27 +381,22 @@ static void validateFunction(SymbolTable &table, ParsedFunction &func) {
   table.leaveScope();
 }
 
-static void validateGlobals(SymbolTable &table, const ParsedGlobals &globals) {
-  for (auto &decl : globals.declarations)
+static void validateGlobals(SymbolTable &table, const std::vector<VarDeclaration> &globals) {
+  for (auto &decl : globals)
     table.addGlobalVariable(decl.ident, decl.type);
 
-  table.enterScope();
-  for (const auto statement : globals.global_init_body)
-    validateStatement(table, statement);
-  table.leaveScope();
 }
 
 void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
   SymbolTable table;
   ParsedTranslationUnit ptu = std::move(unverified_tu);
 
-  validateGlobals(table, ptu.global);
+  validateGlobals(table, ptu.globals);
 
   for (auto &f : ptu.functions)
     validateFunction(table, f);
 
   if (lom_debug::output_validation) {
-    ptu.print();
     std::cout << "Validation stage passed!" << std::endl;
     std::exit(0);
   }

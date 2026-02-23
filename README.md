@@ -4,8 +4,8 @@
 LOM is an ahead-of-time compiled, statically typed, multi-paradigm systems level language inspired by C++ and supported by
 a LLVM backend; It is written as a passion project, and has just passed the AST validation phase of development.
 
-My main goal is to provide a language that mirrors the performance and freedoms C++ provides while ditching many of the legacy practices.
-I want to prioritize improvements to the language and progression over all else, as opposed to being held back by tradition or long-term backwards compatability.
+My main goal is to create a language that mirrors the performance and freedom that C++ provides while ditching many of the legacy practices.
+I want to prioritize improvements to the language over all else without being held back by tradition or long term backwards compatability.
 
 The following two sections cover my motivation in making this language. 
 If you don't care, skip them to get to the language features. The TL:DR is that C++ sucks and making a language is fun.

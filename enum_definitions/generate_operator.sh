@@ -1,0 +1,1 @@
+g++ -std=c++23 tokentype_generator.cpp -o a.out && ./a.out operator_enum_ref operators.hpp && rm a.out

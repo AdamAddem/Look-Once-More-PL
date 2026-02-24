@@ -3,7 +3,6 @@
 #include "parse.hpp"
 
 #include <iostream>
-#include <stdexcept>
 #include <unordered_set>
 
 #include "../debug_flags.hpp"
@@ -17,7 +16,12 @@ using namespace Lexer;
 static Type parseType(TokenHandler &tokens) {
   Token token = tokens.eat();
   bool is_mutable{false};
-  if (token.is(TokenType::KEYWORD_MUT)) {
+  if (token.isTypeModifier()) {
+    if (token.is(TokenType::KEYWORD_MUT))
+      is_mutable = true;
+    else
+      throw ParsingError("Type modifier not implemented yet, soz.", token);
+
     token = tokens.eat();
     is_mutable = true;
   }
@@ -27,7 +31,8 @@ static Type parseType(TokenHandler &tokens) {
       return devoid_type;
 
     if (token.isPointer()) { // add reference support eventually
-      tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration");
+      tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.", LOMError::Stage::ParsingError);
+
       return {token.toString(), is_mutable, new Type(parseType(tokens))};
     }
 
@@ -44,10 +49,19 @@ static Type parseType(TokenHandler &tokens) {
 
     std::unordered_set<std::string> typenames; //prevent duplicate types
 
+
+    const unsigned variant_ln = variant_types_tokens.peek().line_number;
     while (variant_types_tokens.pop_if(TokenType::COMMA)) {
+      const unsigned subtype_ln = variant_types_tokens.peek().line_number;
       Type type = parseType(variant_types_tokens);
       if (type.isVariant())
-        throw std::runtime_error("Nested variant types not allowed");
+        throw ParsingError("Nested variant types not allowed.", type, subtype_ln);
+
+      if (type.is_mutable)
+        throw ParsingError("Mutability cannot be specified within variant type list, must be specified prior to type list.", type, subtype_ln);
+
+      if (typenames.contains(type.getTypename()))
+        throw ParsingError("Duplicate types specified in variant declaration.", type, subtype_ln);
 
       if (type.isDevoid()) {
         typenames.emplace("");
@@ -55,25 +69,17 @@ static Type parseType(TokenHandler &tokens) {
         continue;
       }
 
-      if (type.is_mutable)
-        throw std::runtime_error("Mutability cannot be specified within variant type list, must be specified prior to type list");
-
-      if (typenames.contains(type.getTypename()))
-        throw std::runtime_error("Duplicate types specified in variant declaration");
-
       typenames.emplace(type.getTypename());
 
       variant_types.addTypeToVariantList(std::move(type));
     }
 
     if (variant_types.numVariantTypes() < 2)
-      throw std::runtime_error("Two or more types must be specified in variant type list");
+      throw ParsingError("Two or more types must be specified in variant type list.", variant_types, variant_ln);
     return variant_types;
   }
 
-  std::string error_msg = "Expected typename, got: ";
-  error_msg += token.toString();
-  throw std::runtime_error(error_msg);
+  throw ParsingError("Expected typename.", token);
 }
 
 static std::string parseIdentifier(TokenHandler &tokens) {
@@ -82,32 +88,30 @@ static std::string parseIdentifier(TokenHandler &tokens) {
   if (token.is(TokenType::IDENTIFIER))
     return token.takeString();
 
-  std::cout << token.toString() << std::endl;
-  throw std::runtime_error("Expected identifier");
+  throw ParsingError("Expected identifier.", token);
 }
 /* Type and Identifier */
 
 /* Expressions */
 static Expression *parseExpression(TokenHandler &tokens);
 
-static std::vector<Expression *> parseParameters(TokenHandler &tokens) {
-  if (tokens.empty())
+static std::vector<Expression *> parseParameters(TokenHandler &between_parenthesis) {
+  if (between_parenthesis.empty())
     return {};
 
   std::vector<Expression *> retval;
 
   while (true) {
-    retval.push_back(parseExpression(tokens));
-    if (tokens.empty())
+    retval.push_back(parseExpression(between_parenthesis));
+    if (between_parenthesis.empty())
       return retval;
 
-    if (!tokens.pop_if(TokenType::COMMA))
-      throw std::runtime_error(
-          "Expected comma between function parameters in call");
+    between_parenthesis.expect_then_pop(TokenType::COMMA, "Expected comma between function parameters in function call.", LOMError::Stage::ParsingError);
   }
 }
 
 static Expression *parsePrimaryExpression(TokenHandler &tokens) {
+  const unsigned ln = tokens.peek().line_number;
   if (tokens.peek().isLiteral()) {
     LiteralExpression::LiteralType type;
     switch (tokens.peek().type) {
@@ -131,11 +135,10 @@ static Expression *parsePrimaryExpression(TokenHandler &tokens) {
       break;
 
     default:
-      throw std::runtime_error(
-          "Impossible error in parsePrimaryExpression function in secondparse");
+      throw ParsingError("Impossible error in parsePrimaryExpression function in secondparse", tokens.peek());
     }
 
-    return new Expression(LiteralExpression(tokens.eat().value, type));
+    return new Expression(LiteralExpression(tokens.eat().value, type, ln));
   }
 
   if (tokens.pop_if(TokenType::LPAREN)) {
@@ -144,25 +147,28 @@ static Expression *parsePrimaryExpression(TokenHandler &tokens) {
   }
 
   std::string ident = parseIdentifier(tokens);
-  return new Expression(IdentifierExpression(std::move(ident)));
+  return new Expression(IdentifierExpression(std::move(ident), ln));
 }
 
 static Expression *parsePostfixExpression(TokenHandler &tokens) {
   Expression *left = parsePrimaryExpression(tokens);
+  if (tokens.empty())
+    return left;
 
+  const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::PLUSPLUS))
-      left = new Expression(UnaryExpression(left, Operator::PRE_INCREMENT));
+      left = new Expression(UnaryExpression(left, Operator::PRE_INCREMENT, ln));
 
     else if (tokens.pop_if(TokenType::MINUSMINUS))
-      left = new Expression(UnaryExpression(left, Operator::POST_DECREMENT));
+      left = new Expression(UnaryExpression(left, Operator::POST_DECREMENT, ln));
 
     else if (tokens.pop_if(TokenType::LPAREN)) {
       TokenHandler t = tokens.getTokensBetweenParenthesis();
-      left = new Expression(CallingExpression(left, parseParameters(t)));
+      left = new Expression(CallingExpression(left, parseParameters(t), ln));
     } else if (tokens.pop_if(TokenType::LBRACKET)) {
       TokenHandler t = tokens.getTokensBetweenBrackets();
-      left = new Expression(SubscriptExpression(left, parseExpression(t)));
+      left = new Expression(SubscriptExpression(left, parseExpression(t), ln));
     } else
       break;
   }
@@ -171,28 +177,40 @@ static Expression *parsePostfixExpression(TokenHandler &tokens) {
 }
 
 static Expression *parsePrefixExpression(TokenHandler &tokens) {
+  const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::PLUSPLUS))
     return new Expression(UnaryExpression(parsePrefixExpression(tokens),
-                                          Operator::PRE_INCREMENT));
+                                          Operator::PRE_INCREMENT, ln));
 
   if (tokens.pop_if(TokenType::MINUSMINUS))
     return new Expression(UnaryExpression(parsePrefixExpression(tokens),
-                                          Operator::PRE_DECREMENT));
+                                          Operator::PRE_DECREMENT, ln));
+
+  if (tokens.pop_if(TokenType::MINUS))
+    return new Expression(UnaryExpression(parsePrefixExpression(tokens),
+                                          Operator::UNARY_MINUS, ln));
 
   if (tokens.pop_if(TokenType::ADDR))
     return new Expression(
-        UnaryExpression(parsePrefixExpression(tokens), Operator::ADDRESS_OF));
+        UnaryExpression(parsePrefixExpression(tokens), Operator::ADDRESS_OF, ln));
+
+  if (tokens.pop_if(TokenType::KEYWORD_NOT))
+    return new Expression(
+        UnaryExpression(parsePrefixExpression(tokens), Operator::NOT, ln));
 
   return parsePostfixExpression(tokens);
 }
 
 static Expression *parseExponentExpression(TokenHandler &tokens) {
   Expression *left = parsePrefixExpression(tokens);
+  if (tokens.empty())
+    return left;
 
+  const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::POW))
       left = new Expression(BinaryExpression(
-          left, parsePrefixExpression(tokens), Operator::POWER));
+          left, parsePrefixExpression(tokens), Operator::POWER, ln));
     else
       break;
   }
@@ -202,19 +220,22 @@ static Expression *parseExponentExpression(TokenHandler &tokens) {
 
 static Expression *parseFactorExpression(TokenHandler &tokens) {
   Expression *left = parseExponentExpression(tokens);
+  if (tokens.empty())
+    return left;
 
+  const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::STAR))
       left = new Expression(BinaryExpression(
-          left, parseFactorExpression(tokens), Operator::MULTIPLY));
+          left, parseFactorExpression(tokens), Operator::MULTIPLY, ln));
 
     else if (tokens.pop_if(TokenType::SLASH))
       left = new Expression(BinaryExpression(
-          left, parseFactorExpression(tokens), Operator::DIVIDE));
+          left, parseFactorExpression(tokens), Operator::DIVIDE, ln));
 
     else if (tokens.pop_if(TokenType::MOD))
       left = new Expression(BinaryExpression(
-          left, parseFactorExpression(tokens), Operator::MODULUS));
+          left, parseFactorExpression(tokens), Operator::MODULUS, ln));
 
     else
       break;
@@ -224,45 +245,51 @@ static Expression *parseFactorExpression(TokenHandler &tokens) {
 }
 
 static Expression *parseTermExpression(TokenHandler &tokens) {
-  Expression *l = parseFactorExpression(tokens);
+  Expression *left = parseFactorExpression(tokens);
+  if (tokens.empty())
+    return left;
 
+  const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::PLUS))
-      l = new Expression(
-          BinaryExpression(l, parseFactorExpression(tokens), Operator::ADD));
+      left = new Expression(
+          BinaryExpression(left, parseFactorExpression(tokens), Operator::ADD, ln));
 
     else if (tokens.pop_if(TokenType::MINUS))
-      l = new Expression(BinaryExpression(l, parseFactorExpression(tokens),
-                                          Operator::SUBTRACT));
+      left = new Expression(BinaryExpression(left, parseFactorExpression(tokens),
+                                          Operator::SUBTRACT, ln));
 
     else
       break;
   }
-  return l;
+  return left;
 }
 
 static Expression *parseRelationalExpression(TokenHandler &tokens) {
   Expression *left = parseTermExpression(tokens);
+  if (tokens.empty())
+    return left;
 
+  const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::KEYWORD_EQUALS))
       left = new Expression(
-          BinaryExpression(left, parseTermExpression(tokens), Operator::EQUAL));
+          BinaryExpression(left, parseTermExpression(tokens), Operator::EQUAL, ln));
     else if (tokens.pop_if(TokenType::KEYWORD_NOT_EQUAL))
       left = new Expression(BinaryExpression(left, parseTermExpression(tokens),
-                                             Operator::NOT_EQUAL));
+                                             Operator::NOT_EQUAL, ln));
     else if (tokens.pop_if(TokenType::LESS))
       left = new Expression(
-          BinaryExpression(left, parseTermExpression(tokens), Operator::LESS));
+          BinaryExpression(left, parseTermExpression(tokens), Operator::LESS, ln));
     else if (tokens.pop_if(TokenType::GTR))
       left = new Expression(BinaryExpression(left, parseTermExpression(tokens),
-                                             Operator::GREATER));
+                                             Operator::GREATER, ln));
     else if (tokens.pop_if(TokenType::LESSEQ))
       left = new Expression(BinaryExpression(left, parseTermExpression(tokens),
-                                             Operator::LESS_EQUAL));
+                                             Operator::LESS_EQUAL, ln));
     else if (tokens.pop_if(TokenType::GTREQ))
       left = new Expression(BinaryExpression(left, parseTermExpression(tokens),
-                                             Operator::GREATER_EQUAL));
+                                             Operator::GREATER_EQUAL, ln));
     else
       break;
   }
@@ -272,23 +299,26 @@ static Expression *parseRelationalExpression(TokenHandler &tokens) {
 
 static Expression *parseBitwiseExpression(TokenHandler &tokens) {
   Expression *left = parseRelationalExpression(tokens);
+  if (tokens.empty())
+    return left;
 
+  const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::KEYWORD_BITAND))
       left = new Expression(BinaryExpression(
-          left, parseRelationalExpression(tokens), Operator::BITAND));
+          left, parseRelationalExpression(tokens), Operator::BITAND, ln));
 
     else if (tokens.pop_if(TokenType::KEYWORD_BITOR))
       left = new Expression(BinaryExpression(
-          left, parseRelationalExpression(tokens), Operator::BITOR));
+          left, parseRelationalExpression(tokens), Operator::BITOR, ln));
 
     else if (tokens.pop_if(TokenType::KEYWORD_BITXOR))
       left = new Expression(BinaryExpression(
-          left, parseRelationalExpression(tokens), Operator::BITXOR));
+          left, parseRelationalExpression(tokens), Operator::BITXOR, ln));
 
     else if (tokens.pop_if(TokenType::KEYWORD_BITNOT))
       left = new Expression(BinaryExpression(
-          left, parseRelationalExpression(tokens), Operator::BITNOT));
+          left, parseRelationalExpression(tokens), Operator::BITNOT, ln));
 
     else
       break;
@@ -299,14 +329,20 @@ static Expression *parseBitwiseExpression(TokenHandler &tokens) {
 
 static Expression *parseLogicalExpression(TokenHandler &tokens) {
   Expression *left = parseBitwiseExpression(tokens);
+  if (tokens.empty())
+    return left;
 
+  const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::KEYWORD_AND))
       left = new Expression(BinaryExpression(
-          left, parseBitwiseExpression(tokens), Operator::AND));
+          left, parseBitwiseExpression(tokens), Operator::AND, ln));
     else if (tokens.pop_if(TokenType::KEYWORD_OR))
       left = new Expression(
-          BinaryExpression(left, parseBitwiseExpression(tokens), Operator::OR));
+          BinaryExpression(left, parseBitwiseExpression(tokens), Operator::OR, ln));
+    else if (tokens.pop_if(TokenType::KEYWORD_XOR))
+      left = new Expression(
+          BinaryExpression(left, parseBitwiseExpression(tokens), Operator::XOR, ln));
     else
       break;
   }
@@ -316,9 +352,13 @@ static Expression *parseLogicalExpression(TokenHandler &tokens) {
 
 static Expression *parseAssignmentExpression(TokenHandler &tokens) {
   Expression *const left = parseLogicalExpression(tokens);
+  if (tokens.empty())
+    return left;
+
+  const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::ASSIGN))
     return new Expression(BinaryExpression(
-        left, parseAssignmentExpression(tokens), Operator::ASSIGN));
+        left, parseAssignmentExpression(tokens), Operator::ASSIGN, ln));
 
   return left;
 }
@@ -327,6 +367,7 @@ static Expression *parseAssignmentExpression(TokenHandler &tokens) {
 static Expression *parseExpression(TokenHandler &tokens) {
   if (tokens.empty())
     return nullptr;
+
   return parseAssignmentExpression(tokens);
 }
 /* Expressions */
@@ -338,55 +379,56 @@ static Statement *parseStatement(TokenHandler &tokens);
 static Statement *parseScoped(TokenHandler &tokens);
 
 static Statement *parseExpressionStatement(TokenHandler &tokens) {
+  const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::SEMI_COLON))
-    return new Statement(ExpressionStatement());
+    return new Statement(ExpressionStatement(ln));
 
-  TokenHandler until_semi =
-      tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
+  TokenHandler until_semi = tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
   tokens.pop();
-  return new Statement(ExpressionStatement(parseExpression(until_semi)));
+  return new Statement(ExpressionStatement(ln, parseExpression(until_semi)));
 }
 
-
 static Statement *parseVarDecl(TokenHandler &tokens) {
-
+  const unsigned ln = tokens.peek().line_number;
   Type type = parseType(tokens);
   std::string ident = parseIdentifier(tokens);
-  if (!tokens.pop_if(TokenType::ASSIGN))
-    throw std::runtime_error("Expected assignment in variable declaration");
+  tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.", LOMError::Stage::ParsingError);
+
+  if (tokens.peek_is(TokenType::IDENTIFIER)) {
+    if (tokens.peek().toString() == ident)
+      throw ParsingError("Variable may not be initialized using itself.", tokens.peek());
+  }
+
 
   if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
     if (!type.is_mutable)
-      throw std::runtime_error("Non-mutable variables may not be junk initialized");
+      throw ParsingError("Non-mutable variables may not be junk initialized.", type, ln);
 
-    if (!tokens.pop_if(TokenType::SEMI_COLON))
-      throw std::runtime_error(
-          "Expected semicolon ending variable declaration");
-
-    return new Statement(VarDeclaration(std::move(type), std::move(ident)));
+    tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon ending variable declaration.", LOMError::Stage::ParsingError);
+    return new Statement(VarDeclaration(std::move(type), std::move(ident), ln));
   }
 
-  TokenHandler expression_tokens =
-      tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
-  if (expression_tokens.empty())
-    throw std::runtime_error(
-        "Expected initializing expression in variable declaration");
 
+  TokenHandler expression_tokens = tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
   tokens.pop();
+  if (expression_tokens.empty())
+    throw ParsingError("Expected initializing expression in variable declaration.", ";", ln);
+
   Expression *const expr = parseExpression(expression_tokens);
 
-  return new Statement(VarDeclaration(std::move(type), std::move(ident), expr));
+  return new Statement(VarDeclaration(std::move(type), std::move(ident), ln, expr));
 }
 
 // for the statements below starting with a keyword,
 // that keyword has already been eaten
 static Statement *parseIf(TokenHandler &tokens) {
-  if (!tokens.pop_if(TokenType::LPAREN))
-    throw std::runtime_error("Expected lparen in if statement condition");
+
+  const unsigned ln = tokens.peek().line_number;
+  tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in if statement condition.", LOMError::Stage::ParsingError);
 
   TokenHandler condition_tokens = tokens.getTokensBetweenParenthesis();
   if (condition_tokens.empty())
-    throw std::runtime_error("Expected condition in if statement");
+    throw ParsingError("Expected condition in if statement.", "(...)", ln);
 
   Expression *const condition = parseExpression(condition_tokens);
 
@@ -396,79 +438,87 @@ static Statement *parseIf(TokenHandler &tokens) {
   if (tokens.pop_if(TokenType::KEYWORD_ELSE))
     false_branch = parseScoped(tokens);
 
-  return new Statement(IfStatement(condition, true_branch, false_branch));
+  return new Statement(IfStatement(condition, true_branch, ln, false_branch));
 }
 
 static Statement *parseFor(TokenHandler &tokens) {
-  if (!tokens.pop_if(TokenType::LPAREN))
-    throw std::runtime_error("Expected opening parenthesis in for statement");
+  tokens.expect_then_pop(TokenType::LPAREN, "Expected opening patenthesis in for loop statement.", LOMError::Stage::ParsingError);
 
+  const unsigned ln = tokens.peek().line_number;
   TokenHandler betweenParen = tokens.getTokensBetweenParenthesis();
+  if (betweenParen.empty())
+    throw ParsingError("Expected for loop header.", "(...)", ln);
 
   auto& first = betweenParen.peek();
-  Statement *declOrAssignment;
+  Statement *declOrAssignment{nullptr};
   if (first.isTypeModifier() ||
+      first.isPrimitive() ||
     (betweenParen.peek_is(TokenType::IDENTIFIER) && betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER))
     )
     declOrAssignment = parseVarDecl(betweenParen);
+  else if (first.is(TokenType::SEMI_COLON)) {betweenParen.pop();}
   else
     declOrAssignment = parseExpressionStatement(betweenParen);
 
-  Expression *const condition = parseExpression(betweenParen);
-  betweenParen.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon after condition in for loop");
+
+  Expression *const condition = betweenParen.peek_is(TokenType::SEMI_COLON) ? nullptr : parseExpression(betweenParen);
+  betweenParen.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon after condition in for loop header.", LOMError::Stage::ParsingError);
 
   Expression *const iteration = parseExpression(betweenParen);
   Statement *const loop_body = parseScoped(tokens);
 
-  return new Statement(
-      ForLoop(declOrAssignment, condition, iteration, loop_body));
+  return new Statement(ForLoop(declOrAssignment, condition, iteration, loop_body, ln));
 }
 
 static Statement *parseWhile(TokenHandler &tokens) {
-  if (!tokens.pop_if(TokenType::LPAREN))
-    throw std::runtime_error(
-        "Expected open parenthesis in while loop condition");
+  tokens.expect_then_pop(TokenType::LPAREN,"Expected open parenthesis in while loop condition", LOMError::Stage::ParsingError);
 
+  const unsigned ln = tokens.peek().line_number;
   TokenHandler condition_tokens = tokens.getTokensBetweenParenthesis();
   if (condition_tokens.empty())
-    throw std::runtime_error("Expected condition in while loop");
+    throw ParsingError("Expected condition between parenthesis in while loop", "(...)", ln);
   Expression *const condition = parseExpression(condition_tokens);
 
   Statement *const loop_body = parseScoped(tokens);
 
-  return new Statement(WhileLoop(condition, loop_body));
+  return new Statement(WhileLoop(condition, loop_body, ln));
 }
 
-static Statement *parseDoWhile([[maybe_unused]] TokenHandler &tokens) {
-  throw std::runtime_error("Do While Loop unsupported");
+//unsupported currently
+static Statement *parseDoWhile(const TokenHandler &tokens) {
+  throw ParsingError("Do While Loop currently unsupported.", tokens.peek());
 }
 
 // scoped may be {...} or one statement ;
 static Statement *parseScoped(TokenHandler &tokens) {
   std::vector<Statement *> statements;
+
+  const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::LBRACE)) {
     TokenHandler scopedTokens = tokens.getTokensBetweenBraces();
     while (!scopedTokens.empty())
       statements.push_back(parseStatement(scopedTokens));
 
-    return new Statement(ScopedStatement(std::move(statements)));
+    return new Statement(ScopedStatement(std::move(statements), ln));
   }
 
   statements.push_back(parseStatement(tokens));
-  return new Statement(ScopedStatement(std::move(statements)));
+  return new Statement(ScopedStatement(std::move(statements), ln));
 }
 
 static Statement *parseReturn(TokenHandler &tokens) {
+  const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::SEMI_COLON))
-    return new Statement(ReturnStatement());
+    return new Statement(ReturnStatement(ln));
 
   TokenHandler retval = tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
   tokens.pop();
-  return new Statement(ReturnStatement(parseExpression(retval)));
+  return new Statement(ReturnStatement(ln, parseExpression(retval)));
 }
 
-static Statement *parseSwitch([[maybe_unused]] TokenHandler &tokens) {
-  throw std::runtime_error("Switch Statement Unsupported");
+//unsupported currently
+static Statement *parseSwitch(const TokenHandler &tokens) {
+  throw ParsingError("Switch statement snsupported.", tokens.peek());
 }
 
 static Statement *parseStatement(TokenHandler &tokens) {
@@ -579,17 +629,16 @@ std::vector<VarDeclaration> parseParameterDecl(TokenHandler &tokens) {
   std::vector<VarDeclaration> parameter_list;
 
   while (true) {
+    const unsigned ln = tokens.peek().line_number;
     Type type = parseType(tokens);
     std::string ident = parseIdentifier(tokens);
 
-    parameter_list.emplace_back(std::move(type), std::move(ident));
+    parameter_list.emplace_back(std::move(type), std::move(ident), ln);
 
     if (tokens.empty())
       return parameter_list;
 
-    tokens.expect_then_pop(
-        TokenType::COMMA,
-        "Expected ending parenthesis or comma in parameter list");
+    tokens.expect_then_pop(TokenType::COMMA, "Expected ending parenthesis or comma in parameter list.", LOMError::Stage::ParsingError);
   }
 }
 
@@ -598,7 +647,7 @@ bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
   if (tokens.peek_is(TokenType::KEYWORD_FN))
     return false;
 
-  tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration");
+  tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.", LOMError::Stage::ParsingError);
   Statement* v = parseVarDecl(tokens);
 
   tu.globals.emplace_back(std::get<VarDeclaration>(std::move(v->value)));
@@ -607,10 +656,10 @@ bool parseGlobals(UnparsedTU &tu, TokenHandler &tokens) {
 }
 
 void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
-  tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function");
+  tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function.", LOMError::Stage::ParsingError);
 
   std::string ident = parseIdentifier(tokens);
-  tokens.expect_then_pop(TokenType::LPAREN, "Expected lparen in function declaration");
+  tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in function declaration.", LOMError::Stage::ParsingError);
 
   TokenHandler parameter_tokens = tokens.getTokensBetweenParenthesis();
   std::vector<VarDeclaration> parameter_list = parseParameterDecl(parameter_tokens);
@@ -619,8 +668,7 @@ void parseGlobalFunctions(UnparsedTU &tu, TokenHandler &tokens) {
   if (tokens.pop_if(TokenType::ARROW))
     return_type = parseType(tokens);
 
-  tokens.expect_then_pop(TokenType::LBRACE,
-                         "Expected lbrace in function declaration");
+  tokens.expect_then_pop(TokenType::LBRACE, "Expected lbrace in function declaration", LOMError::Stage::ParsingError);
 
   tu.registerFunction(std::move(return_type), std::move(ident),
                       std::move(parameter_list),

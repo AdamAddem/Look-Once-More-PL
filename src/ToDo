@@ -1,10 +1,17 @@
 Lexer:
     Add debug info to tokens for better error handling
 
-FirstParse:
-SecondParse:
+First/Second Parse:
+    Add do-while and switch
+
+Grammar:
+    Fully integrate the generated operator enum
+    Make left and right associative categories within the generator definition
+
+Validation:
 
 General:
+    -Refactor token_handler to return views of tokens instead of creating a new token_handler
     -Add variant functionality
     -Add cast functionality
     -Add @ functionality

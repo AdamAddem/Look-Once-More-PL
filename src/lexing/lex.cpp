@@ -1,7 +1,8 @@
 #include "lex.hpp"
+
 #include "../debug_flags.hpp"
+#include "error.hpp"
 #include <cctype>
-#include <sstream>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -15,78 +16,14 @@ using namespace Lexer;
 struct FileInAnalysis {
   std::ifstream stream;
   uint32_t needs_closing_paren{0};
-  uint32_t line_number{0};
+  uint32_t line_number{1};
   std::vector<Token> token_list;
-
-  std::stringstream buff;
   bool skip_whitespace{false};
-
-  int getc() {
-    if (buff.str().empty())
-      fill_buff();
-
-    int c = buff.get();
-    if (!skip_whitespace)
-      return c;
-
-    while (std::isspace(c)) {
-      c = buff.get();
-    }
-
-    if (c == EOF) {
-      if (buff.str().empty())
-        fill_buff();
-      return getc();
-    }
-
-    return c;
-  }
-
-  int peek() {
-    if (buff.str().empty())
-      fill_buff();
-
-    return buff.peek();
-  }
-
-  void putback(char c) {
-    if (buff.str().empty())
-      fill_buff();
-
-    buff.putback(c);
-  }
-
-  void fill_buff() {
-    buff.clear();
-    std::string newline;
-    std::getline(stream, newline);
-    buff << newline;
-    ++line_number;
-  }
-
-  std::string next() {
-    if (buff.str().empty())
-      fill_buff();
-
-    std::string line;
-    buff >> line;
-    return line;
-  }
-
-  void skipws() {
-    skip_whitespace = true;
-  }
-
-  void noskipws() {
-    skip_whitespace = false;
-  }
-
-
 };
 
 /* Lexer Functions */
 
-static int charToEscapeSequenceEquivalent(int c) {
+static int charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
   switch (c) {
   case 'n':
     return '\n';
@@ -109,15 +46,14 @@ static int charToEscapeSequenceEquivalent(int c) {
   case 'v':
     return '\v';
   default:
-    throw std::runtime_error("Unknown escape sequence.");
+    throw LexingError("Unknown escape sequence.", std::to_string(c), file.line_number);
   }
 }
 
 // called when opening quotes already consumed
 static void grabStringLiteral(FileInAnalysis &file) {
   std::string literal;
-  file.noskipws();
-  int c = file.getc();
+  int c = file.stream.get();
   while (c != EOF) {
     // stupid and dumb
     switch (c) {
@@ -126,57 +62,54 @@ static void grabStringLiteral(FileInAnalysis &file) {
 
     case '\n':
     case EOF:
-      throw std::runtime_error("Expected ending \" in string literal");
+      throw LexingError("Expected ending \" in string literal.", "Reached end of file.", file.line_number);
 
     case '\\':
-      c = charToEscapeSequenceEquivalent(file.getc());
+      c = charToEscapeSequenceEquivalent(file, file.stream.get());
       [[fallthrough]];
     default:
       literal.push_back(static_cast<char>(c));
     }
-    c = file.getc();
+    c = file.stream.get();
   }
 
 ending_quote_found: // don't crucify me for this pls
 
-  file.token_list.emplace_back(TokenType::STRING_LITERAL, literal);
-  file.skipws();
+  file.token_list.emplace_back(TokenType::STRING_LITERAL, literal, file.line_number);
 }
 
 // called when opening single-quote already consumed
 static void grabCharLiteral(FileInAnalysis &file) {
-  file.noskipws();
-
-  int c1 = file.getc();
-  const int c2 = file.getc();
+  int c1 = file.stream.get();
+  const int c2 = file.stream.get();
 
   if (c1 == '\\') {
-    c1 = charToEscapeSequenceEquivalent(c2);
-    if (file.getc() != '\'')
-      throw std::runtime_error("Expected ending ' in char literal.");
+    c1 = charToEscapeSequenceEquivalent(file, c2);
+    if (file.stream.get() != '\'')
+      throw LexingError("Expected ending ' in char literal.", std::to_string(static_cast<char>(c1)), file.line_number);
   } else if (c2 != '\'')
-    throw std::runtime_error("Expected ending ' in char literal.");
+    throw LexingError("Expected ending ' in char literal.", std::to_string(static_cast<char>(c2)), file.line_number);
 
-  file.token_list.emplace_back(TokenType::CHAR_LITERAL, c1);
-  file.skipws();
+  file.token_list.emplace_back(TokenType::CHAR_LITERAL, c1, file.line_number);
 }
 
-static void grabSymbol(FileInAnalysis &file, char c) {
-  file.skipws();
+static void grabSymbol(FileInAnalysis &file) {
   TokenType type;
+  const int c = file.stream.get();
   std::string symbol(1, static_cast<char>(c));
   switch (c) {
+
   // compound symbols up first, single char symbols down there
   case '+':
   case '-':
-    if (file.peek() == c) {
-      symbol.push_back(static_cast<char>(file.getc()));
+    if (file.stream.peek() == c) {
+      symbol.push_back(static_cast<char>(file.stream.get()));
       type = stringToTokenType.at(symbol);
       break;
     }
 
-    if (c == '-' && file.peek() == '>') {
-      file.getc();
+    if (c == '-' && file.stream.peek() == '>') {
+      file.stream.get();
       type = TokenType::ARROW;
       break;
     }
@@ -185,19 +118,18 @@ static void grabSymbol(FileInAnalysis &file, char c) {
   case '*':
   case '^':
   case '%':
-    if (file.peek() == '=') {
+    if (file.stream.peek() == '=') {
       // desugaring for x _= (...) -> x = x _ (...)
       const auto &d = file.token_list.back();
       if (d.type != TokenType::IDENTIFIER)
-        throw std::runtime_error(
-            "Expected identifier to the left of assignment operator");
+        throw LexingError("Expected identifier to the left of assignment operator.", d.toString(), file.line_number);
 
-      file.token_list.emplace_back(TokenType::ASSIGN);
+      file.token_list.emplace_back(TokenType::ASSIGN, file.line_number);
       file.token_list.emplace_back(d);
-      file.token_list.emplace_back(stringToTokenType.at(symbol));
-      file.token_list.emplace_back(TokenType::LPAREN);
+      file.token_list.emplace_back(stringToTokenType.at(symbol), file.line_number);
+      file.token_list.emplace_back(TokenType::LPAREN, file.line_number);
       ++file.needs_closing_paren;
-      file.getc();
+      file.stream.get();
       return;
     }
     [[fallthrough]];
@@ -205,8 +137,8 @@ static void grabSymbol(FileInAnalysis &file, char c) {
 
   case '<':
   case '>':
-    if (file.peek() == '=')
-      symbol.push_back(static_cast<char>(file.getc()));
+    if (file.stream.peek() == '=')
+      symbol.push_back(static_cast<char>(file.stream.get()));
     [[fallthrough]];
 
   case '(':
@@ -221,16 +153,16 @@ static void grabSymbol(FileInAnalysis &file, char c) {
     break;
 
   case '!':
-    if (file.peek() == '=') [[likely]] {
-      file.getc();
+    if (file.stream.peek() == '=') [[likely]] {
+      file.stream.get();
       type = TokenType::KEYWORD_NOT_EQUAL;
       break;
     }
-    throw std::runtime_error("! token not supported");
+    throw LexingError("! token not supported.", "", file.line_number);
 
   case '=':
-    if (file.peek() == '=') {
-      file.getc();
+    if (file.stream.peek() == '=') {
+      file.stream.get();
       type = TokenType::KEYWORD_EQUALS;
     }
     else
@@ -240,7 +172,7 @@ static void grabSymbol(FileInAnalysis &file, char c) {
 
   case ';':
     while (file.needs_closing_paren) {
-      file.token_list.emplace_back(TokenType::RPAREN);
+      file.token_list.emplace_back(TokenType::RPAREN, file.line_number);
       --file.needs_closing_paren;
     }
     type = TokenType::SEMI_COLON;
@@ -254,22 +186,19 @@ static void grabSymbol(FileInAnalysis &file, char c) {
     return;
 
   default:
-    std::string error_msg("Invalid symbol found: ");
-      std::cout << c << std::endl;
-      std::cout << file.buff.str() << std::endl;
-    throw std::runtime_error(error_msg);
+    throw LexingError("Invalid symbol found.", std::to_string(static_cast<char>(c)), file.line_number);
   }
 
-  file.token_list.emplace_back(type);
+  file.token_list.emplace_back(type, file.line_number);
 }
 
 // first digit in front of file
-static void grabNumber(FileInAnalysis &file, char first_dig) {
+static void grabNumber(FileInAnalysis &file) {
   auto type = TokenType::INT_LITERAL;
-  TokenValue value;
-  std::string num_stringrep(1, first_dig);
-  int c;
-  while ((c = file.getc()) != EOF) {
+  Token::TokenValue value;
+  int c = file.stream.get();
+  std::string num_stringrep(1, c);
+  while ((c = file.stream.get()) != EOF) {
     // i hate file handling so much, replace
     // this stupid monkey code eventually
     if (c == 'f') {
@@ -284,7 +213,7 @@ static void grabNumber(FileInAnalysis &file, char first_dig) {
     }
 
     if (c < '0' || c > '9') {
-      file.putback(static_cast<char>(c));
+      file.stream.putback(static_cast<char>(c));
       break;
     }
 
@@ -303,66 +232,81 @@ static void grabNumber(FileInAnalysis &file, char first_dig) {
     break;
 
   default:
-    throw std::runtime_error(
-        "Invalid numeric literal type found? This shouldn't happen.");
+    throw LexingError("Invalid numeric literal type found in grabNumber, this shouldn't happen.", num_stringrep, file.line_number);
   }
 
-  file.token_list.emplace_back(type, std::move(value));
+  file.token_list.emplace_back(type, std::move(value), file.line_number);
 }
 
 // first letter in front of file
-static void grabIdentOrKeyword(FileInAnalysis &file, char first) {
-  int c = file.getc();
-  std::string word(1, first);
+static void grabIdentOrKeyword(FileInAnalysis &file) {
+  int c = file.stream.get();
+  std::string word;
   while (c != EOF) {
-    if (!std::isalnum(c))
+    if (!std::isalnum(c) && c != '_')
       break;
 
     word.push_back(static_cast<char>(c));
-    c = file.getc();
+    c = file.stream.get();
   }
-  file.putback(static_cast<char>(c));
+  file.stream.putback(static_cast<char>(c));
 
   if (stringToTokenType.contains(word)) {
-    file.token_list.emplace_back(stringToTokenType.at(word));
+    file.token_list.emplace_back(stringToTokenType.at(word), file.line_number);
     return;
   }
   if (word == "elif") {
-    file.token_list.emplace_back(TokenType::KEYWORD_ELSE);
-    file.token_list.emplace_back(TokenType::KEYWORD_IF);
+    file.token_list.emplace_back(TokenType::KEYWORD_ELSE, file.line_number);
+    file.token_list.emplace_back(TokenType::KEYWORD_IF, file.line_number);
     return;
   }
   if (word == "true") [[unlikely]] {
-    file.token_list.emplace_back(TokenType::BOOL_LITERAL, TokenValue(1));
+    file.token_list.emplace_back(TokenType::BOOL_LITERAL, Token::TokenValue(1), file.line_number);
     return;
   }
   if (word == "false") [[unlikely]] {
-    file.token_list.emplace_back(TokenType::BOOL_LITERAL, TokenValue(0));
+    file.token_list.emplace_back(TokenType::BOOL_LITERAL, Token::TokenValue(0), file.line_number);
     return;
   }
 
-  file.token_list.emplace_back(TokenType::IDENTIFIER, TokenValue(std::move(word)));
+  file.token_list.emplace_back(TokenType::IDENTIFIER, Token::TokenValue(std::move(word)), file.line_number);
+}
+
+static void skipWS(FileInAnalysis& file) {
+  while (std::isspace(file.stream.peek())) {
+    const int c = file.stream.get();
+     if (c == '\n')
+       ++file.line_number;
+
+     else if (c == EOF)
+      return;
+  }
+}
+
+static bool canStartIdentifier(const int c) {
+  return std::isalpha(c) || c == '_';
 }
 
 TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
   FileInAnalysis file;
   file.stream.open(file_path);
   if (!file.stream)
-    throw std::runtime_error("File Not Found");
+    throw LexingError("File not found.", file_path, 0);
 
   while (true) {
-    file.skipws();
-    const int c = file.getc();
+    skipWS(file);
+    const int c = file.stream.peek();
     if (c == EOF)
       break;
 
     if (c >= '0' && c <= '9')
-      grabNumber(file, c);
-    else if (std::isalpha(c))
-      grabIdentOrKeyword(file, c);
+      grabNumber(file);
+    else if (canStartIdentifier(c))
+      grabIdentOrKeyword(file);
     else
-      grabSymbol(file, c);
+      grabSymbol(file);
   }
+
   file.stream.close();
 
   std::reverse(// tokens now organized such that back is first-most token.

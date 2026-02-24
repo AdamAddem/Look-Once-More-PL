@@ -30,6 +30,8 @@ add_executable(LookOnceMore
         src/validation/symbol_table.hpp
         src/validation/ast_validation.cpp
         src/validation/ast_validation.hpp
+        src/error.hpp
+        src/error.cpp
 
 )
 

@@ -1,3 +1,4 @@
+#include "error.hpp"
 #include "lex.hpp"
 #include <functional>
 #include <iostream>
@@ -6,18 +7,25 @@
 
 using namespace Lexer;
 
-void Token::throw_if(const TokenType unwanted_type, const char *err_message) const {
-  if (type == unwanted_type)
-    throw std::runtime_error(err_message);
+void Token::throw_if(const TokenType unwanted_type, const char* err_msg, const LOMError::Stage error_stage) const {
+  if (type == unwanted_type) {
+   if (error_stage == LOMError::Stage::LexingError)
+     throw LexingError(err_msg, *this);
+
+   throw ParsingError(err_msg, *this);
+  }
 }
 
-void Token::throw_if_not(const TokenType expected_type,
-                         const char *err_message) const {
-  if (type != expected_type)
-    throw std::runtime_error(err_message);
+void Token::throw_if_not(const TokenType expected_type, const char* err_msg, const LOMError::Stage error_stage) const {
+  if (type != expected_type) {
+    if (error_stage == LOMError::Stage::LexingError)
+      throw LexingError(err_msg, *this);
+
+    throw ParsingError(err_msg, *this);
+  }
 }
 
-std::string Token::toString() {
+std::string Token::toString() const {
   if (type == TokenType::IDENTIFIER)
     return std::get<std::string>(value);
 
@@ -45,31 +53,53 @@ std::string Token::toString() {
 }
 
 std::string Token::toDebugString() const {
-  if (type == TokenType::IDENTIFIER)
-    return std::string("id::") + std::get<std::string>(value);
+
+  std::string retval;
+  if (type == TokenType::IDENTIFIER) {
+    retval.append("id::");
+    retval.append( std::get<std::string>(value));
+    return retval;
+  }
 
   if (isLiteral()) {
     switch (type) {
     case TokenType::INT_LITERAL:
-      return std::to_string(std::get<int>(value)) + std::string("i");
+      retval.append(std::to_string(std::get<int>(value)));
+      retval.push_back('i');
+      break;
     case TokenType::FLOAT_LITERAL:
-      return std::to_string(std::get<float>(value)) + std::string("f");
+      retval.append(std::to_string(std::get<float>(value)));
+      retval.push_back('f');
+      break;
     case TokenType::DOUBLE_LITERAL:
-      return std::to_string(std::get<double>(value)) + std::string("d");
+      retval.append(std::to_string(std::get<double>(value)));
+      retval.push_back('d');
+      break;
     case TokenType::CHAR_LITERAL:
-      return std::string("\'") + static_cast<char>(std::get<int>(value)) + std::string("\'");
+      retval.push_back('\'');
+      retval.push_back(static_cast<char>(std::get<int>(value)));
+      retval.push_back('\'');
+      break;
     case TokenType::STRING_LITERAL:
-      return std::string("\"") + std::get<std::string>(value) + std::string("\"");
+      retval.push_back('\"');
+      retval.append(std::get<std::string>(value));
+      retval.push_back('\"');
+      break;
+
     case TokenType::BOOL_LITERAL:
-      return std::get<int>(value) ? "true_b" : "false_b";
+      retval.append(std::get<int>(value) ? "true_b" : "false_b");
+      break;
 
     default:
       throw std::runtime_error("Error in isLiteral method");
     }
+    return retval;
   }
 
-  if (type == TokenType::KEYWORD_DEVOID) [[unlikely]]
-    return "devoid";
+  if (type == TokenType::KEYWORD_DEVOID) [[unlikely]] {
+    retval.append("devoid");
+    return retval;
+  }
 
 
   return tokenTypeToString(type);
@@ -93,34 +123,25 @@ void TokenHandler::print(const unsigned initial_indent) {
   const auto end = token_list.rend();
 
   auto indent{initial_indent};
-  auto withinParenthesis{0uz};
+  unsigned last_linenum{0};
   while (curr != end) {
     const auto type = curr->type;
+    const unsigned ln = curr->line_number;
+    while (ln > last_linenum) {
+      std::cout << std::endl;
+      ++last_linenum;
+      std::cout << last_linenum << ": " << std::string(indent, ' ');
+    }
 
-    // all this extra shit is just to make the output look somewhat pretty,
-    // otherwise its just a straight line of tokens
-    // probably
     if (type == TokenType::LBRACE) {
-      std::cout << '{' << std::endl;
+      std::cout << "{ ";
       indent++;
-      std::cout << std::string(indent, ' ');
-    } else if (type == TokenType::LPAREN) {
-      std::cout << "( ";
-      withinParenthesis++;
-    } else if (type == TokenType::RPAREN) {
-      std::cout << ") ";
-      withinParenthesis--;
-    } else if (type == TokenType::RBRACE) {
-      std::cout << "\b}\n" << std::endl;
+    }
+    else if (type == TokenType::RBRACE) {
+      std::cout << "\b} ";
       indent--;
-      std::cout << std::string(indent, ' ');
-    } else if (type == TokenType::SEMI_COLON) {
-      std::cout << "; ";
-      if (withinParenthesis == 0) {
-        std::cout << std::endl;
-        std::cout << std::string(indent, ' ');
-      }
-    } else
+    }
+    else
       std::cout << curr->toDebugString() << " ";
 
     ++curr;
@@ -140,14 +161,16 @@ bool TokenHandler::pop_if(const TokenType _type) {
 }
 
 void TokenHandler::reject_then_pop(const TokenType unwanted_type,
-                                   const char *throw_message) {
-  token_list.back().throw_if(unwanted_type, throw_message);
+                                   const char *err_msg,
+                                   const LOMError::Stage error_stage) {
+  token_list.back().throw_if(unwanted_type, err_msg, error_stage);
   token_list.pop_back();
 }
 
 void TokenHandler::expect_then_pop(const TokenType expected_type,
-                                   const char *throw_message) {
-  token_list.back().throw_if_not(expected_type, throw_message);
+                                   const char *err_msg,
+                                   const LOMError::Stage error_stage) {
+  token_list.back().throw_if_not(expected_type, err_msg, error_stage);
   token_list.pop_back();
 }
 

@@ -1,6 +1,6 @@
 builds/
 Text/
-src/lexing/tokentype_generator.cpp
+enum_definitions/tokentype_generator.cpp
 code.lom
 src/ToDo
 .idea/

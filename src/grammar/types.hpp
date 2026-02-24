@@ -117,33 +117,48 @@ public:
     return false;
   }
 
-  void print() const {
+
+  [[nodiscard]] std::string toString() const {
+    std::string retval;
     if (is_mutable)
-      std::cout << "mut ";
-    if (subtype != nullptr)
-      throw std::runtime_error("Printing for references and pointers not supported!");
+      retval.append("mut ");
+    if (subtype != nullptr) {
+      if (getTypename().empty())
+        throw std::runtime_error("Printing for references not supported!");
+
+      retval.append(getTypename());
+      retval.append(" -> ");
+      retval.append(subtype->toString());
+      return retval;
+    }
 
     if (std::holds_alternative<std::string>(type_name)) {
-      std::cout << std::get<std::string>(type_name);
+      retval.append(std::get<std::string>(type_name));
     }
     else {
       const auto& types = std::get<Types>(type_name);
 
-      std::cout << "<";
+      retval.push_back('<');
       for (const auto& type : types) {
-        type.print();
-        std::cout << ", ";
+        retval.append(type.toString());
+        retval.append(", ");
       }
-      std::cout << "\b\b>";
-
+      retval.pop_back();
+      retval.pop_back();
+      retval.push_back('>');
     }
+     return retval;
+  }
+
+  void print() const {
+    std::cout << toString();
   }
 };
 
 static constexpr Type devoid_type{"", false};
 static constexpr Type int_literal_type = {"i32", false};
 static constexpr Type float_literal_type = {"f32", false};
-static constexpr Type double_literal_type = {"f32", false};
+static constexpr Type double_literal_type = {"f64", false};
 static constexpr Type bool_literal_type = {"bool", false};
 static constexpr Type char_literal_type = {"char", false};
 static constexpr Type string_literal_type = {"string", false};

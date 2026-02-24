@@ -1,39 +1,41 @@
 #pragma once
 #include "tokentype.hpp"
+#include "../error.hpp"
 #include <string>
 #include <variant>
 #include <vector>
 
 namespace Lexer {
 
-using TokenValue = std::variant<int, float, double, std::string>;
 
 struct Token {
+  using TokenValue = std::variant<int, float, double, std::string>;
   TokenType type;
   TokenValue value;
   unsigned line_number{};
 
-  explicit Token(const TokenType _type) : type(_type) {};
+  Token(const TokenType _type, const unsigned line_num) : type(_type), line_number(line_num) {};
 
-  Token(const TokenType _type, TokenValue &&_value)
-      : type(_type), value(std::move(_value)) {};
+  Token(const TokenType _type, TokenValue &&_value, const unsigned line_num)
+      : type(_type), value(std::move(_value)), line_number(line_num) {};
 
   Token(const Token &) = default;
 
   Token(Token &&other) noexcept
-      : type(other.type), value(std::move(other.value)) {}
+      : type(other.type), value(std::move(other.value)), line_number(other.line_number) {}
 
   Token &operator=(const Token &) = default;
 
   Token &operator=(Token &&other) noexcept {
     type = other.type;
     value = std::move(other.value);
+    line_number = other.line_number;
     return *this;
   }
 
 
-  void throw_if(TokenType unwanted_type, const char *err_message) const;
-  void throw_if_not(TokenType expected_type, const char *err_message) const;
+  void throw_if(TokenType unwanted_type, const char* err_msg, LOMError::Stage error_stage) const;
+  void throw_if_not(TokenType expected_type, const char* err_msg, LOMError::Stage error_stage) const;
 
   [[nodiscard]] constexpr bool is(const TokenType _type) const { return type == _type; }
   [[nodiscard]] constexpr bool isPrimitive() const {return isCategoryPRIMITIVES(type);}
@@ -41,7 +43,7 @@ struct Token {
   [[nodiscard]] constexpr bool isPointer() const {return isCategoryPOINTERS(type);}
   [[nodiscard]] constexpr bool isTypeModifier() const {return isCategoryTYPE_MODIFIERS(type);}
 
-  [[nodiscard]] std::string toString();
+  [[nodiscard]] std::string toString() const;
   [[nodiscard]] std::string toDebugString() const;
 
   [[nodiscard]] int getInt() const;
@@ -95,9 +97,9 @@ public:
 
   bool pop_if(TokenType _type);
 
-  void reject_then_pop(TokenType unwanted_type, const char *throw_message);
+  void reject_then_pop(TokenType unwanted_type, const char* err_msg, LOMError::Stage error_stage);
+  void expect_then_pop(TokenType expected_type, const char* err_msg, LOMError::Stage error_stage);
 
-  void expect_then_pop(TokenType expected_type, const char *throw_message);
 
   void print(unsigned initial_indent = 0);
 

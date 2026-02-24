@@ -62,7 +62,8 @@ void PrintStatementVisitor::operator()(const ForLoop &stmt) const noexcept {
     std::cout << "  ";
 
   std::cout << "for (";
-  std::visit(PrintStatementVisitor{}, stmt.var_statement->value);
+  if (stmt.var_statement)
+    std::visit(PrintStatementVisitor{}, stmt.var_statement->value);
   std::cout << " ";
   if (stmt.condition)
     std::visit(PrintExpressionVisitor{}, stmt.condition->value);

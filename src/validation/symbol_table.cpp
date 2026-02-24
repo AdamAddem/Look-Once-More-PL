@@ -6,41 +6,30 @@
 // this probably shouldn't be here
 // and also should be done way better idk
 SymbolTable::SymbolTable() {
-  type_registry[""] = {
-    .arithmetic = false, .callable = false, .array = false
-  };
+  type_registry[""] = {.arithmetic = false, .callable = false, .array = false};
+  type_registry["devoid"] = {.arithmetic = false, .callable = false, .array = false}; //likely redundant
 
-  type_registry["i8"] = {
-      .arithmetic = true, .callable = false, .array = false};
-  type_registry["i16"] = {
-    .arithmetic = true, .callable = false, .array = false};
-  type_registry["i32"] = {
-    .arithmetic = true, .callable = false, .array = false};
-  type_registry["i64"] = {
-      .arithmetic = true, .callable = false, .array = false};
+  type_registry["i8"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["i16"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["i32"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["i64"] = {.arithmetic = true, .callable = false, .array = false};
 
-  type_registry["u8"] = {
-    .arithmetic = true, .callable = false, .array = false};
-  type_registry["u16"] = {
-    .arithmetic = true, .callable = false, .array = false};
-  type_registry["u32"] = {
-    .arithmetic = true, .callable = false, .array = false};
-  type_registry["u64"] = {
-    .arithmetic = true, .callable = false, .array = false};
+  type_registry["u8"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["u16"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["u32"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["u64"] = {.arithmetic = true, .callable = false, .array = false};
 
-  type_registry["f32"] = {
-    .arithmetic = true, .callable = false, .array = false};
-  type_registry["f64"] = {
-    .arithmetic = true, .callable = false, .array = false};
+  type_registry["f32"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["f64"] = {.arithmetic = true, .callable = false, .array = false};
 
-  type_registry["char"] = {
-      .arithmetic = true, .callable = false, .array = false};
-  type_registry["string"] = {
-      .arithmetic = false, .callable = false, .array = false};
-  type_registry["bool"] = {
-      .arithmetic = true, .callable = false, .array = false};
-  type_registry["devoid"] = {
-      .arithmetic = false, .callable = false, .array = false};
+  type_registry["char"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["string"] = {.arithmetic = false, .callable = false, .array = false};
+  type_registry["bool"] = {.arithmetic = true, .callable = false, .array = false};
+
+
+  type_registry["raw"] = {.arithmetic = false, .callable = false, .array = false};
+  type_registry["unique"] = {.arithmetic = false, .callable = false, .array = false};
+  type_registry["vague"] = {.arithmetic = false, .callable = false, .array = false};
 }
 
 void SymbolTable::Function::print() const {
@@ -57,13 +46,9 @@ void SymbolTable::Function::print() const {
   std::cout << ")";
 }
 
-void SymbolTable::FunctionSignature::addFunction(Type &&t,
-                                                 std::vector<Type> &&param_types) {
-  functions.emplace_back(std::move(t), std::move(param_types));
-}
+void SymbolTable::FunctionSignature::addFunction(Type &&t, std::vector<Type> &&param_types) { functions.emplace_back(std::move(t), std::move(param_types)); }
 
-Type SymbolTable::FunctionSignature::returnTypeOfCall( //untested
-    const std::vector<Type> &provided_param) const {
+Type SymbolTable::FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) const {
   bool is_valid{false};
   Type ret_type{devoid_type};
   for (const auto &f : functions) {

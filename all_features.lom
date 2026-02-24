@@ -1,0 +1,70 @@
+global mut i32 mutable_global = junk;
+global i32 immutable_global = 5;
+
+fn empty_function() {}
+fn parameter_function(i32 strict, <i32, f32> variant) {}
+fn return_type_function() -> string { return "hello"; }
+
+
+fn if_statements() {
+    mut bool condition = true;
+    if(condition) ;
+    if(true) {}
+    if(false) {}
+    if(condition) { condition = false; }
+    else if(condition) { condition = true; }
+    elif(true) { condition = false; }
+    else mut i32 scoped = junk;
+    return;
+}
+
+fn while_statements() {
+    mut bool condition = true;
+    while(condition) ;
+    while(true) {}
+    while(false) {}
+    while(condition eq false) {}
+    while(condition not_eq true) { mut i32 scoped = 5; }
+}
+
+fn for_statements(bool condition) {
+    for(mut i32 i = 0; condition; ++i) {}
+    for(mut i32 i = 0; condition; ) {}
+
+    for(mut i32 i = 0; ; ) {}
+    for( ; ; ) {}
+}
+
+fn operators() {
+    mut i32 x = 0;
+
+    5+5; x+5; 5+x; x+x;
+    5-5; x-5; 5-x; x-x;
+    5*5; x*5; 5*x; x*x;
+    5/5; x/5; 5/x; x/x;
+    5^5; x^5; 5^x; x^x;
+    5%5; x%5; 5%x; x%x;
+
+    x=5; x=x;
+    bool condition =
+        (5<5) and (x<5) and (5<x) and (x<x) and
+        (5>5) or (x>5) or (5>x) or (x>x) xor
+        (5<=5) xor (x<=5) xor (5<=x) xor (x<=x) xor
+        (5>=5) eq (x>=5) not_eq (5>=x);
+
+    5 bitand 5; x bitand 5; 5 bitand x; x bitand x;
+    5 bitor 5; x bitor 5; 5 bitor x; x bitor x;
+    5 bitxor 5; x bitxor 5; 5 bitxor x; x bitxor x;
+    5 bitnot 5; x bitnot 5; 5 bitnot x; x bitnot x;
+
+    not x;
+    ++x; x++;
+    -x;
+    --x; x--;
+}
+
+fn pointers() {
+    mut i32 object = 5;
+    raw -> mut i32 raw_const = @object;
+    mut raw -> mut i32 raw_mut = @object;
+}

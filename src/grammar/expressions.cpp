@@ -3,49 +3,6 @@
 #include <iostream>
 #include <utility>
 
-static void printOperator(const Operator op) {
-
-  static constexpr const char *opToString[]{"BEGIN_BINARY_OPS",
-                                            "+",
-                                            "-",
-                                            "*",
-                                            "/",
-                                            "^",
-                                            "%",
-                                            "=",
-                                            "<",
-                                            ">",
-                                            "<=",
-                                            ">=",
-                                            "and",
-                                            "or",
-                                            "xor",
-                                            "bitand",
-                                            "bitor",
-                                            "bitxor",
-                                            "bitnot",
-                                            "eq",
-                                            "not_eq",
-                                            "END_BINARY_OPS",
-
-                                            "BEGIN_UNARY_OPS",
-                                            "++",
-                                            "++",
-                                            "-",
-                                            "--",
-                                            "--",
-                                            "@",
-                                            "NOT",
-                                            "END_UNARY_OPS",
-
-                                            "BEGIN_CASTS",
-                                            "cast",
-                                            "cast_if",
-                                            "unsafe_cast",
-                                            "END_CASTS"};
-
-  std::cout << opToString[std::to_underlying(op)];
-}
 
 [[maybe_unused]] static bool isLeftAssociative(const Operator op) {
   switch (op) {
@@ -62,19 +19,6 @@ static void printOperator(const Operator op) {
   }
 }
 
-static bool isPrefix(const Operator op) {
-  switch (op) {
-  case Operator::PRE_INCREMENT:
-  case Operator::PRE_DECREMENT:
-  case Operator::CAST:
-  case Operator::CAST_IF:
-  case Operator::UNSAFE_CAST:
-    return true;
-
-  default:
-    return false;
-  }
-}
 
 [[maybe_unused]] static bool returnsArithmetic(const Operator op) {
   switch (op) {
@@ -112,12 +56,14 @@ static bool isPrefix(const Operator op) {
 
 void PrintExpressionVisitor::operator()(
     const UnaryExpression &unary) const noexcept {
-  if (isPrefix(unary.opr)) {
-    printOperator(unary.opr);
+  if (isCategoryPREFIX_OPS(unary.opr)) {
+    std::cout << operatorToString(unary.opr);
+    if (unary.opr == Operator::NOT)
+      std::cout << ' ';
     std::visit(PrintExpressionVisitor{}, unary.expr->value);
   } else {
     std::visit(PrintExpressionVisitor{}, unary.expr->value);
-    printOperator(unary.opr);
+    std::cout << operatorToString(unary.opr);
   }
 }
 
@@ -126,9 +72,7 @@ void PrintExpressionVisitor::operator()(
   std::cout << "(";
   std::visit(PrintExpressionVisitor{}, binary.expr_left->value);
 
-  std::cout << " ";
-  printOperator(binary.opr);
-  std::cout << " ";
+  std::cout << ' ' << operatorToString(binary.opr) << ' ';
 
   std::visit(PrintExpressionVisitor{}, binary.expr_right->value);
   std::cout << ")";
@@ -181,11 +125,11 @@ void PrintExpressionVisitor::operator()(
       std::cout << "false";
     return;
   case LiteralExpression::CHAR:
-    std::cout << static_cast<char>(std::get<int>(literal.value));
+    std::cout << '\'' << static_cast<char>(std::get<int>(literal.value)) << '\'';
     return;
 
   case LiteralExpression::STRING:
-    std::cout << std::get<std::string>(literal.value);
+    std::cout << '"' << std::get<std::string>(literal.value) << '"';
     return;
 
   default:
@@ -195,4 +139,96 @@ void PrintExpressionVisitor::operator()(
 
 void PrintExpressionVisitor::operator()(const TemporaryExpr &) const noexcept {
   std::cout << "temporaryexpr";
+}
+
+std::string ExpressionToStringVisitor::operator()(
+    const UnaryExpression &unary) const noexcept {
+  std::string retval;
+  if (isCategoryPREFIX_OPS(unary.opr)) {
+    retval.append(operatorToString(unary.opr));
+    if (unary.opr == Operator::NOT)
+      retval.push_back(' ');
+    retval.append(std::visit(ExpressionToStringVisitor{}, unary.expr->value));
+  } else {
+    retval.append(std::visit(ExpressionToStringVisitor{}, unary.expr->value));
+    retval.append(operatorToString(unary.opr));
+  }
+
+  return retval;
+}
+
+std::string ExpressionToStringVisitor::operator()(
+    const BinaryExpression &binary) const noexcept {
+  std::string retval;
+  retval.push_back('(');
+  retval.append(std::visit(ExpressionToStringVisitor{}, binary.expr_left->value));
+
+  retval.push_back(' ');
+  retval.append(operatorToString(binary.opr));
+  retval.push_back(' ');
+
+  retval.append(std::visit(ExpressionToStringVisitor{}, binary.expr_right->value));
+  retval.push_back(')');
+
+  return retval;
+}
+
+std::string ExpressionToStringVisitor::operator()(
+    const CallingExpression &calling) const noexcept {
+  std::string retval = std::visit(ExpressionToStringVisitor{}, calling.func->value);
+  retval.push_back('(');
+  for (const auto p : calling.parameters) {
+    retval.append(std::visit(ExpressionToStringVisitor{}, p->value));
+    retval.append(", ");
+  }
+  if (!calling.parameters.empty()) {
+   retval.pop_back();
+   retval.pop_back();
+  }
+
+  retval.push_back(')');
+  return retval;
+}
+
+std::string ExpressionToStringVisitor::operator()(
+    const SubscriptExpression &subscript) const noexcept {
+  std::string retval = std::visit(ExpressionToStringVisitor{}, subscript.arr->value);
+  retval.push_back('[');
+  retval.append(std::visit(ExpressionToStringVisitor{}, subscript.inside->value));
+  retval.push_back(']');
+  return retval;
+}
+
+std::string ExpressionToStringVisitor::operator()(
+    const IdentifierExpression &identifier) const noexcept {
+  return identifier.ident;
+}
+
+std::string ExpressionToStringVisitor::operator()(
+    const LiteralExpression &literal) const noexcept {
+  switch (literal.type) {
+  case LiteralExpression::INT:
+    return std::to_string(std::get<int>(literal.value));
+  case LiteralExpression::FLOAT:
+    return std::to_string(std::get<float>(literal.value));
+  case LiteralExpression::DOUBLE:
+    return std::to_string(std::get<double>(literal.value));
+  case LiteralExpression::BOOL:
+    if (std::get<int>(literal.value) == 1)
+      return "true";
+
+    return "false";
+  case LiteralExpression::CHAR:
+    return std::string(1, static_cast<char>(std::get<int>(literal.value)));
+
+  case LiteralExpression::STRING:
+    return std::get<std::string>(literal.value);
+
+  default:
+    assert(false && "invalid literalexpression type");
+  }
+}
+
+std::string ExpressionToStringVisitor::operator()(const TemporaryExpr &) const noexcept {
+  return "temporaryexpr";
 }

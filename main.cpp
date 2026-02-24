@@ -2,6 +2,7 @@
 #include <unordered_map>
 
 #include "debug_flags.hpp"
+#include "error.hpp"
 #include "src/lexing/lex.hpp"
 #include "src/parsing/parse.hpp"
 #include "src/validation/ast_validation.hpp"
@@ -48,6 +49,20 @@ int main(const int argc, const char* argv[]) {
 
   if (argc == 3) set_flags(argv[2]);
 
-  validateTU(parseTokens(tokenizeFile(argv[1])));
+  try {
+    validateTU(parseTokens(tokenizeFile(argv[1])));
+  }
+  catch (LOMError& e) {
+    if (e.error_stage == LOMError::Stage::LexingError)
+      std::cout << "Lexing ";
+    else if (e.error_stage == LOMError::Stage::ParsingError)
+      std::cout << "Parsing ";
+    else if (e.error_stage == LOMError::Stage::ValidationError)
+      std::cout << "Validation ";
+
+    std::cout << e.error_message << std::endl;
+    return 1;
+  }
+
   return 0;
 }

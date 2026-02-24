@@ -283,6 +283,20 @@ static void skipWS(FileInAnalysis& file) {
   }
 }
 
+static bool skipComments(FileInAnalysis& file) {
+  constexpr static auto stream_max = std::numeric_limits<std::streamsize>::max();
+  file.stream.get();
+  if (file.stream.peek() == '/') {
+    file.stream.get();
+    file.stream.ignore(stream_max, '\n');
+    ++file.line_number;
+    return true;
+  }
+
+  file.stream.putback('/');
+  return false;
+}
+
 static bool canStartIdentifier(const int c) {
   return std::isalpha(c) || c == '_';
 }
@@ -298,6 +312,9 @@ TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
     const int c = file.stream.peek();
     if (c == EOF)
       break;
+    if (c == '/' && skipComments(file))
+      continue;
+
 
     if (c >= '0' && c <= '9')
       grabNumber(file);

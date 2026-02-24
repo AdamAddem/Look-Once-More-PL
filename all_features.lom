@@ -5,11 +5,15 @@ fn empty_function() {}
 fn parameter_function(i32 strict, <i32, f32> variant) {}
 fn return_type_function() -> string { return "hello"; }
 
+// fn commented_out_decl() {}
 
-fn if_statements() {
+
+fn if_statements() { //basic comment
     mut bool condition = true;
     if(condition) ;
-    if(true) {}
+    if(true) {
+        //comment in scope
+    }
     if(false) {}
     if(condition) { condition = false; }
     else if(condition) { condition = true; }
@@ -25,6 +29,9 @@ fn while_statements() {
     while(false) {}
     while(condition eq false) {}
     while(condition not_eq true) { mut i32 scoped = 5; }
+
+    while ( //comment in condition
+            false) {}
 }
 
 fn for_statements(bool condition) {

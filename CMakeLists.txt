@@ -42,6 +42,6 @@ add_executable(LookOnceMore
 )
 
 target_include_directories(LookOnceMore PRIVATE ${LLVM_INCLUDE_DIRS})
-llvm_map_components_to_libnames(LLVM_LIBS core support orcjit native)
+llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_TARGETS_TO_BUILD} core support irreader codegen mc mcparser option)
 target_link_libraries(LookOnceMore PRIVATE ${LLVM_LIBS})
 

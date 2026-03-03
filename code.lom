@@ -1,7 +1,10 @@
 global mut f32 mut_global = 5.f;
 
 
-fn incremented(mut i32 val) -> bool {
-    return val eq 5;
+fn fib(mut i32 val) -> i32 {
+    if(val eq 0) return 0;
+    if(val eq 1) return 1;
+
+    return fib(val-1) + fib(val-2);
 }
 

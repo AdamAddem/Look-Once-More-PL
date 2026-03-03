@@ -11,17 +11,46 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
+#include <llvm/TargetParser/Host.h>
+
 
 using namespace llvm;
 
 
 struct FunctionBuilder {
+  static constexpr std::string retval_location_name = "__retval";
   using LocalsMap = std::unordered_map<std::string, AllocaInst*>;
+  Type* return_type;
   Function* func;
+  BasicBlock* return_block;
+
   IRBuilder<> builder;
   LocalsMap locals;
 
-  FunctionBuilder(Function* f, BasicBlock* b, LocalsMap m) : func(f), builder(b), locals(std::move(m)) {}
+  FunctionBuilder(Type* ret_type, Function* function, BasicBlock* entry, BasicBlock* ret_block, LocalsMap locals_map) :
+  return_type(ret_type), func(function), return_block(ret_block), builder(entry), locals(std::move(locals_map)) {}
+
+  void finalizeFunction() {
+    if (!builder.GetInsertBlock()->back().isTerminator())
+      builder.CreateBr(return_block);
+    func->insert(func->end(), return_block);
+    builder.SetInsertPoint(return_block);
+    if (!return_type->isVoidTy()) {
+      Value* v = builder.CreateLoad(return_type, locals[retval_location_name]);
+      builder.CreateRet(v);
+    }
+    else
+      builder.CreateRetVoid();
+
+    if (verifyFunction(*func, &errs()))
+      throw BackendError("Failed to verify Function!", func->getName().str(), 0);
+  }
 
 };
 
@@ -104,11 +133,14 @@ public:
     Type* ret_type = func.return_type.getTypename() != "bool" ? getType(func.return_type) : i1;
     const auto func_type = FunctionType::get(ret_type, {arg_types.data(), arg_types.size()}, false);
     const auto llvmfunc = Function::Create(func_type, Function::ExternalLinkage, 0, func.name, module);
-    const auto entry = BasicBlock::Create(*context, "entry", llvmfunc);
+    const auto entry = BasicBlock::Create(*context, "__entry", llvmfunc);
+    const auto ending = BasicBlock::Create(*context, "__return");
     IRBuilder<> init(entry);
 
     auto arg = llvmfunc->arg_begin();
     FunctionBuilder::LocalsMap locals;
+    if (!ret_type->isVoidTy())
+      locals.emplace(FunctionBuilder::retval_location_name, init.CreateAlloca(ret_type, nullptr, FunctionBuilder::retval_location_name));
 
     auto i{0uz};
     for (const auto& v : func.parameter_list) {
@@ -123,7 +155,7 @@ public:
       ++i;
     }
 
-    return FunctionBuilder(llvmfunc, entry, std::move(locals));
+    return FunctionBuilder(ret_type, llvmfunc, entry, ending, std::move(locals));
   }
 
 
@@ -163,7 +195,6 @@ public:
 
     return result;
   }
-
   Value* genBinary(const AST::BinaryExpression& binary,  FunctionBuilder& f) const noexcept {
     Value* left = genExpression(*binary.expr_left, f);
     Value* right = genExpression(*binary.expr_right, f);
@@ -245,11 +276,22 @@ public:
     default:
       assert(false && "Binary operator not supported");
     }
+
     return result;
   }
-  Value* genCalling(const AST::CallingExpression &, [[maybe_unused]] FunctionBuilder& f) const noexcept {assert(false);}
-  Value* genSubscript(const AST::SubscriptExpression &, [[maybe_unused]] FunctionBuilder& f) const noexcept {assert(false);}
-  Value* genIdentifier(const AST::IdentifierExpression & identifier, [[maybe_unused]] FunctionBuilder& f) const noexcept {
+  Value* genCalling(const AST::CallingExpression& calling, FunctionBuilder& f) const noexcept {
+
+    std::vector<Value*> params;
+    params.reserve(calling.parameters.size());
+    for (const auto e : calling.parameters)
+     params.push_back(genExpression(*e, f));
+
+    const auto& d = std::get<AST::IdentifierExpression>(calling.func->value);
+    return f.builder.CreateCall(module->getFunction(d.ident), params);
+  }
+
+  Value* genSubscript(const AST::SubscriptExpression &, FunctionBuilder& ) const noexcept {assert(false);}
+  Value* genIdentifier(const AST::IdentifierExpression & identifier, FunctionBuilder& f) const noexcept {
     Value* v;
     Type* t;
     if (f.locals.contains(identifier.ident)) {
@@ -280,9 +322,7 @@ public:
       assert(false && "Invalid literal expression in codegen");
     }
   }
-
   Value* genTemporary(const AST::TemporaryExpr &, [[maybe_unused]] FunctionBuilder& f) const noexcept {assert(false);}
-
   Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) const {
     return utils_match(expr.value,
       utils_callon(const AST::UnaryExpression&, genUnary, f),
@@ -295,31 +335,64 @@ public:
       );
   }
 
-  void genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) const {
+  bool genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) const {
     IRBuilder<> func_entry(&f.func->getEntryBlock());
     AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type), nullptr);
     f.locals.emplace(declaration.ident, i);
     f.builder.CreateStore(i, genExpression(*declaration.expr, f));
+    return false;
   }
 
-  void genIfStatement(const AST::IfStatement& , FunctionBuilder& ) const {
+  bool genIfStatement(const AST::IfStatement& ifstmt, FunctionBuilder& f) const {
+    IRBuilder<>& builder = f.builder;
+    Value* condition_val = genExpression(*ifstmt.condition, f);
 
+    BasicBlock* thenBB = BasicBlock::Create(*context); f.func->insert(f.func->end(), thenBB);
+    BasicBlock* mergeBB = BasicBlock::Create(*context);
+    BasicBlock* elseBB = ifstmt.false_branch ? BasicBlock::Create(*context) : mergeBB;
+
+    builder.CreateCondBr(condition_val, thenBB, elseBB);
+
+    builder.SetInsertPoint(thenBB);
+
+    if (!genStatement(*ifstmt.true_branch, f))
+      builder.CreateBr(mergeBB);
+
+    f.func->insert(f.func->end(), elseBB);
+    builder.SetInsertPoint(elseBB);
+    if (ifstmt.false_branch) {
+      if (!genStatement(*ifstmt.false_branch, f))
+        builder.CreateBr(mergeBB);
+
+      f.func->insert(f.func->end(), mergeBB);
+      builder.SetInsertPoint(mergeBB);
+    }
+
+    return false;
   }
-
-  void genForLoop(const AST::ForLoop& , FunctionBuilder& ) const {}
-  void genWhileLoop(const AST::WhileLoop& , FunctionBuilder& ) const {}
-   void genScoped(const AST::ScopedStatement& , FunctionBuilder& ) const {}
-  void genReturn(const AST::ReturnStatement& ret, FunctionBuilder& f) const {
-    Value* retval{nullptr};
-    if (ret.return_value)
-      retval = genExpression(*ret.return_value, f);
-
-    f.builder.CreateRet( retval);
+  bool genForLoop(const AST::ForLoop& , FunctionBuilder& ) const {assert(false);}
+  bool genWhileLoop(const AST::WhileLoop& , FunctionBuilder& ) const {assert(false);}
+  bool genScoped(const AST::ScopedStatement& scoped, FunctionBuilder& f) const {
+    auto curr = scoped.scope_body.begin();
+    const auto end = scoped.scope_body.end();
+    while (true) {
+      const bool jumps_at_end = genStatement(**curr, f);
+      ++curr;
+      if (curr == end)
+        return jumps_at_end;
+    }
   }
-  void genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) const { genExpression(*expr_stmt.expr, f); }
-
-  void genStatement(const AST::Statement& stmt, FunctionBuilder& f) const {
-    utils_match( stmt.value,
+  bool genReturn(const AST::ReturnStatement& ret, FunctionBuilder& f) const {
+    if (ret.return_value) {
+      Value* retval = genExpression(*ret.return_value, f);
+      f.builder.CreateStore(retval, f.locals[FunctionBuilder::retval_location_name]);
+    }
+    f.builder.CreateBr(f.return_block);
+    return true;
+  }
+  bool genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) const { genExpression(*expr_stmt.expr, f); return false; }
+  bool genStatement(const AST::Statement& stmt, FunctionBuilder& f) const {
+    return utils_match( stmt.value,
         utils_callon(const AST::VarDeclaration&, genVarDeclaration, f),
         utils_callon(const AST::IfStatement&, genIfStatement, f),
         utils_callon(const AST::ForLoop&, genForLoop, f),
@@ -330,20 +403,13 @@ public:
       );
   }
 
-  void verifyAndPrint(const Function * const f) const {
-    module->print(outs(), nullptr);
-    outs().flush();
-    if (verifyFunction(*f, &errs()))
-      throw BackendError("Failed to verify Function!", f->getName().str(), 0);
-  }
-
 };
 
 
 
 
 void ToLLVM::compile(Validation::ValidatedTU&& vtu, const std::string& filename) {
-  TU codegen(filename);
+  const TU codegen(filename);
   for (const auto& v : vtu.globals)
     codegen.addGlobal(v);
 
@@ -352,9 +418,49 @@ void ToLLVM::compile(Validation::ValidatedTU&& vtu, const std::string& filename)
     for (const auto s : func.function_body) {
       codegen.genStatement(*s, function_builder);
     }
-
-    codegen.verifyAndPrint(function_builder.func);
+    function_builder.finalizeFunction();
   }
 
+  InitializeAllTargetInfos();
+  InitializeAllTargets();
+  InitializeAllTargetMCs();
+  InitializeAllAsmParsers();
+  InitializeAllAsmPrinters();
+
+  auto target_triple = sys::getDefaultTargetTriple();
+  codegen.module->setTargetTriple(target_triple);
+  std::string err;
+  auto target = TargetRegistry::lookupTarget(codegen.module->getTargetTriple(), err);
+  if (!target) {
+    errs() << err;
+    assert(false);
+  }
+
+  auto CPU = "generic";
+  auto Features = "";
+  TargetOptions opt;
+  auto target_machine = target->createTargetMachine(
+    target_triple, CPU, Features, opt, Reloc::PIC_);
+  codegen.module->setDataLayout(target_machine->createDataLayout());
+
+  auto output_fname = "output.o";
+  std::error_code EC;
+  raw_fd_ostream dest(output_fname, EC, sys::fs::OF_None);
+  if (EC) {
+    errs() << "Could not open file: " << EC.message();
+    assert(false);
+  }
+
+  legacy::PassManager pass;
+  auto filetype = CodeGenFileType::ObjectFile;
+  if (target_machine->addPassesToEmitFile(pass, dest, nullptr, filetype)) {
+    errs() << "Target machine can't emit a file of this type";
+    assert(false);
+  }
+
+  pass.run(*codegen.module);
+  dest.flush();
+
+  outs() << "Wrote output file\n";
 }
 

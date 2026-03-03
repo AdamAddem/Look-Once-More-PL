@@ -4,6 +4,9 @@
 #include <utility>
 
 
+using namespace AST;
+
+
 [[maybe_unused]] static bool isLeftAssociative(const Operator op) {
   switch (op) {
   case Operator::ADDRESS_OF:

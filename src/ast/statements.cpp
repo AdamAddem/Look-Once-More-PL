@@ -2,6 +2,8 @@
 #include "expressions.hpp"
 #include <iostream>
 
+using namespace AST;
+
 void PrintStatementVisitor::operator()(
     const ExpressionStatement &stmt) const noexcept {
   for (unsigned i{}; i < indent; ++i)
@@ -99,7 +101,7 @@ void PrintStatementVisitor::operator()(
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
-  stmt.type.print();
+  std::cout << stmt.type.toString();
   std::cout << " " << stmt.ident << " = ";
 
   if (stmt.expr == nullptr)

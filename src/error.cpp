@@ -1,14 +1,33 @@
 #include "error.hpp"
 
-#include "grammar/types.hpp"
+#include "ast/types.hpp"
 #include "lexing/lex.hpp"
 
 LOMError::LOMError(const Stage err_stage,
            const std::string& what, const std::string& err_context,
            const unsigned line_num) :
-  error_stage(err_stage),
-  error_message("error occured on line ")
-{
+  error_stage(err_stage) {
+
+  using enum Stage;
+  switch (error_stage) {
+  case LexingError:
+    error_message.append("Lexing ");
+    break;
+
+  case ParsingError:
+    error_message.append("Parsing ");
+    break;
+
+  case ValidationError:
+    error_message.append("Validation ");
+    break;
+
+  case BackendError:
+    error_message.append("Backend ");
+    break;
+  }
+
+  error_message.append("error on line ");
   error_message.append(std::to_string(line_num)  + ":\n");
 
   error_message.append(what);
@@ -21,7 +40,7 @@ LOMError::LOMError(const Stage err_stage,
 LexingError::LexingError(const std::string& what, const Lexer::Token& token) :
 LOMError(Stage::LexingError, what, token.toString(), token.line_number) {}
 
-ParsingError::ParsingError(const std::string& what, const Type& type, const unsigned line_num) :
+ParsingError::ParsingError(const std::string& what, const AST::Type& type, const unsigned line_num) :
 LOMError(Stage::ParsingError, what, type.toString(), line_num)  {}
 
 

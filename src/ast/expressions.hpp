@@ -1,12 +1,12 @@
 #pragma once
+#include <cassert>
 #include <string>
-#include <variant>
-#include <vector>
 #include <unordered_map>
 #include <utility>
+#include <variant>
+#include <vector>
 
-
-
+namespace AST {
 enum class Operator : unsigned {
   ADD,
   SUBTRACT,
@@ -43,33 +43,33 @@ enum class Operator : unsigned {
 
 inline const std::unordered_map<std::string, Operator> stringToOperator{
 
-	{"+", Operator::ADD}, {"-", Operator::SUBTRACT}, {"*", Operator::MULTIPLY},
-	{"/", Operator::DIVIDE}, {"^", Operator::POWER}, {"%", Operator::MODULUS},
-	{"=", Operator::ASSIGN}, {"<", Operator::LESS}, {">", Operator::GREATER},
-	{"<=", Operator::LESS_EQUAL}, {">=", Operator::GREATER_EQUAL}, {"and", Operator::AND},
-	{"or", Operator::OR}, {"xor", Operator::XOR}, {"bitand", Operator::BITAND},
-	{"bitor", Operator::BITOR}, {"bitxor", Operator::BITXOR}, {"bitnot", Operator::BITNOT},
-	{"eq", Operator::EQUAL}, {"not_eq", Operator::NOT_EQUAL}, {"cast", Operator::CAST},
-	{"cast_if", Operator::CAST_IF}, {"unsafe_cast", Operator::UNSAFE_CAST}, {"++", Operator::PRE_INCREMENT},
-	{"--", Operator::PRE_DECREMENT}, {"-", Operator::UNARY_MINUS}, {"@", Operator::ADDRESS_OF},
-	{"not", Operator::NOT}, {"++", Operator::POST_INCREMENT}, {"--", Operator::POST_DECREMENT},
-};
+	  {"+", Operator::ADD}, {"-", Operator::SUBTRACT}, {"*", Operator::MULTIPLY},
+          {"/", Operator::DIVIDE}, {"^", Operator::POWER}, {"%", Operator::MODULUS},
+          {"=", Operator::ASSIGN}, {"<", Operator::LESS}, {">", Operator::GREATER},
+          {"<=", Operator::LESS_EQUAL}, {">=", Operator::GREATER_EQUAL}, {"and", Operator::AND},
+          {"or", Operator::OR}, {"xor", Operator::XOR}, {"bitand", Operator::BITAND},
+          {"bitor", Operator::BITOR}, {"bitxor", Operator::BITXOR}, {"bitnot", Operator::BITNOT},
+          {"eq", Operator::EQUAL}, {"not_eq", Operator::NOT_EQUAL}, {"cast", Operator::CAST},
+          {"cast_if", Operator::CAST_IF}, {"unsafe_cast", Operator::UNSAFE_CAST}, {"++", Operator::PRE_INCREMENT},
+          {"--", Operator::PRE_DECREMENT}, {"-", Operator::UNARY_MINUS}, {"@", Operator::ADDRESS_OF},
+          {"not", Operator::NOT}, {"++", Operator::POST_INCREMENT}, {"--", Operator::POST_DECREMENT},
+  };
 
 constexpr const char* operatorToString(const Operator e) {
-constexpr const char* toString[] = {
+  constexpr const char* toString[] = {
 
-	"+","-","*",
-	"/","^","%",
-	"=","<",">",
-	"<=",">=","and",
-	"or","xor","bitand",
-	"bitor","bitxor","bitnot",
-	"eq","not_eq","cast",
-	"cast_if","unsafe_cast","++",
-	"--","-","@",
-	"not","++","--",
+    "+","-","*",
+    "/","^","%",
+    "=","<",">",
+    "<=",">=","and",
+    "or","xor","bitand",
+    "bitor","bitxor","bitnot",
+    "eq","not_eq","cast",
+    "cast_if","unsafe_cast","++",
+    "--","-","@",
+    "not","++","--",
 };
-	return toString[std::to_underlying(e)];
+  return toString[std::to_underlying(e)];
 }
 constexpr bool isCategoryBINARY_OPS(const Operator e) { return std::to_underlying(e) < 20; }
 constexpr bool isCategoryCASTS(const Operator e) { return std::to_underlying(e) >= 20 && std::to_underlying(e) < 23; }
@@ -84,7 +84,9 @@ struct UnaryExpression {
   unsigned line_number;
 
   UnaryExpression(Expression *_expr, const Operator _opr, const unsigned line_num)
-      : expr(_expr), opr(_opr), line_number(line_num) {}
+      : expr(_expr), opr(_opr), line_number(line_num) {
+    assert(isCategoryUNARY_OPS(opr));
+  }
 };
 
 struct BinaryExpression {
@@ -95,7 +97,7 @@ struct BinaryExpression {
 
   BinaryExpression(Expression *_expr_left, Expression *_expr_right,
                    const Operator _opr, const unsigned line_num)
-      : expr_left(_expr_left), expr_right(_expr_right), opr(_opr), line_number(line_num) {}
+      : expr_left(_expr_left), expr_right(_expr_right), opr(_opr), line_number(line_num) {assert(isCategoryBINARY_OPS(opr));}
 };
 
 struct CallingExpression {
@@ -126,7 +128,6 @@ struct IdentifierExpression {
 
 struct LiteralExpression {
   using LiteralValue = std::variant<int, float, double, std::string>;
-
   enum LiteralType { INT, FLOAT, DOUBLE, BOOL, CHAR, STRING };
 
   LiteralValue value;
@@ -173,3 +174,4 @@ struct ExpressionToStringVisitor {
 
   std::string operator()(const TemporaryExpr &) const noexcept;
 };
+}

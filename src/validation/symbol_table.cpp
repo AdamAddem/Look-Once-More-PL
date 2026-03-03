@@ -3,41 +3,43 @@
 #include <iostream>
 #include <stdexcept>
 
+using namespace AST;
 // this probably shouldn't be here
 // and also should be done way better idk
 SymbolTable::SymbolTable() {
-  type_registry[""] = {.arithmetic = false, .callable = false, .array = false};
-  type_registry["devoid"] = {.arithmetic = false, .callable = false, .array = false}; //likely redundant
 
-  type_registry["i8"] = {.arithmetic = true, .callable = false, .array = false};
-  type_registry["i16"] = {.arithmetic = true, .callable = false, .array = false};
-  type_registry["i32"] = {.arithmetic = true, .callable = false, .array = false};
-  type_registry["i64"] = {.arithmetic = true, .callable = false, .array = false};
+  //0 alignment represents undefined alignment
+  type_registry[""] = {.arithmetic = false, .callable = false, .array = false, .alignment = 0};
+  type_registry["devoid"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 0}; //likely redundant
 
-  type_registry["u8"] = {.arithmetic = true, .callable = false, .array = false};
-  type_registry["u16"] = {.arithmetic = true, .callable = false, .array = false};
-  type_registry["u32"] = {.arithmetic = true, .callable = false, .array = false};
-  type_registry["u64"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["i8"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 1};
+  type_registry["i16"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 2};
+  type_registry["i32"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 4};
+  type_registry["i64"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 8};
 
-  type_registry["f32"] = {.arithmetic = true, .callable = false, .array = false};
-  type_registry["f64"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["u8"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 1};
+  type_registry["u16"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 2};
+  type_registry["u32"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 4};
+  type_registry["u64"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 8};
 
-  type_registry["char"] = {.arithmetic = true, .callable = false, .array = false};
-  type_registry["string"] = {.arithmetic = false, .callable = false, .array = false};
-  type_registry["bool"] = {.arithmetic = true, .callable = false, .array = false};
+  type_registry["f32"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 4};
+  type_registry["f64"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 8};
 
+  type_registry["char"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 1};
+  type_registry["string"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 0};
+  type_registry["bool"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 1};
 
-  type_registry["raw"] = {.arithmetic = false, .callable = false, .array = false};
-  type_registry["unique"] = {.arithmetic = false, .callable = false, .array = false};
-  type_registry["vague"] = {.arithmetic = false, .callable = false, .array = false};
+  type_registry["raw"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 8};
+  type_registry["unique"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 8};
+  type_registry["vague"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 8};
 }
 
 void SymbolTable::Function::print() const {
-  return_type.print();
+  std::cout << return_type.toString();
   std::cout << " (";
 
   for (auto &t : parameter_types) {
-    t.print();
+    std::cout << t.toString();
     std::cout << ", ";
   }
 
@@ -222,7 +224,7 @@ void SymbolTable::printGlobals() {
   for (auto &[name, entry] : globals) {
     if (const auto *var = std::get_if<Variable>(&entry)) {
       std::cout << "Variable: ";
-      var->type.print();
+      std::cout << var->type.toString();
       std::cout << " " << name;
     } else {
       std::cout << "Function: ";
@@ -240,7 +242,7 @@ void SymbolTable::printLocals() {
 
   std::cout << "\nScope:\n{\n" << std::endl;
   for (auto &[name, var] : locals.back().variables) {
-    var.type.print();
+    std::cout << var.type.toString();
     std::cout << " " << name << ";\n";
   }
   std::cout << "\n}" << std::endl;

@@ -1,5 +1,5 @@
 #pragma once
-#include "../grammar/statements.hpp"
+#include "../ast/statements.hpp"
 
 namespace Lexer {
   struct TokenHandler;
@@ -8,15 +8,15 @@ namespace Lexer {
 namespace Parser {
 
 struct ParsedFunction {
-  Type return_type;
+  AST::Type return_type;
   std::string name;
-  std::vector<VarDeclaration>
+  std::vector<AST::VarDeclaration>
       parameter_list; // VarDeclarations should have expr = nullptr
-  std::vector<Statement *> function_body;
+  std::vector<AST::Statement *> function_body;
 
-  ParsedFunction(Type &&_return_type, std::string &&_name,
-                 std::vector<VarDeclaration> &&_parameter_list,
-                 std::vector<Statement *> &&_function_body)
+  ParsedFunction(AST::Type &&_return_type, std::string &&_name,
+                 std::vector<AST::VarDeclaration> &&_parameter_list,
+                 std::vector<AST::Statement *> &&_function_body) noexcept
       : return_type(std::move(_return_type)), name(std::move(_name)),
         parameter_list(std::move(_parameter_list)),
         function_body(std::move(_function_body)) {}
@@ -28,16 +28,16 @@ struct ParsedFunction {
 
 };
 
-struct ParsedTranslationUnit {
-  std::vector<VarDeclaration> globals;
+struct ParsedTU {
+  std::vector<AST::VarDeclaration> globals;
   std::vector<ParsedFunction> functions;
 
-  ParsedTranslationUnit(std::vector<VarDeclaration> &&_global,
+  ParsedTU(std::vector<AST::VarDeclaration> &&_global,
                         std::vector<ParsedFunction> &&_functions)
       : globals(std::move(_global)), functions(std::move(_functions)) {}
 
 };
 
 
-[[nodiscard]] ParsedTranslationUnit parseTokens(Lexer::TokenHandler &&tokens);
+[[nodiscard]] ParsedTU parseTokens(Lexer::TokenHandler &&tokens);
 } // namespace Parser

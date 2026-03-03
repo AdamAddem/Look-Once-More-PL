@@ -1,8 +1,10 @@
 #include <stdexcept>
 #include <unordered_map>
+#include <iostream>
 
 #include "debug_flags.hpp"
 #include "error.hpp"
+#include "src/backends/llvm/tollvm.hpp"
 #include "src/lexing/lex.hpp"
 #include "src/parsing/parse.hpp"
 #include "src/validation/ast_validation.hpp"
@@ -10,6 +12,7 @@
 using namespace Parser;
 using namespace Lexer;
 using namespace Validation;
+using namespace ToLLVM;
 
 enum class Args {
   OUTPUT_LEXER,
@@ -50,19 +53,14 @@ int main(const int argc, const char* argv[]) {
   if (argc == 3) set_flags(argv[2]);
 
   try {
-    validateTU(parseTokens(tokenizeFile(argv[1])));
+    compile(validateTU(parseTokens(tokenizeFile(argv[1]))), argv[1]);
   }
   catch (LOMError& e) {
-    if (e.error_stage == LOMError::Stage::LexingError)
-      std::cout << "Lexing ";
-    else if (e.error_stage == LOMError::Stage::ParsingError)
-      std::cout << "Parsing ";
-    else if (e.error_stage == LOMError::Stage::ValidationError)
-      std::cout << "Validation ";
-
     std::cout << e.error_message << std::endl;
     return 1;
   }
+
+
 
   return 0;
 }

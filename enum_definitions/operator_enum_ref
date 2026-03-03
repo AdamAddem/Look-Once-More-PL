@@ -1,45 +1,45 @@
 Operator Expressions
 
 !BEGIN BINARY_OPS
-ADD +
-SUBTRACT --
-MULTIPLY *
-DIVIDE /
-POWER ^
-MODULUS %
-ASSIGN =
-LESS <
-GREATER >
-LESS_EQUAL <=
-GREATER_EQUAL >=
-AND and
-OR or
-XOR xor
-BITAND bitand
-BITOR bitor
-BITXOR bitxor
-BITNOT bitnot
-EQUAL eq
-NOT_EQUAL not_eq
+    ADD +
+    SUBTRACT --
+    MULTIPLY *
+    DIVIDE /
+    POWER ^
+    MODULUS %
+    ASSIGN =
+    LESS <
+    GREATER >
+    LESS_EQUAL <=
+    GREATER_EQUAL >=
+    AND and
+    OR or
+    XOR xor
+    BITAND bitand
+    BITOR bitor
+    BITXOR bitxor
+    BITNOT bitnot
+    EQUAL eq
+    NOT_EQUAL not_eq
 !END BINARY_OPS
 
 !BEGIN PREFIX_OPS
-!BEGIN CASTS
-CAST cast
-CAST_IF cast_if
-UNSAFE_CAST unsafe_cast
+    !BEGIN CASTS
+    CAST cast
+    CAST_IF cast_if
+    UNSAFE_CAST unsafe_cast
 !END CASTS
 
 !BEGIN UNARY_OPS
-PRE_INCREMENT ++
-PRE_DECREMENT ---
-UNARY_MINUS --
-ADDRESS_OF @
-NOT not
+    PRE_INCREMENT ++
+    PRE_DECREMENT ---
+    UNARY_MINUS --
+    ADDRESS_OF @
+    NOT not
 !END PREFIX_OPS
 
-POST_INCREMENT ++
-POST_DECREMENT ---
+    POST_INCREMENT ++
+    POST_DECREMENT ---
 
 !END UNARY_OPS
 

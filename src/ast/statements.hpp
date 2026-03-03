@@ -4,6 +4,7 @@
 #include <variant>
 #include <vector>
 
+namespace AST {
 struct Expression;
 struct Statement;
 
@@ -14,7 +15,7 @@ struct VarDeclaration {
   unsigned line_number;
 
   VarDeclaration(Type &&_type, std::string &&_ident, const unsigned line_num,
-                 Expression *_expr = nullptr)
+                 Expression *_expr = nullptr) noexcept
       : type(std::move(_type)), ident(std::move(_ident)), expr(_expr), line_number(line_num){}
 
   VarDeclaration(VarDeclaration &&other) noexcept
@@ -97,3 +98,4 @@ struct PrintStatementVisitor {
   void operator()(const IfStatement &) const noexcept;
   void operator()(const VarDeclaration &) const noexcept;
 };
+}

@@ -1,5 +1,5 @@
 #include "ast_validation.hpp"
-#include "../grammar/expressions.hpp"
+#include "../ast/expressions.hpp"
 #include "../parsing/parse.hpp"
 #include "symbol_table.hpp"
 #include <iostream>
@@ -11,6 +11,8 @@
 
 #include <cassert>
 using namespace Parser;
+using namespace Validation;
+using namespace AST;
 
 /* Expressions */
 static Type
@@ -91,9 +93,9 @@ validateBinaryExpression(SymbolTable &table, const BinaryExpression *binary) {
     throw ValidationError("Binary operator used on variant type(s).", context, binary->line_number);
   }
 
-  const auto [left_arithmetic, left_callable, left_array] =
+  const auto [left_arithmetic, left_callable, left_array, left_alignment] =
       table.detailsOfType(left_type.getTypename());
-  const auto [right_arithmetic, right_callable, right_array] =
+  const auto [right_arithmetic, right_callable, right_array, right_alignment] =
       table.detailsOfType(right_type.getTypename());
 
   switch (binary->opr) {
@@ -213,7 +215,7 @@ static Type validateUnaryExpression(SymbolTable &table, const UnaryExpression *u
     throw ValidationError("Binary operator used on variant type(s).", context, unary->line_number);
   }
 
-  const auto [arithmetic, callable, array] = table.detailsOfType(type.getTypename());
+  const auto [arithmetic, callable, array, alignment] = table.detailsOfType(type.getTypename());
   if (!arithmetic) {
     const std::string context = type.toString();
     throw ValidationError("Unary operator used on non-arithmetic expression.", context, unary->line_number);
@@ -317,7 +319,7 @@ static void validateWhileLoop(SymbolTable &table, const WhileLoop *while_loop) {
     throw ValidationError("Variant in while loop condition.", type.toString(), while_loop->line_number);
 
 
-  const auto [arithmetic, callable, array] = table.detailsOfType(type.getTypename());
+  const auto [arithmetic, callable, array, alignment] = table.detailsOfType(type.getTypename());
   if (!arithmetic) {
     std::string context("Condition is of type ");
     context.append(type.toString());
@@ -336,7 +338,7 @@ static void validateForLoop(SymbolTable &table, const ForLoop *for_loop) {
     if (type.isVariant())
       throw ValidationError("Variant used in for loop condition.", type.toString(), for_loop->line_number);
 
-    const auto [arithmetic, callable, array] =
+    const auto [arithmetic, callable, array, alignment] =
         table.detailsOfType(type.getTypename());
 
     if (!arithmetic) {
@@ -359,7 +361,7 @@ static void validateIfStatement(SymbolTable &table,
   if (type.isVariant())
     throw ValidationError("Variant type used in if statement condition.", type.toString(), if_statement->line_number);
 
-  const auto [arithmetic, callable, array] = table.detailsOfType(type.getTypename());
+  const auto [arithmetic, callable, array, alignment] = table.detailsOfType(type.getTypename());
   if (!arithmetic) {
     std::string context("Condition is of type ");
     context.append(type.toString());
@@ -443,11 +445,16 @@ static void validateFunction(SymbolTable &table, ParsedFunction &func) { // TO D
       has_return_statement = true;
   }
 
-  if (!is_devoid_return && !has_return_statement) {
-    std::string context("Expected type '");
-    context.append(func.return_type.toString());
-    throw ValidationError("Value returning function has no return statement.", context, 42069);
+  if (!has_return_statement) {
+    if (!is_devoid_return) {
+      std::string context("Expected type '");
+      context.append(func.return_type.toString());
+      throw ValidationError("Value returning function has no return statement.", context, 42069);
+    }
+
+    func.function_body.push_back(new Statement(ReturnStatement(0)));
   }
+
 
   table.leaveScope();
 }
@@ -457,9 +464,17 @@ static void validateGlobals(SymbolTable &table, const std::vector<VarDeclaration
     table.addGlobalVariable(decl.ident, decl.type);
 }
 
-void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
+static std::vector<ValidatedFunction> parsedToValidated(std::vector<ParsedFunction>& parsed_funcs) {
+  std::vector<ValidatedFunction> validated_funcs;
+  validated_funcs.reserve(parsed_funcs.size());
+  for (auto& f : parsed_funcs)
+    validated_funcs.emplace_back(std::move(f.return_type), std::move(f.name), std::move(f.parameter_list), std::move(f.function_body));
+
+  return validated_funcs;
+}
+
+ValidatedTU Validation::validateTU(ParsedTU &&ptu) {
   SymbolTable table;
-  ParsedTranslationUnit ptu = std::move(unverified_tu);
 
   validateGlobals(table, ptu.globals);
 
@@ -470,4 +485,8 @@ void Validation::validateTU(ParsedTranslationUnit &&unverified_tu) {
     std::cout << "Validation stage passed!" << std::endl;
     std::exit(0);
   }
+
+  return {std::move(ptu.globals),
+     parsedToValidated(ptu.functions), std::move(table)
+  };
 }

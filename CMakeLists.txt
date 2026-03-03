@@ -3,13 +3,18 @@ project(LookOnceMore)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_BUILD_TYPE Debug)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -O0")
+
+find_package(LLVM 20.1.8 REQUIRED CONFIG)
+
+
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
-
 add_executable(LookOnceMore
         main.cpp
         src/debug_flags.hpp
+        src/error.hpp
+        src/error.cpp
 
         src/lexing/lex.cpp
         src/lexing/lex.hpp
@@ -19,19 +24,24 @@ add_executable(LookOnceMore
         src/parsing/parse.cpp
         src/parsing/parse.hpp
 
-        src/grammar/statements.cpp
-        src/grammar/statements.hpp
-        src/grammar/expressions.cpp
-        src/grammar/expressions.hpp
-        src/grammar/types.cpp
-        src/grammar/types.hpp
+        src/ast/statements.cpp
+        src/ast/statements.hpp
+        src/ast/expressions.cpp
+        src/ast/expressions.hpp
+        src/ast/types.cpp
+        src/ast/types.hpp
 
         src/validation/symbol_table.cpp
         src/validation/symbol_table.hpp
         src/validation/ast_validation.cpp
         src/validation/ast_validation.hpp
-        src/error.hpp
-        src/error.cpp
 
+        src/backends/llvm/tollvm.hpp
+        src/backends/llvm/tollvm.cpp
+        src/utilities/variant_overload.hpp
 )
+
+target_include_directories(LookOnceMore PRIVATE ${LLVM_INCLUDE_DIRS})
+llvm_map_components_to_libnames(LLVM_LIBS core support orcjit native)
+target_link_libraries(LookOnceMore PRIVATE ${LLVM_LIBS})
 

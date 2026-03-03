@@ -1,6 +1,6 @@
-#include "../grammar/expressions.hpp"
-#include "../grammar/statements.hpp"
 #include "parse.hpp"
+#include "../ast/expressions.hpp"
+#include "../ast/statements.hpp"
 
 #include <iostream>
 #include <unordered_set>
@@ -8,8 +8,10 @@
 #include "../debug_flags.hpp"
 #include "lexing/lex.hpp"
 
-using namespace Parser;
 using namespace Lexer;
+using namespace Parser;
+using namespace AST;
+
 
 
 /* Type and Identifier */
@@ -608,13 +610,13 @@ static ParsedFunction parseFunction(UnparsedFunction &func) {
           std::move(func.parameter_list), parseStatements(func.body_tokens)};
 }
 
-static ParsedTranslationUnit secondPassParsing(UnparsedTU &&unparsedtu) {
+static ParsedTU secondPassParsing(UnparsedTU &&unparsedtu) {
 
   std::vector<ParsedFunction> parsed_funcs;
   for (auto &f : unparsedtu.functions)
     parsed_funcs.emplace_back(parseFunction(f));
 
-  ParsedTranslationUnit ptu{std::move(unparsedtu.globals), std::move(parsed_funcs)};
+  ParsedTU ptu{std::move(unparsedtu.globals), std::move(parsed_funcs)};
 
 
   return ptu;
@@ -688,9 +690,9 @@ static UnparsedTU firstPassParsing(TokenHandler &&tokens) {
   return pass_one_tu;
 }
 
-static void printTU(const ParsedTranslationUnit& tu);
-ParsedTranslationUnit Parser::parseTokens(TokenHandler &&tokens) {
-  ParsedTranslationUnit ptu = secondPassParsing(firstPassParsing(std::move(tokens)));
+static void printTU(const ParsedTU& tu);
+ParsedTU Parser::parseTokens(TokenHandler &&tokens) {
+  ParsedTU ptu = secondPassParsing(firstPassParsing(std::move(tokens)));
 
   if (lom_debug::output_parse) {
     printTU(ptu);
@@ -705,7 +707,7 @@ ParsedTranslationUnit Parser::parseTokens(TokenHandler &&tokens) {
 static void printFunction(const ParsedFunction& func) {
   std::cout << "fn " << func.name << "(";
   for (auto &decl : func.parameter_list) {
-    decl.type.print();
+    std::cout << decl.type.toString();
     std::cout << " " << decl.ident << ", ";
   }
 
@@ -715,7 +717,7 @@ static void printFunction(const ParsedFunction& func) {
   std::cout << ")";
   if (!func.return_type.isDevoid()) {
     std::cout << " -> ";
-    func.return_type.print();
+    std::cout << func.return_type.toString();
   }
   std::cout << " {\n" << std::endl;
 
@@ -727,7 +729,7 @@ static void printFunction(const ParsedFunction& func) {
   std::cout << "}" << std::endl;
 }
 
-static void printTU(const ParsedTranslationUnit& tu) {
+static void printTU(const ParsedTU& tu) {
   if (tu.globals.empty())
     goto noglobals;
 

@@ -1,8 +1,7 @@
-global mut i32 variable = junk;
+global mut f32 mut_global = 5.f;
 
-fn fib(i32 n) -> i32 {
-    if(n eq 0) return 0;
-    if(n eq 1) return 1;
 
-    return fib(n-1) + fib(n-2);
+fn incremented(mut i32 val) -> bool {
+    return val eq 5;
 }
+

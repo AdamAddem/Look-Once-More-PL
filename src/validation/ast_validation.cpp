@@ -1,12 +1,12 @@
 #include "ast_validation.hpp"
-#include "../ast/expressions.hpp"
-#include "../parsing/parse.hpp"
+#include "ast/expressions.hpp"
+#include "parsing/parse.hpp"
 #include "symbol_table.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <variant>
 
-#include "debug_flags.hpp"
+#include "arguments.hpp"
 #include "error.hpp"
 
 #include <cassert>
@@ -481,9 +481,9 @@ ValidatedTU Validation::validateTU(ParsedTU &&ptu) {
   for (auto &f : ptu.functions)
     validateFunction(table, f);
 
-  if (lom_debug::output_validation) {
-    std::cout << "Validation stage passed!" << std::endl;
-    std::exit(0);
+  if (Arguments::doOutputValidation()) {
+    std::cout << "--- Validation Passed ---\n\n";
+    std::quick_exit(0);
   }
 
   return {std::move(ptu.globals),

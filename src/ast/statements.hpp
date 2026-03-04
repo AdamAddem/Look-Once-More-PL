@@ -4,6 +4,12 @@
 #include <variant>
 #include <vector>
 
+
+// Note: Each AST Node holds ownership over the expressions and statements it points to
+// The reason I don't use unique pointer is twofold
+// 1: They are ugly
+// 2: Since I'm forward declaring the expression type, unique pointer throws a fit unless the AST Node defines the destructor, which defeats the purpose of unique pointer
+
 namespace AST {
 struct Expression;
 struct Statement;

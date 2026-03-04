@@ -8,3 +8,8 @@ fn fib(mut i32 val) -> i32 {
     return fib(val-1) + fib(val-2);
 }
 
+
+fn main() -> i32 {
+    return fib(8);
+}
+

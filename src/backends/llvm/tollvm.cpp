@@ -1,24 +1,25 @@
 #include "tollvm.hpp"
 
+#include "arguments.hpp"
 #include "ast/expressions.hpp"
 #include "ast/statements.hpp"
 #include "error.hpp"
 #include "utilities/variant_overload.hpp"
 #include "validation/ast_validation.hpp"
 
+#include <filesystem>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
-#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/MC/TargetRegistry.h>
-#include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
-
 
 using namespace llvm;
 
@@ -55,24 +56,23 @@ struct FunctionBuilder {
 };
 
 class TU {
+  LLVMContext context;
+  Module module;
 
 public:
   explicit TU(const std::string& filename) :
-    context(new LLVMContext),
-    module(new Module(filename, *context)) {
-    i1 = Type::getInt1Ty(*context); i1_0 = ConstantInt::get(i1, 0); i1_1 = ConstantInt::get(i1, 1);
-    i8 = Type::getInt8Ty(*context); i8_0 = ConstantInt::get(i8, 0); i8_1 = ConstantInt::get(i8, 1);
-    i16 = Type::getInt16Ty(*context); i16_0 = ConstantInt::get(i16, 0); i16_1 = ConstantInt::get(i16, 1);
-    i32 = Type::getInt32Ty(*context); i32_0 = ConstantInt::get(i32, 0); i32_1 = ConstantInt::get(i32, 1);
-    i64 = Type::getInt64Ty(*context); i64_0 = ConstantInt::get(i64, 0); i64_1 = ConstantInt::get(i64, 1);
+    module(filename, context) {
+    i1 = Type::getInt1Ty(context); i1_0 = ConstantInt::get(i1, 0); i1_1 = ConstantInt::get(i1, 1);
+    i8 = Type::getInt8Ty(context); i8_0 = ConstantInt::get(i8, 0); i8_1 = ConstantInt::get(i8, 1);
+    i16 = Type::getInt16Ty(context); i16_0 = ConstantInt::get(i16, 0); i16_1 = ConstantInt::get(i16, 1);
+    i32 = Type::getInt32Ty(context); i32_0 = ConstantInt::get(i32, 0); i32_1 = ConstantInt::get(i32, 1);
+    i64 = Type::getInt64Ty(context); i64_0 = ConstantInt::get(i64, 0); i64_1 = ConstantInt::get(i64, 1);
 
-    f32 = Type::getFloatTy(*context); f32_0 = ConstantFP::get(f32, 0); f32_1 = ConstantFP::get(f32, 1);
-    f64 = Type::getDoubleTy(*context); f64_0 = ConstantFP::get(f64, 0); f64_1 = ConstantFP::get(f64, 1);
-    devoid = Type::getVoidTy(*context);
+    f32 = Type::getFloatTy(context); f32_0 = ConstantFP::get(f32, 0); f32_1 = ConstantFP::get(f32, 1);
+    f64 = Type::getDoubleTy(context); f64_0 = ConstantFP::get(f64, 0); f64_1 = ConstantFP::get(f64, 1);
+    devoid = Type::getVoidTy(context);
   }
 
-  LLVMContext* context;
-  Module* module;
 
   IntegerType* i1; ConstantInt* i1_0; ConstantInt* i1_1;
   IntegerType* i8; ConstantInt* i8_0; ConstantInt* i8_1;
@@ -110,9 +110,8 @@ public:
 
     assert(false && "invalid type idfk");
   }
-
-  void addGlobal(const AST::VarDeclaration& var) const {
-    module->insertGlobalVariable(
+  void addGlobal(const AST::VarDeclaration& var) {
+    module.insertGlobalVariable(
       new GlobalVariable(
        getType(var.type),
        !var.type.is_mutable,
@@ -122,8 +121,7 @@ public:
        )
      );
   }
-
-  [[nodiscard]] FunctionBuilder createFunction(const Validation::ValidatedFunction& func) const {
+  [[nodiscard]] FunctionBuilder createFunction(const Validation::ValidatedFunction& func) {
     std::vector<Type*> arg_types;
     arg_types.reserve(func.parameter_list.size());
     for (const auto& v : func.parameter_list)
@@ -132,9 +130,9 @@ public:
     //hack
     Type* ret_type = func.return_type.getTypename() != "bool" ? getType(func.return_type) : i1;
     const auto func_type = FunctionType::get(ret_type, {arg_types.data(), arg_types.size()}, false);
-    const auto llvmfunc = Function::Create(func_type, Function::ExternalLinkage, 0, func.name, module);
-    const auto entry = BasicBlock::Create(*context, "__entry", llvmfunc);
-    const auto ending = BasicBlock::Create(*context, "__return");
+    const auto llvmfunc = Function::Create(func_type, Function::ExternalLinkage, 0, func.name, &module);
+    const auto entry = BasicBlock::Create(context, "__entry", llvmfunc);
+    const auto ending = BasicBlock::Create(context, "__return");
     IRBuilder<> init(entry);
 
     auto arg = llvmfunc->arg_begin();
@@ -157,7 +155,18 @@ public:
 
     return FunctionBuilder(ret_type, llvmfunc, entry, ending, std::move(locals));
   }
+  void lowerToLLVM(const Validation::ValidatedTU& vtu) {
+    for (const auto& v : vtu.globals)
+      addGlobal(v);
 
+    for (const auto& func : vtu.functions) {
+      auto function_builder = createFunction(func);
+      for (const auto s : func.function_body)
+        genStatement(s, function_builder);
+
+      function_builder.finalizeFunction();
+    }
+  }
 
   Value* genUnary(const AST::UnaryExpression& unary, FunctionBuilder& f) const noexcept {
     auto* load = cast<LoadInst>(genIdentifier(std::get<AST::IdentifierExpression>(unary.expr->value), f));
@@ -195,7 +204,7 @@ public:
 
     return result;
   }
-  Value* genBinary(const AST::BinaryExpression& binary,  FunctionBuilder& f) const noexcept {
+  Value* genBinary(const AST::BinaryExpression& binary,  FunctionBuilder& f) noexcept {
     Value* left = genExpression(*binary.expr_left, f);
     Value* right = genExpression(*binary.expr_right, f);
     Value* result;
@@ -279,15 +288,14 @@ public:
 
     return result;
   }
-  Value* genCalling(const AST::CallingExpression& calling, FunctionBuilder& f) const noexcept {
-
+  Value* genCalling(const AST::CallingExpression& calling, FunctionBuilder& f) noexcept {
     std::vector<Value*> params;
     params.reserve(calling.parameters.size());
     for (const auto e : calling.parameters)
      params.push_back(genExpression(*e, f));
 
     const auto& d = std::get<AST::IdentifierExpression>(calling.func->value);
-    return f.builder.CreateCall(module->getFunction(d.ident), params);
+    return f.builder.CreateCall(module.getFunction(d.ident), params);
   }
 
   Value* genSubscript(const AST::SubscriptExpression &, FunctionBuilder& ) const noexcept {assert(false);}
@@ -299,13 +307,13 @@ public:
       t = static_cast<AllocaInst*>(v)->getAllocatedType();
     }
     else {
-      v = module->getGlobalVariable(identifier.ident);
+      v = module.getGlobalVariable(identifier.ident);
       t = static_cast<GlobalVariable*>(v)->getValueType();
     }
 
     return f.builder.CreateLoad(t, v);
   }
-  Value* genLiteral(const AST::LiteralExpression& literal, [[maybe_unused]] FunctionBuilder& f) const noexcept {
+  Value* genLiteral(const AST::LiteralExpression& literal) noexcept {
     switch (literal.type) {
     case AST::LiteralExpression::INT:
       return ConstantInt::get(i32, std::get<int>(literal.value));
@@ -317,25 +325,25 @@ public:
     case AST::LiteralExpression::CHAR:
       return ConstantInt::get(i8, std::get<int>(literal.value));
     case AST::LiteralExpression::STRING:
-      return ConstantDataArray::getString(*context, std::get<std::string>(literal.value));
+      return ConstantDataArray::getString(context, std::get<std::string>(literal.value));
     default:
       assert(false && "Invalid literal expression in codegen");
     }
   }
   Value* genTemporary(const AST::TemporaryExpr &, [[maybe_unused]] FunctionBuilder& f) const noexcept {assert(false);}
-  Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) const {
+  Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) {
     return utils_match(expr.value,
       utils_callon(const AST::UnaryExpression&, genUnary, f),
       utils_callon(const AST::BinaryExpression&, genBinary, f),
       utils_callon(const AST::CallingExpression&, genCalling, f),
       utils_callon(const AST::SubscriptExpression&, genSubscript, f),
       utils_callon(const AST::IdentifierExpression&, genIdentifier, f),
-      utils_callon(const AST::LiteralExpression&, genLiteral, f),
+      utils_callon(const AST::LiteralExpression&, genLiteral),
       utils_callon(const AST::TemporaryExpr&, genTemporary, f),
       );
   }
 
-  bool genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) const {
+  bool genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) {
     IRBuilder<> func_entry(&f.func->getEntryBlock());
     AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type), nullptr);
     f.locals.emplace(declaration.ident, i);
@@ -343,25 +351,25 @@ public:
     return false;
   }
 
-  bool genIfStatement(const AST::IfStatement& ifstmt, FunctionBuilder& f) const {
+  bool genIfStatement(const AST::IfStatement& ifstmt, FunctionBuilder& f) {
     IRBuilder<>& builder = f.builder;
     Value* condition_val = genExpression(*ifstmt.condition, f);
 
-    BasicBlock* thenBB = BasicBlock::Create(*context); f.func->insert(f.func->end(), thenBB);
-    BasicBlock* mergeBB = BasicBlock::Create(*context);
-    BasicBlock* elseBB = ifstmt.false_branch ? BasicBlock::Create(*context) : mergeBB;
+    BasicBlock* thenBB = BasicBlock::Create(context); f.func->insert(f.func->end(), thenBB);
+    BasicBlock* mergeBB = BasicBlock::Create(context);
+    BasicBlock* elseBB = ifstmt.false_branch ? BasicBlock::Create(context) : mergeBB;
 
     builder.CreateCondBr(condition_val, thenBB, elseBB);
 
     builder.SetInsertPoint(thenBB);
 
-    if (!genStatement(*ifstmt.true_branch, f))
+    if (!genStatement(ifstmt.true_branch, f))
       builder.CreateBr(mergeBB);
 
     f.func->insert(f.func->end(), elseBB);
     builder.SetInsertPoint(elseBB);
     if (ifstmt.false_branch) {
-      if (!genStatement(*ifstmt.false_branch, f))
+      if (!genStatement(ifstmt.false_branch, f))
         builder.CreateBr(mergeBB);
 
       f.func->insert(f.func->end(), mergeBB);
@@ -372,17 +380,17 @@ public:
   }
   bool genForLoop(const AST::ForLoop& , FunctionBuilder& ) const {assert(false);}
   bool genWhileLoop(const AST::WhileLoop& , FunctionBuilder& ) const {assert(false);}
-  bool genScoped(const AST::ScopedStatement& scoped, FunctionBuilder& f) const {
+  bool genScoped(const AST::ScopedStatement& scoped, FunctionBuilder& f) {
     auto curr = scoped.scope_body.begin();
     const auto end = scoped.scope_body.end();
     while (true) {
-      const bool jumps_at_end = genStatement(**curr, f);
+      const bool jumps_at_end = genStatement(*curr, f);
       ++curr;
       if (curr == end)
         return jumps_at_end;
     }
   }
-  bool genReturn(const AST::ReturnStatement& ret, FunctionBuilder& f) const {
+  bool genReturn(const AST::ReturnStatement& ret, FunctionBuilder& f) {
     if (ret.return_value) {
       Value* retval = genExpression(*ret.return_value, f);
       f.builder.CreateStore(retval, f.locals[FunctionBuilder::retval_location_name]);
@@ -390,9 +398,9 @@ public:
     f.builder.CreateBr(f.return_block);
     return true;
   }
-  bool genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) const { genExpression(*expr_stmt.expr, f); return false; }
-  bool genStatement(const AST::Statement& stmt, FunctionBuilder& f) const {
-    return utils_match( stmt.value,
+  bool genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) { genExpression(*expr_stmt.expr, f); return false; }
+  bool genStatement(const AST::Statement* stmt, FunctionBuilder& f) {
+    const bool retval = utils_match( stmt->value,
         utils_callon(const AST::VarDeclaration&, genVarDeclaration, f),
         utils_callon(const AST::IfStatement&, genIfStatement, f),
         utils_callon(const AST::ForLoop&, genForLoop, f),
@@ -401,66 +409,150 @@ public:
         utils_callon(const AST::ReturnStatement&, genReturn, f),
         utils_callon(const AST::ExpressionStatement&, genExpressionStatement, f)
       );
+
+    delete stmt;
+    return retval;
   }
 
+
+  void createFile(const std::filesystem::path& obj_path, const CodeGenFileType filetype) {
+    InitializeAllTargetInfos();
+    InitializeAllTargets();
+    InitializeAllTargetMCs();
+    InitializeAllAsmParsers();
+    InitializeAllAsmPrinters();
+
+    static const auto target_triple = sys::getDefaultTargetTriple();
+    module.setTargetTriple(target_triple);
+    std::string err;
+    const auto target = TargetRegistry::lookupTarget(module.getTargetTriple(), err);
+    if (!target) {
+      errs() << err;
+      assert(false);
+    }
+
+    static constexpr auto CPU = "generic";
+    static constexpr auto Features = "";
+    static const TargetOptions opt;
+    auto target_machine = target->createTargetMachine(
+      target_triple, CPU, Features, opt, Reloc::PIC_);
+    module.setDataLayout(target_machine->createDataLayout());
+
+    std::error_code EC;
+    raw_fd_ostream dest(obj_path.c_str(), EC, sys::fs::OF_None);
+    if (EC) {
+      errs() << "Could not open file: " << obj_path << " | " << EC.message() << '\n';
+      assert(false);
+    }
+
+    legacy::PassManager pass;
+    if (target_machine->addPassesToEmitFile(pass, dest, nullptr, filetype)) {
+      errs() << "Target machine can't emit a file of this type";
+      assert(false);
+    }
+
+    pass.run(module);
+    dest.flush();
+  }
+
+  void printModule(raw_ostream& out = outs()) const {
+    module.print(out, nullptr);
+  }
 };
 
 
+std::filesystem::path ToLLVM::createASMFile(Validation::ValidatedTU&& vtu, const std::string &filename) {
+  TU codegen(filename);
+  codegen.lowerToLLVM(vtu);
 
 
-void ToLLVM::compile(Validation::ValidatedTU&& vtu, const std::string& filename) {
-  const TU codegen(filename);
-  for (const auto& v : vtu.globals)
-    codegen.addGlobal(v);
+  static const std::filesystem::path asm_folder = Arguments::getBuildLocation() + "asm/";
+  std::filesystem::create_directories(asm_folder);
 
-  for (const auto& func : vtu.functions) {
-    auto function_builder = codegen.createFunction(func);
-    for (const auto s : func.function_body) {
-      codegen.genStatement(*s, function_builder);
-    }
-    function_builder.finalizeFunction();
-  }
 
-  InitializeAllTargetInfos();
-  InitializeAllTargets();
-  InitializeAllTargetMCs();
-  InitializeAllAsmParsers();
-  InitializeAllAsmPrinters();
+  std::filesystem::path asm_path = asm_folder;
+  asm_path.append(filename);
 
-  auto target_triple = sys::getDefaultTargetTriple();
-  codegen.module->setTargetTriple(target_triple);
-  std::string err;
-  auto target = TargetRegistry::lookupTarget(codegen.module->getTargetTriple(), err);
-  if (!target) {
-    errs() << err;
-    assert(false);
-  }
+#ifdef _WIN32
+  asm_path.replace_extension(".asm");
+#else
+  asm_path.replace_extension(".s");
+#endif
 
-  auto CPU = "generic";
-  auto Features = "";
-  TargetOptions opt;
-  auto target_machine = target->createTargetMachine(
-    target_triple, CPU, Features, opt, Reloc::PIC_);
-  codegen.module->setDataLayout(target_machine->createDataLayout());
 
-  auto output_fname = "output.o";
+  codegen.createFile(asm_path, CodeGenFileType::AssemblyFile);
+
+  return asm_path;
+}
+
+std::filesystem::path ToLLVM::createIRFile(Validation::ValidatedTU&& vtu, const std::string &filename) {
+  TU codegen(filename);
+  codegen.lowerToLLVM(vtu);
+
+
+  static const std::filesystem::path ir_path = Arguments::getBuildLocation() + "llvm_ir/";
+  std::filesystem::create_directories(ir_path);
+
+  std::filesystem::path file_path = ir_path;
+  file_path.append(filename);
+  file_path.replace_extension(".ll");
+
   std::error_code EC;
-  raw_fd_ostream dest(output_fname, EC, sys::fs::OF_None);
+  raw_fd_ostream dest(file_path.c_str(), EC, sys::fs::OF_None);
   if (EC) {
-    errs() << "Could not open file: " << EC.message();
+    errs() << "Could not open file: " << file_path << " | " << EC.message() << '\n';
+    std::quick_exit(1);
+  }
+
+  codegen.printModule(dest);
+  return file_path;
+}
+
+
+//i mean.... it works?
+void ToLLVM::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
+#ifdef __clang__
+  std::string compiler{"clang"};
+#elif defined(__GNUC__)
+  std::string compiler{"gcc"};
+#endif
+  for (const auto& file : obj_paths) {
+    compiler.push_back(' ');
+    compiler.append(file);
+  }
+
+
+  const std::string executable = Arguments::getBuildLocation() + Arguments::getExecutableName();
+
+  compiler.append(" -o ");
+  compiler.append(executable);
+
+  if (system(compiler.c_str())) {
+    errs() << "Error calling compiler with command: " << compiler;
     assert(false);
   }
 
-  legacy::PassManager pass;
-  auto filetype = CodeGenFileType::ObjectFile;
-  if (target_machine->addPassesToEmitFile(pass, dest, nullptr, filetype)) {
-    errs() << "Target machine can't emit a file of this type";
-    assert(false);
-  }
+  outs() << "Compilation succeded!\n";
+}
 
-  pass.run(*codegen.module);
-  dest.flush();
+std::filesystem::path ToLLVM::createObjectFile(Validation::ValidatedTU&& vtu, const std::string& filename) {
+  TU codegen(filename);
+  codegen.lowerToLLVM(vtu);
 
-  outs() << "Wrote output file\n";
+  static const std::filesystem::path object_folder = Arguments::getBuildLocation() + "obj/";
+  std::filesystem::create_directories(object_folder);
+
+
+  std::filesystem::path obj_path = object_folder;
+  obj_path.append(filename);
+#ifdef _WIN32
+  obj_path.replace_extension(".obj");
+#else
+  obj_path.replace_extension(".o");
+#endif
+
+
+  codegen.createFile(obj_path, CodeGenFileType::ObjectFile);
+  return obj_path;
 }
 

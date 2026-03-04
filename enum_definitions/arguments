@@ -1,0 +1,22 @@
+Args Arguments
+
+!BEGIN OUTPUT_ARGS
+    OUTPUT_LEXER        --emit-lexer
+    OUTPUT_PARSER       --emit-parser
+    OUTPUT_VALIDATION   --validate
+    OUTPUT_LLVMIR       --emit-llvm
+    OUTPUT_ASM          --emit-asm
+
+    OUTPUT_NAME         --o
+    OUTPUT_LOCATION     --build-location
+!END OUTPUT_ARGS
+
+!BEGIN OPTIMIZATION_ARGS
+    O0                  --O0
+    O1                  --O1
+    O2                  --O2
+    O3                  --O3
+!END OPTIMIZATION_ARGS
+
+
+!FINISH

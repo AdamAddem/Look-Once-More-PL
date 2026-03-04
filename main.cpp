@@ -1,65 +1,56 @@
 #include <stdexcept>
-#include <unordered_map>
 #include <iostream>
 
-#include "debug_flags.hpp"
+#include "arguments.hpp"
 #include "error.hpp"
 #include "src/backends/llvm/tollvm.hpp"
 #include "src/lexing/lex.hpp"
 #include "src/parsing/parse.hpp"
 #include "src/validation/ast_validation.hpp"
 
+#include <cassert>
+#include <filesystem>
+
 using namespace Parser;
 using namespace Lexer;
 using namespace Validation;
 using namespace ToLLVM;
 
-enum class Args {
-  OUTPUT_LEXER,
-	OUTPUT_PARSE,
-	OUTPUT_VALIDATION
-};
 
 
-static void set_flags(const std::string& arg_str) {
-  static const std::unordered_map<std::string, Args> stringToArgs {
-          {"-L", Args::OUTPUT_LEXER},
-  {"-P", Args::OUTPUT_PARSE},
-          {"-V", Args::OUTPUT_VALIDATION},
-  };
-
-  if (!stringToArgs.contains(arg_str))
-          throw std::runtime_error("Argument not recognized");
-
-  switch (stringToArgs.at(arg_str)) {
-  case Args::OUTPUT_LEXER:
-          lom_debug::output_lexing = true;
-          break;
-  case Args::OUTPUT_PARSE:
-          lom_debug::output_parse = true;
-          break;
-  case Args::OUTPUT_VALIDATION:
-          lom_debug::output_validation = true;
-          break;
-
-  default: throw std::runtime_error("error with arg passed, shouldn't happen");
-  }
+static ValidatedTU processFile(const std::filesystem::path& filename)
+try {
+  return validateTU( parseTokens( tokenizeFile(filename)));
 }
+catch (LOMError& e) {
+  std::cout << e.error_message << std::endl;
+  assert(false);
+}
+
 
 int main(const int argc, const char* argv[]) {
   if(argc < 2)
-    throw std::runtime_error("Name of file as argument required");
+    throw std::runtime_error("Arguments required");
 
-  if (argc == 3) set_flags(argv[2]);
+  std::vector<std::filesystem::path> filepaths = Arguments::setArgs(argc, argv);
 
-  try {
-    compile(validateTU(parseTokens(tokenizeFile(argv[1]))), argv[1]);
+  if (filepaths.empty())
+    throw std::runtime_error("At least one file name must be specified");
+
+  if (Arguments::doOutputIR()) {
+    for (auto& filename : filepaths)
+      filename = createIRFile(processFile(filename), filename);
   }
-  catch (LOMError& e) {
-    std::cout << e.error_message << std::endl;
-    return 1;
+  else if (Arguments::doOutputAsm()) {
+    for (auto& filename : filepaths)
+      filename = createASMFile(processFile(filename), filename);
   }
+  else {
+    for (auto& filename : filepaths)
+      filename = createObjectFile(processFile(filename), filename);
 
+    linkObjects(filepaths);
+  }
 
 
   return 0;

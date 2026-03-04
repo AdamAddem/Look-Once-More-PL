@@ -12,9 +12,10 @@ find_package(LLVM 20.1.8 REQUIRED CONFIG)
 include_directories(${PROJECT_SOURCE_DIR}/src)
 add_executable(LookOnceMore
         main.cpp
-        src/debug_flags.hpp
-        src/error.hpp
         src/error.cpp
+        src/error.hpp
+        src/arguments.cpp
+        src/arguments.hpp
 
         src/lexing/lex.cpp
         src/lexing/lex.hpp
@@ -36,8 +37,9 @@ add_executable(LookOnceMore
         src/validation/ast_validation.cpp
         src/validation/ast_validation.hpp
 
-        src/backends/llvm/tollvm.hpp
         src/backends/llvm/tollvm.cpp
+        src/backends/llvm/tollvm.hpp
+
         src/utilities/variant_overload.hpp
 )
 

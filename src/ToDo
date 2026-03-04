@@ -13,6 +13,7 @@ Grammar:
 Validation:
 
 Backend:
+    -Consider using the system linker instead of another compiler
     -Various math functions only use the signed versions, change
     -Exponent operator unimplemented
 

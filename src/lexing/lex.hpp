@@ -1,6 +1,8 @@
 #pragma once
 #include "tokentype.hpp"
 #include "../error.hpp"
+
+#include <filesystem>
 #include <string>
 #include <variant>
 #include <vector>
@@ -131,5 +133,5 @@ public:
   [[nodiscard]] TokenHandler getAllTokensUntilLastOf(TokenType _type);
 };
 
-[[nodiscard]] TokenHandler tokenizeFile(const std::string &file_path);
+[[nodiscard]] TokenHandler tokenizeFile(const std::filesystem::path &file_path);
 } // namespace Lexer

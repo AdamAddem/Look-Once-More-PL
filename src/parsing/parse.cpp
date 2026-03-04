@@ -1,11 +1,11 @@
 #include "parse.hpp"
-#include "../ast/expressions.hpp"
-#include "../ast/statements.hpp"
+#include "ast/expressions.hpp"
+#include "ast/statements.hpp"
 
 #include <iostream>
 #include <unordered_set>
 
-#include "../debug_flags.hpp"
+#include "arguments.hpp"
 #include "lexing/lex.hpp"
 
 using namespace Lexer;
@@ -694,10 +694,11 @@ static void printTU(const ParsedTU& tu);
 ParsedTU Parser::parseTokens(TokenHandler &&tokens) {
   ParsedTU ptu = secondPassParsing(firstPassParsing(std::move(tokens)));
 
-  if (lom_debug::output_parse) {
+  if (Arguments::doOutputParser()) {
+    std::cout << "\n--- Parser Output ---\n";
     printTU(ptu);
-    std::cout << "Parsing stage passed!" << std::endl;
-    std::exit(0);
+    std::cout << "\n--- Parser Output ---\n";
+    std::quick_exit(0);
   }
 
   return ptu;

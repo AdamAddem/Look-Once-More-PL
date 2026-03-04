@@ -1,6 +1,6 @@
 #include "lex.hpp"
 
-#include "../debug_flags.hpp"
+#include "arguments.hpp"
 #include "error.hpp"
 #include <cctype>
 #include <fstream>
@@ -300,7 +300,7 @@ static bool canStartIdentifier(const int c) {
   return std::isalpha(c) || c == '_';
 }
 
-TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
+TokenHandler Lexer::tokenizeFile(const std::filesystem::path &file_path) {
   FileInAnalysis file;
   file.stream.open(file_path);
   if (!file.stream)
@@ -330,13 +330,15 @@ TokenHandler Lexer::tokenizeFile(const std::string &file_path) {
       file.token_list.end()
       );
 
-  if (lom_debug::output_lexing) {
-    TokenHandler(std::move(file.token_list)).print();
-    std::cout << "Lexing stage passed!" << std::endl;
-    std::exit(0);
+  TokenHandler retval(std::move(file.token_list));
+  if (Arguments::doOutputLexer()) {
+    std::cout << "\n--- Lexer Output ---";
+    retval.print();
+    std::cout << "\n--- Lexer Output ---\n";
+    std::quick_exit(0);
   }
 
-  return TokenHandler(std::move(file.token_list));
+  return retval;
 }
 
 /* Lexer Functions */

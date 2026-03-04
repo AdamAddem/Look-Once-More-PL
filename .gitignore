@@ -3,5 +3,5 @@ lom_build/
 enum_definitions/tokentype_generator.cpp
 example.lom
 all_features.lom
-src/ToDo
+src/ToDo.txt
 .idea/

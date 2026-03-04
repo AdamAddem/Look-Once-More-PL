@@ -1,5 +1,3 @@
-# WIP
-
 ## Look Once More
 LOM is an ahead-of-time compiled, statically typed, multi-paradigm systems level language inspired by C++ and supported by
 a LLVM backend; It is written as a passion project, and successfully compiles with a very (very) limited featureset.
@@ -72,7 +70,7 @@ Below are language features, only some of which are implemented currently, that 
 ### Compiling
 Currently the only dependencies are LLVM and either clang or gcc. The CMakeLists.txt specifies version LLVM 20.1.8, 
 although if you can't find that specific version, try removing the version number.
-The linking process is currently bodged together by calling provoking either clang or gcc to create the executable.
+The linking process is currently bodged together by calling either clang or gcc to create the executable.
 
 ### Running
 The executable can be ran with the following arguments:

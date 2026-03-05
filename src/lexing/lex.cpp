@@ -1,7 +1,7 @@
 #include "lex.hpp"
 
-#include "arguments.hpp"
 #include "error.hpp"
+#include "settings.hpp"
 #include <cctype>
 #include <fstream>
 #include <iostream>
@@ -300,7 +300,7 @@ static bool canStartIdentifier(const int c) {
   return std::isalpha(c) || c == '_';
 }
 
-TokenHandler Lexer::tokenizeFile(const std::filesystem::path &file_path) {
+std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
   FileInAnalysis file;
   file.stream.open(file_path);
   if (!file.stream)
@@ -325,20 +325,15 @@ TokenHandler Lexer::tokenizeFile(const std::filesystem::path &file_path) {
 
   file.stream.close();
 
-  std::reverse(// tokens now organized such that back is first-most token.
-      file.token_list.begin(),
-      file.token_list.end()
-      );
 
-  TokenHandler retval(std::move(file.token_list));
-  if (Arguments::doOutputLexer()) {
+  if (Settings::doOutputLexer()) {
     std::cout << "\n--- Lexer Output ---";
-    retval.print();
+    TokenView(file.token_list.begin(), file.token_list.end()).print();
     std::cout << "\n--- Lexer Output ---\n";
     std::quick_exit(0);
   }
 
-  return retval;
+  return std::move(file.token_list);
 }
 
 /* Lexer Functions */

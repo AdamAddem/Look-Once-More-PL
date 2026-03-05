@@ -105,28 +105,18 @@ std::string Token::toDebugString() const {
   return tokenTypeToString(type);
 }
 
-int Token::getInt() const { return std::get<int>(value); }
-float Token::getFloat() const { return std::get<float>(value); }
-double Token::getDouble() const { return std::get<double>(value); }
-bool Token::getBool() const { return std::get<int>(value); }
-
-std::string Token::takeString() {
-  return std::get<std::string>(std::move(value));
-}
-
 /* Token Methods */
 
 /* TokenHandler Methods */
 
-void TokenHandler::print(const unsigned initial_indent) {
-  auto curr = token_list.rbegin();
-  const auto end = token_list.rend();
+void TokenView::print(const unsigned initial_indent) const {
+  auto curr_print = begin;
 
   auto indent{initial_indent};
   unsigned last_linenum{0};
-  while (curr != end) {
-    const auto type = curr->type;
-    const unsigned ln = curr->line_number;
+  while (curr_print != end) {
+    const auto type = curr_print->type;
+    const unsigned ln = curr_print->line_number;
     while (ln > last_linenum) {
       std::cout << std::endl;
       ++last_linenum;
@@ -142,96 +132,64 @@ void TokenHandler::print(const unsigned initial_indent) {
       indent--;
     }
     else
-      std::cout << curr->toDebugString() << " ";
+      std::cout << curr_print->toDebugString() << " ";
 
-    ++curr;
+    ++curr_print;
   }
 }
 
-bool TokenHandler::pop_if(const TokenType _type) {
-  if (token_list.empty())
-    return false;
 
-  if (token_list.back().type == _type) {
-    token_list.pop_back();
-    return true;
-  }
 
-  return false;
+void TokenView::reject_then_pop(const TokenType unwanted_type,
+                                const char *err_msg,
+                                const LOMError::Stage error_stage) {
+  begin->throw_if(unwanted_type, err_msg, error_stage);
+  ++begin;
 }
 
-void TokenHandler::reject_then_pop(const TokenType unwanted_type,
-                                   const char *err_msg,
-                                   const LOMError::Stage error_stage) {
-  token_list.back().throw_if(unwanted_type, err_msg, error_stage);
-  token_list.pop_back();
-}
-
-void TokenHandler::expect_then_pop(const TokenType expected_type,
-                                   const char *err_msg,
-                                   const LOMError::Stage error_stage) {
-  token_list.back().throw_if_not(expected_type, err_msg, error_stage);
-  token_list.pop_back();
+void TokenView::expect_then_pop(const TokenType expected_type,
+                                const char *err_msg,
+                                const LOMError::Stage error_stage) {
+  begin->throw_if_not(expected_type, err_msg, error_stage);
+  ++begin;
 }
 
 
-TokenHandler TokenHandler::getTokensBetween(const TokenType opening_token,
-                                            const TokenType closing_token) {
-  std::vector<Token> body;
+TokenView TokenView::getTokensBetween(const TokenType opening_token,
+                                      const TokenType closing_token) {
+  const TokenIter new_begin = begin;
   int open = 1;
   while (open) {
-    if (token_list.empty())
-      throw std::runtime_error("Expected closing token!");
+    if (begin == end) {
+      std::string errmsg = "Expected closing ";
+      errmsg.append(tokenTypeToString(opening_token));
+      throw LexingError(errmsg, *(begin - 1));
+    }
 
-    if (token_list.back().type == opening_token)
+    if (begin->type == opening_token)
       ++open;
-    else if (token_list.back().type == closing_token)
+    else if (begin->type == closing_token)
       --open;
 
-    body.emplace_back(std::move(token_list.back()));
-    token_list.pop_back();
+    ++begin;
   }
 
-  body.pop_back();
-  std::reverse(body.begin(), body.end()); // stackify
 
-  return TokenHandler(std::move(body));
+  return {new_begin, begin - 1};
 }
 
 
-TokenHandler TokenHandler::getAllTokensUntilFirstOf(const TokenType _type) {
-  std::vector<Token> tokens;
+TokenView TokenView::getAllTokensUntilFirstOf(const TokenType _type) {
+  const TokenIter new_begin = begin;
+  while (!begin->is(_type)) {
+    ++begin;
+    if (begin == end) {
+      std::string errmsg = "Expected ";
+      errmsg.append(tokenTypeToString(_type));
+      throw LexingError(errmsg, *(begin - 1));
+    }
 
-  while (!token_list.back().is(_type)) {
-    tokens.emplace_back(std::move(token_list.back()));
-    token_list.pop_back();
-
-    if (token_list.empty())
-      throw std::runtime_error(
-          "Did not find token in getAllTokensUntilFirstOf");
-  }
-  std::reverse(tokens.begin(), tokens.end());
-
-  return TokenHandler(std::move(tokens));
-}
-
-TokenHandler TokenHandler::getAllTokensUntilLastOf(TokenType _type) {
-  const auto last_of =
-      std::find_if(token_list.begin(), token_list.end(),
-                   [_type](const Token &t) { return t.is(_type); });
-
-  if (last_of == token_list.end())
-    throw std::runtime_error("Did not find token in getAllTokensUntilLastOf");
-
-  const size_t num = std::distance(last_of, token_list.end()) - 1;
-  std::vector<Token> tokens;
-  tokens.reserve(num);
-
-  for (size_t i = 0; i < num; ++i) {
-    tokens.emplace_back(std::move(token_list.back()));
-    token_list.pop_back();
   }
 
-  std::reverse(tokens.begin(), tokens.end());
-  return TokenHandler(std::move(tokens));
+  return {new_begin, begin};
 }

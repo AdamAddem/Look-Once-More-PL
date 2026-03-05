@@ -6,20 +6,24 @@
 #include <stdexcept>
 #include <variant>
 
-#include "arguments.hpp"
 #include "error.hpp"
+#include "settings.hpp"
 
 #include <cassert>
 using namespace Parser;
 using namespace Validation;
 using namespace AST;
 
-/* Expressions */
-static Type
-validateExpression(SymbolTable &table, const Expression *expression);
 
-static Type
-validateLiteralExpression(const LiteralExpression *literal) {
+ValidatedFunction::~ValidatedFunction() {
+  for (const auto s : function_body)
+    delete s;
+}
+
+/* Expressions */
+static Type validateExpression(SymbolTable &table, const Expression *expression);
+
+static Type validateLiteralExpression(const LiteralExpression *literal) {
   switch (literal->type) {
   case LiteralExpression::INT:
     return int_literal_type;
@@ -55,8 +59,8 @@ static Type validateSubscriptExpression(
   throw ValidationError("Subscript expression not implemented yet.", "[...]", subscript->line_number);
 }
 
-static Type //iffy on this function
-validateCallingExpression(SymbolTable &table, const CallingExpression *calling) {
+//this function is very iffy, revisit
+static Type validateCallingExpression(SymbolTable &table, const CallingExpression *calling) {
   const auto type = validateExpression(table, calling->func);
   if (type.isVariant())
     throw ValidationError("Call operator used on variant type.", type.toString(), calling->line_number);
@@ -78,10 +82,9 @@ validateCallingExpression(SymbolTable &table, const CallingExpression *calling) 
   return table.returnTypeOfCall(type.getTypename(), provided_params);
 }
 
-// current implementation returns the left expressions type for arithmetic
-// operations fix that shit lol
-Type
-validateBinaryExpression(SymbolTable &table, const BinaryExpression *binary) {
+// current implementation returns the left expressions type for arithmetic operations
+// fix that lol
+Type validateBinaryExpression(SymbolTable &table, const BinaryExpression *binary) {
   const auto& left_type = validateExpression(table, binary->expr_left);
   const bool left_is_mutable = left_type.is_mutable;
   const auto& right_type = validateExpression(table, binary->expr_right);
@@ -245,8 +248,7 @@ static Type validateUnaryExpression(SymbolTable &table, const UnaryExpression *u
   return type;
 }
 
-static Type validateExpression(SymbolTable &table,
-                                           const Expression *expression) {
+static Type validateExpression(SymbolTable &table, const Expression *expression) {
   if (const auto e = std::get_if<UnaryExpression>(&expression->value))
     return validateUnaryExpression(table, e);
   if (const auto e = std::get_if<BinaryExpression>(&expression->value))
@@ -271,16 +273,13 @@ static Type validateExpression(SymbolTable &table,
 
 static void validateStatement(SymbolTable &table, const Statement *statement);
 
-static void
-validateExpressionStatement(SymbolTable &table,
-                            const ExpressionStatement *expression_statement) {
+static void validateExpressionStatement(SymbolTable &table, const ExpressionStatement *expression_statement) {
   if (expression_statement->expr)
     validateExpression(table, expression_statement->expr);
 
 }
 
-static void validateReturnStatement(SymbolTable &table,
-                                    const ReturnStatement *return_statement) {
+static void validateReturnStatement(SymbolTable &table, const ReturnStatement *return_statement) {
 
   if (return_statement->return_value) {
 
@@ -307,8 +306,7 @@ static void validateReturnStatement(SymbolTable &table,
   }
 }
 
-static void validateScopedStatement(SymbolTable &table,
-                                    const ScopedStatement *scoped) {
+static void validateScopedStatement(SymbolTable &table, const ScopedStatement *scoped) {
   for (const auto s : scoped->scope_body)
     validateStatement(table, s);
 }
@@ -355,8 +353,7 @@ static void validateForLoop(SymbolTable &table, const ForLoop *for_loop) {
   table.enterScope();
 }
 
-static void validateIfStatement(SymbolTable &table,
-                                const IfStatement *if_statement) {
+static void validateIfStatement(SymbolTable &table, const IfStatement *if_statement) {
   const auto type = validateExpression(table, if_statement->condition);
   if (type.isVariant())
     throw ValidationError("Variant type used in if statement condition.", type.toString(), if_statement->line_number);
@@ -374,8 +371,7 @@ static void validateIfStatement(SymbolTable &table,
     validateStatement(table, if_statement->false_branch);
 }
 
-static void validateVarDeclaration(SymbolTable &table,
-                                   const VarDeclaration *declaration) {
+static void validateVarDeclaration(SymbolTable &table, const VarDeclaration *declaration) {
   if (table.isSymbolInCurrentScope(declaration->ident))
     throw ValidationError("Redefinition of symbol name in variable declaration.", declaration->ident, declaration->line_number);
 
@@ -481,7 +477,7 @@ ValidatedTU Validation::validateTU(ParsedTU &&ptu) {
   for (auto &f : ptu.functions)
     validateFunction(table, f);
 
-  if (Arguments::doOutputValidation()) {
+  if (Settings::doOutputValidation()) {
     std::cout << "--- Validation Passed ---\n\n";
     std::quick_exit(0);
   }

@@ -4,7 +4,14 @@
 
 using namespace AST;
 
-
+//see header before you insist I use unique pointer
+VarDeclaration::~VarDeclaration() {delete expr;}
+IfStatement::~IfStatement() {delete condition; delete true_branch; delete false_branch;}
+ForLoop::~ForLoop() {delete var_statement; delete condition; delete iteration; delete loop_body;}
+WhileLoop::~WhileLoop() {delete condition; delete loop_body;}
+ScopedStatement::~ScopedStatement() { for (const auto s : scope_body) delete s; }
+ReturnStatement::~ReturnStatement() { delete return_value; }
+ExpressionStatement::~ExpressionStatement() { delete expr; }
 
 void PrintStatementVisitor::operator()(
     const ExpressionStatement &stmt) const noexcept {
@@ -40,7 +47,7 @@ void PrintStatementVisitor::operator()(
 
   std::cout << "{\n";
 
-  for (auto s : stmt.scope_body) {
+  for (const auto s : stmt.scope_body) {
     std::visit(PrintStatementVisitor{indent + 1}, s->value);
     std::cout << "\n";
   }
@@ -83,9 +90,9 @@ void PrintStatementVisitor::operator()(const IfStatement &stmt) const noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
-  std::cout << "if (";
+  std::cout << "if ( ";
   std::visit(PrintExpressionVisitor{}, stmt.condition->value);
-  std::cout << ")\n";
+  std::cout << " )\n";
 
   std::visit(PrintStatementVisitor{indent}, stmt.true_branch->value);
 

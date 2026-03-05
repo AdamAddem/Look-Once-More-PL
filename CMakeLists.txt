@@ -14,8 +14,8 @@ add_executable(LookOnceMore
         main.cpp
         src/error.cpp
         src/error.hpp
-        src/arguments.cpp
-        src/arguments.hpp
+        src/settings.cpp
+        src/settings.hpp
 
         src/lexing/lex.cpp
         src/lexing/lex.hpp
@@ -37,6 +37,8 @@ add_executable(LookOnceMore
         src/validation/ast_validation.cpp
         src/validation/ast_validation.hpp
 
+        src/backends/codegen.cpp
+        src/backends/codegen.hpp
         src/backends/llvm/tollvm.cpp
         src/backends/llvm/tollvm.hpp
 

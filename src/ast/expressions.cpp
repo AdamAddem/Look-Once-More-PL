@@ -6,6 +6,17 @@
 
 using namespace AST;
 
+//see header before you insist I use unique pointer
+UnaryExpression::~UnaryExpression() { delete expr; }
+BinaryExpression::~BinaryExpression() { delete expr_left; delete expr_right; }
+CallingExpression::~CallingExpression() {
+  delete func;
+  for (const auto p : parameters)
+    delete p;
+}
+SubscriptExpression::~SubscriptExpression() { delete arr; delete inside; }
+
+
 
 [[maybe_unused]] static bool isLeftAssociative(const Operator op) {
   switch (op) {
@@ -162,34 +173,34 @@ std::string ExpressionToStringVisitor::operator()(
 
 std::string ExpressionToStringVisitor::operator()(
     const BinaryExpression &binary) const noexcept {
-  std::string retval;
-  retval.push_back('(');
-  retval.append(std::visit(ExpressionToStringVisitor{}, binary.expr_left->value));
+  std::string string_rep{"( "};
+  string_rep.append(std::visit(ExpressionToStringVisitor{}, binary.expr_left->value));
 
-  retval.push_back(' ');
-  retval.append(operatorToString(binary.opr));
-  retval.push_back(' ');
+  string_rep.push_back(' ');
+  string_rep.append(operatorToString(binary.opr));
+  string_rep.push_back(' ');
 
-  retval.append(std::visit(ExpressionToStringVisitor{}, binary.expr_right->value));
-  retval.push_back(')');
+  string_rep.append(std::visit(ExpressionToStringVisitor{}, binary.expr_right->value));
+  string_rep.append(" )");
 
-  return retval;
+  return string_rep;
 }
 
 std::string ExpressionToStringVisitor::operator()(
     const CallingExpression &calling) const noexcept {
   std::string retval = std::visit(ExpressionToStringVisitor{}, calling.func->value);
-  retval.push_back('(');
+  retval.append("( ");
   for (const auto p : calling.parameters) {
     retval.append(std::visit(ExpressionToStringVisitor{}, p->value));
     retval.append(", ");
   }
+
   if (!calling.parameters.empty()) {
    retval.pop_back();
    retval.pop_back();
   }
 
-  retval.push_back(')');
+  retval.append(" )");
   return retval;
 }
 

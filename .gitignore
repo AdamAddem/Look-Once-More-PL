@@ -2,6 +2,6 @@ builds/
 lom_build/
 enum_definitions/tokentype_generator.cpp
 example.lom
-all_features.lom
+not_working.lom
 src/ToDo.txt
 .idea/

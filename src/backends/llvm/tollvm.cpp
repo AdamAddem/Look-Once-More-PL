@@ -1,16 +1,15 @@
 #include "tollvm.hpp"
 
-#include "arguments.hpp"
 #include "ast/expressions.hpp"
 #include "ast/statements.hpp"
 #include "error.hpp"
+#include "settings.hpp"
 #include "utilities/variant_overload.hpp"
 #include "validation/ast_validation.hpp"
 
 #include <filesystem>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
@@ -23,7 +22,7 @@
 
 using namespace llvm;
 
-
+namespace {
 struct FunctionBuilder {
   static constexpr std::string retval_location_name = "__retval";
   using LocalsMap = std::unordered_map<std::string, AllocaInst*>;
@@ -55,13 +54,22 @@ struct FunctionBuilder {
 
 };
 
-class TU {
+class TU final : public Backend {
   LLVMContext context;
   Module module;
 
+  IntegerType* i1; ConstantInt* i1_0; ConstantInt* i1_1;
+  IntegerType* i8; ConstantInt* i8_0; ConstantInt* i8_1;
+  IntegerType* i16; ConstantInt* i16_0; ConstantInt* i16_1;
+  IntegerType* i32; ConstantInt* i32_0; ConstantInt* i32_1;
+  IntegerType* i64; ConstantInt* i64_0; ConstantInt* i64_1;
+  Type* f32;  Constant* f32_0; Constant* f32_1;
+  Type* f64; Constant* f64_0; Constant* f64_1;
+  Type* devoid;
+
+
 public:
-  explicit TU(const std::string& filename) :
-    module(filename, context) {
+  explicit TU(const std::string& filename) : module(filename, context) {
     i1 = Type::getInt1Ty(context); i1_0 = ConstantInt::get(i1, 0); i1_1 = ConstantInt::get(i1, 1);
     i8 = Type::getInt8Ty(context); i8_0 = ConstantInt::get(i8, 0); i8_1 = ConstantInt::get(i8, 1);
     i16 = Type::getInt16Ty(context); i16_0 = ConstantInt::get(i16, 0); i16_1 = ConstantInt::get(i16, 1);
@@ -72,18 +80,6 @@ public:
     f64 = Type::getDoubleTy(context); f64_0 = ConstantFP::get(f64, 0); f64_1 = ConstantFP::get(f64, 1);
     devoid = Type::getVoidTy(context);
   }
-
-
-  IntegerType* i1; ConstantInt* i1_0; ConstantInt* i1_1;
-  IntegerType* i8; ConstantInt* i8_0; ConstantInt* i8_1;
-  IntegerType* i16; ConstantInt* i16_0; ConstantInt* i16_1;
-  IntegerType* i32; ConstantInt* i32_0; ConstantInt* i32_1;
-  IntegerType* i64; ConstantInt* i64_0; ConstantInt* i64_1;
-
-  Type* f32;  Constant* f32_0; Constant* f32_1;
-  Type* f64; Constant* f64_0; Constant* f64_1;
-  Type* devoid;
-
 
   [[nodiscard]] Type* getType(const AST::Type& t) const {
     assert(!t.isVariant());
@@ -166,6 +162,7 @@ public:
 
       function_builder.finalizeFunction();
     }
+
   }
 
   Value* genUnary(const AST::UnaryExpression& unary, FunctionBuilder& f) const noexcept {
@@ -175,28 +172,28 @@ public:
     IRBuilder<>& builder = f.builder;
     bool dostore;
     switch (unary.opr) {
-      case AST::Operator::PRE_INCREMENT:
-        result = is_float ? builder.CreateFAdd(load, f32_1) : builder.CreateAdd(load, i32_1);
-        dostore = true;
-        break;
-      case AST::Operator::PRE_DECREMENT:
-        result = is_float ? builder.CreateFSub(load, f32_1) : builder.CreateSub(load, i32_1);
-        dostore = true;
-        break;
-      case AST::Operator::UNARY_MINUS:
-        result = is_float ? builder.CreateFNeg(load) : builder.CreateNeg(load);
-        dostore = false;
-        break;
+    case AST::Operator::PRE_INCREMENT:
+      result = is_float ? builder.CreateFAdd(load, f32_1) : builder.CreateAdd(load, i32_1);
+      dostore = true;
+      break;
+    case AST::Operator::PRE_DECREMENT:
+      result = is_float ? builder.CreateFSub(load, f32_1) : builder.CreateSub(load, i32_1);
+      dostore = true;
+      break;
+    case AST::Operator::UNARY_MINUS:
+      result = is_float ? builder.CreateFNeg(load) : builder.CreateNeg(load);
+      dostore = false;
+      break;
 
-      case AST::Operator::ADDRESS_OF:
-      case AST::Operator::NOT:
-      case AST::Operator::POST_INCREMENT:
-      case AST::Operator::POST_DECREMENT:
-      case AST::Operator::CAST:
-      case AST::Operator::CAST_IF:
-      case AST::Operator::UNSAFE_CAST:
-      default:
-        assert(false && "Unimplemented expression in codegen srry");
+    case AST::Operator::ADDRESS_OF:
+    case AST::Operator::NOT:
+    case AST::Operator::POST_INCREMENT:
+    case AST::Operator::POST_DECREMENT:
+    case AST::Operator::CAST:
+    case AST::Operator::CAST_IF:
+    case AST::Operator::UNSAFE_CAST:
+    default:
+      assert(false && "Unimplemented expression in codegen srry");
     }
 
     if (dostore)
@@ -292,13 +289,12 @@ public:
     std::vector<Value*> params;
     params.reserve(calling.parameters.size());
     for (const auto e : calling.parameters)
-     params.push_back(genExpression(*e, f));
+      params.push_back(genExpression(*e, f));
 
     const auto& d = std::get<AST::IdentifierExpression>(calling.func->value);
     return f.builder.CreateCall(module.getFunction(d.ident), params);
   }
-
-  Value* genSubscript(const AST::SubscriptExpression &, FunctionBuilder& ) const noexcept {assert(false);}
+  Value* genSubscript(const AST::SubscriptExpression &, FunctionBuilder& ) const noexcept { assert(false); }
   Value* genIdentifier(const AST::IdentifierExpression & identifier, FunctionBuilder& f) const noexcept {
     Value* v;
     Type* t;
@@ -342,7 +338,6 @@ public:
       utils_callon(const AST::TemporaryExpr&, genTemporary, f),
       );
   }
-
   bool genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) {
     IRBuilder<> func_entry(&f.func->getEntryBlock());
     AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type), nullptr);
@@ -350,7 +345,6 @@ public:
     f.builder.CreateStore(i, genExpression(*declaration.expr, f));
     return false;
   }
-
   bool genIfStatement(const AST::IfStatement& ifstmt, FunctionBuilder& f) {
     IRBuilder<>& builder = f.builder;
     Value* condition_val = genExpression(*ifstmt.condition, f);
@@ -378,8 +372,8 @@ public:
 
     return false;
   }
-  bool genForLoop(const AST::ForLoop& , FunctionBuilder& ) const {assert(false);}
-  bool genWhileLoop(const AST::WhileLoop& , FunctionBuilder& ) const {assert(false);}
+  bool genForLoop(const AST::ForLoop& , FunctionBuilder& ) const { assert(false); }
+  bool genWhileLoop(const AST::WhileLoop& , FunctionBuilder& ) const { assert(false); }
   bool genScoped(const AST::ScopedStatement& scoped, FunctionBuilder& f) {
     auto curr = scoped.scope_body.begin();
     const auto end = scoped.scope_body.end();
@@ -410,10 +404,8 @@ public:
         utils_callon(const AST::ExpressionStatement&, genExpressionStatement, f)
       );
 
-    delete stmt;
     return retval;
   }
-
 
   void createFile(const std::filesystem::path& obj_path, const CodeGenFileType filetype) {
     InitializeAllTargetInfos();
@@ -455,104 +447,64 @@ public:
     dest.flush();
   }
 
-  void printModule(raw_ostream& out = outs()) const {
-    module.print(out, nullptr);
+  void printModule(raw_ostream& out = outs()) const { module.print(out, nullptr); }
+
+  virtual std::filesystem::path createASMFile (const std::string &filename) override {
+    static const std::filesystem::path asm_folder = Settings::getBuildLocation() + "asm/";
+    std::filesystem::create_directories(asm_folder);
+    std::filesystem::path asm_path = asm_folder;
+    asm_path.append(filename);
+
+#ifdef _WIN32
+    asm_path.replace_extension(".asm");
+#else
+    asm_path.replace_extension(".s");
+#endif
+
+    createFile(asm_path, CodeGenFileType::AssemblyFile);
+    return asm_path;
+  }
+
+  virtual std::filesystem::path createIRFile (const std::string &filename) override {
+    static const std::filesystem::path ir_path = Settings::getBuildLocation() + "llvm_ir/";
+    std::filesystem::create_directories(ir_path);
+
+    std::filesystem::path file_path = ir_path;
+    file_path.append(filename);
+    file_path.replace_extension(".ll");
+
+    std::error_code EC;
+    raw_fd_ostream dest(file_path.c_str(), EC, sys::fs::OF_None);
+    if (EC) {
+      errs() << "Could not open file: " << file_path << " | " << EC.message() << '\n';
+      std::quick_exit(1);
+    }
+
+    printModule(dest);
+    return file_path;
+  }
+
+  virtual std::filesystem::path createObjectFile(const std::string &filename) override {
+    static const std::filesystem::path object_folder = Settings::getBuildLocation() + "obj/";
+    std::filesystem::create_directories(object_folder);
+
+    std::filesystem::path obj_path = object_folder;
+    obj_path.append(filename);
+#ifdef _WIN32
+    obj_path.replace_extension(".obj");
+#else
+    obj_path.replace_extension(".o");
+#endif
+
+    createFile(obj_path, CodeGenFileType::ObjectFile);
+    return obj_path;
   }
 };
-
-
-std::filesystem::path ToLLVM::createASMFile(Validation::ValidatedTU&& vtu, const std::string &filename) {
-  TU codegen(filename);
-  codegen.lowerToLLVM(vtu);
-
-
-  static const std::filesystem::path asm_folder = Arguments::getBuildLocation() + "asm/";
-  std::filesystem::create_directories(asm_folder);
-
-
-  std::filesystem::path asm_path = asm_folder;
-  asm_path.append(filename);
-
-#ifdef _WIN32
-  asm_path.replace_extension(".asm");
-#else
-  asm_path.replace_extension(".s");
-#endif
-
-
-  codegen.createFile(asm_path, CodeGenFileType::AssemblyFile);
-
-  return asm_path;
-}
-
-std::filesystem::path ToLLVM::createIRFile(Validation::ValidatedTU&& vtu, const std::string &filename) {
-  TU codegen(filename);
-  codegen.lowerToLLVM(vtu);
-
-
-  static const std::filesystem::path ir_path = Arguments::getBuildLocation() + "llvm_ir/";
-  std::filesystem::create_directories(ir_path);
-
-  std::filesystem::path file_path = ir_path;
-  file_path.append(filename);
-  file_path.replace_extension(".ll");
-
-  std::error_code EC;
-  raw_fd_ostream dest(file_path.c_str(), EC, sys::fs::OF_None);
-  if (EC) {
-    errs() << "Could not open file: " << file_path << " | " << EC.message() << '\n';
-    std::quick_exit(1);
-  }
-
-  codegen.printModule(dest);
-  return file_path;
 }
 
 
-//i mean.... it works?
-void ToLLVM::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
-#ifdef __clang__
-  std::string compiler{"clang"};
-#elif defined(__GNUC__)
-  std::string compiler{"gcc"};
-#endif
-  for (const auto& file : obj_paths) {
-    compiler.push_back(' ');
-    compiler.append(file);
-  }
-
-
-  const std::string executable = Arguments::getBuildLocation() + Arguments::getExecutableName();
-
-  compiler.append(" -o ");
-  compiler.append(executable);
-
-  if (system(compiler.c_str())) {
-    errs() << "Error calling compiler with command: " << compiler;
-    assert(false);
-  }
-
-  outs() << "Compilation succeded!\n";
+auto ToLLVM::codegen(const Validation::ValidatedTU& vtu, const std::string &filename) -> std::unique_ptr<Backend> {
+  std::unique_ptr<TU> ptr(new TU(filename));
+  ptr->lowerToLLVM(vtu);
+  return ptr;
 }
-
-std::filesystem::path ToLLVM::createObjectFile(Validation::ValidatedTU&& vtu, const std::string& filename) {
-  TU codegen(filename);
-  codegen.lowerToLLVM(vtu);
-
-  static const std::filesystem::path object_folder = Arguments::getBuildLocation() + "obj/";
-  std::filesystem::create_directories(object_folder);
-
-
-  std::filesystem::path obj_path = object_folder;
-  obj_path.append(filename);
-#ifdef _WIN32
-  obj_path.replace_extension(".obj");
-#else
-  obj_path.replace_extension(".o");
-#endif
-
-
-  codegen.createFile(obj_path, CodeGenFileType::ObjectFile);
-  return obj_path;
-}
-

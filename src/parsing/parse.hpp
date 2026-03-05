@@ -2,7 +2,7 @@
 #include "../ast/statements.hpp"
 
 namespace Lexer {
-  struct TokenHandler;
+  struct Token;
 }
 
 namespace Parser {
@@ -10,8 +10,7 @@ namespace Parser {
 struct ParsedFunction {
   AST::Type return_type;
   std::string name;
-  std::vector<AST::VarDeclaration>
-      parameter_list; // VarDeclarations should have expr = nullptr
+  std::vector<AST::VarDeclaration> parameter_list; // VarDeclarations will have expr = nullptr
   std::vector<AST::Statement *> function_body;
 
   ParsedFunction(AST::Type &&_return_type, std::string &&_name,
@@ -39,5 +38,5 @@ struct ParsedTU {
 };
 
 
-[[nodiscard]] ParsedTU parseTokens(Lexer::TokenHandler &&tokens);
+[[nodiscard]] ParsedTU parseTokens(std::vector<Lexer::Token> &&tokens);
 } // namespace Parser

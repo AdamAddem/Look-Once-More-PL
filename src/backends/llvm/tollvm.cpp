@@ -158,7 +158,7 @@ public:
     for (const auto& func : vtu.functions) {
       auto function_builder = createFunction(func);
       for (const auto s : func.function_body)
-        genStatement(s, function_builder);
+        genStatement(*s, function_builder);
 
       function_builder.finalizeFunction();
     }
@@ -355,13 +355,13 @@ public:
 
     builder.SetInsertPoint(thenBB);
 
-    if (!genStatement(ifstmt.true_branch, f))
+    if (!genStatement(*ifstmt.true_branch, f))
       builder.CreateBr(mergeBB);
 
     f.func->insert(f.func->end(), elseBB);
     builder.SetInsertPoint(elseBB);
     if (ifstmt.false_branch) {
-      if (!genStatement(ifstmt.false_branch, f))
+      if (!genStatement(*ifstmt.false_branch, f))
         builder.CreateBr(mergeBB);
 
       f.func->insert(f.func->end(), mergeBB);
@@ -376,7 +376,7 @@ public:
     auto curr = scoped.scope_body.begin();
     const auto end = scoped.scope_body.end();
     while (true) {
-      const bool jumps_at_end = genStatement(*curr, f);
+      const bool jumps_at_end = genStatement(**curr, f);
       ++curr;
       if (curr == end)
         return jumps_at_end;
@@ -391,8 +391,8 @@ public:
     return true;
   }
   bool genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) { genExpression(*expr_stmt.expr, f); return false; }
-  bool genStatement(const AST::Statement* stmt, FunctionBuilder& f) {
-    return utils_match(*stmt,
+  bool genStatement(const AST::Statement& stmt, FunctionBuilder& f) {
+    return utils_match(stmt,
       utils_callon(const AST::VarDeclaration&, genVarDeclaration, f),
       utils_callon(const AST::IfStatement&, genIfStatement, f),
       utils_callon(const AST::ForLoop&, genForLoop, f),

@@ -5,6 +5,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include "utilities/owned_ptr.hpp"
 
 namespace AST {
 enum class Operator : unsigned {
@@ -85,47 +86,47 @@ struct LiteralExpression;
 using Expression = std::variant<UnaryExpression, BinaryExpression, CallingExpression, SubscriptExpression, IdentifierExpression, LiteralExpression>;
 
 struct UnaryExpression {
-  Expression* expr;
+  owned_ptr<Expression> expr;
   Operator opr;
   unsigned line_number;
 
-  UnaryExpression(Expression* _expr, const Operator _opr, const unsigned line_num)
-  : expr(_expr), opr(_opr), line_number(line_num) { assert(isCategoryUNARY_OPS(opr)); }
+  UnaryExpression(owned_ptr<Expression> _expr, const Operator _opr, const unsigned line_num)
+  : expr(std::move(_expr)), opr(_opr), line_number(line_num) { assert(isCategoryUNARY_OPS(opr)); }
 
   ~UnaryExpression();
 };
 
 struct BinaryExpression {
-  Expression* expr_left;
-  Expression* expr_right;
+  owned_ptr<Expression> expr_left;
+  owned_ptr<Expression> expr_right;
   Operator opr;
   unsigned line_number;
 
-  BinaryExpression(Expression* _expr_left, Expression* _expr_right, const Operator _opr, const unsigned line_num)
-  : expr_left(_expr_left), expr_right(_expr_right), opr(_opr), line_number(line_num) { assert(isCategoryBINARY_OPS(opr)); }
+  BinaryExpression(owned_ptr<Expression> _expr_left, owned_ptr<Expression> _expr_right, const Operator _opr, const unsigned line_num)
+  : expr_left(std::move(_expr_left)), expr_right(std::move(_expr_right)), opr(_opr), line_number(line_num) { assert(isCategoryBINARY_OPS(opr)); }
 
   ~BinaryExpression();
 };
 
 struct CallingExpression {
-  Expression* func;
+  owned_ptr<Expression> func;
   std::vector<Expression*> parameters;
   unsigned line_number;
 
-  CallingExpression(Expression* _f, std::vector<Expression*> &&_params, const unsigned line_num)
-  : func(_f), parameters(std::move(_params)), line_number(line_num) {}
+  CallingExpression(owned_ptr<Expression> _f, std::vector<Expression*> &&_params, const unsigned line_num)
+  : func(std::move(_f)), parameters(std::move(_params)), line_number(line_num) {}
 
   ~CallingExpression();
 };
 
 struct SubscriptExpression {
-  Expression* arr;
-  Expression* inside;
+  owned_ptr<Expression> arr;
+  owned_ptr<Expression> inside;
   unsigned line_number;
 
 
-  SubscriptExpression(Expression* _arr, Expression* _inside, const unsigned line_num)
-  : arr(_arr), inside(_inside), line_number(line_num) {}
+  SubscriptExpression(owned_ptr<Expression> _arr, owned_ptr<Expression> _inside, const unsigned line_num)
+  : arr(std::move(_arr)), inside(std::move(_inside)), line_number(line_num) {}
 
   ~SubscriptExpression();
 };

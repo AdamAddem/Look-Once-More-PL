@@ -22,7 +22,7 @@ ValidatedFunction::~ValidatedFunction() {
 }
 
 /* Expressions */
-static Type validateExpression(const Expression *expression, SymbolTable& table);
+static Type validateExpression(const Expression &expression, SymbolTable& table);
 
 static Type validateLiteralExpression(const LiteralExpression &literal) {
   switch (literal.type) {
@@ -56,7 +56,7 @@ static Type validateSubscriptExpression(const SubscriptExpression &, SymbolTable
 
 //this function is very iffy, revisit
 static Type validateCallingExpression(const CallingExpression &calling, SymbolTable& table) {
-  const auto type = validateExpression(calling.func, table);
+  const auto type = validateExpression(*calling.func, table);
   if (type.isVariant())
     throw ValidationError("Call operator used on variant type.", type.toString(), calling.line_number);
 
@@ -72,7 +72,7 @@ static Type validateCallingExpression(const CallingExpression &calling, SymbolTa
 
   std::vector<Type> provided_params;
   for (const auto& param : calling.parameters)
-    provided_params.emplace_back(validateExpression(param, table));
+    provided_params.emplace_back(validateExpression(*param, table));
 
   return table.returnTypeOfCall(type.getTypename(), provided_params);
 }
@@ -80,9 +80,9 @@ static Type validateCallingExpression(const CallingExpression &calling, SymbolTa
 // current implementation returns the left expressions type for arithmetic operations
 // fix that lol
 static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable& table) {
-  const auto& left_type = validateExpression(binary.expr_left, table);
+  const auto& left_type = validateExpression(*binary.expr_left, table);
   const bool left_is_mutable = left_type.is_mutable;
-  const auto& right_type = validateExpression(binary.expr_right, table);
+  const auto& right_type = validateExpression(*binary.expr_right, table);
 
   if (left_type.isVariant() || right_type.isVariant()) {
     std::string context = left_type.toString();
@@ -207,7 +207,7 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
 }
 
 static Type validateUnaryExpression(const UnaryExpression &unary, SymbolTable& table) {
-  const auto& type = validateExpression(unary.expr, table);
+  const auto& type = validateExpression(*unary.expr, table);
   if (type.isVariant()) {
     const std::string context = type.toString();
     throw ValidationError("Binary operator used on variant type(s).", context, unary.line_number);
@@ -243,9 +243,9 @@ static Type validateUnaryExpression(const UnaryExpression &unary, SymbolTable& t
   return type;
 }
 
-static Type validateExpression(const Expression *expression, SymbolTable& table) {
+static Type validateExpression(const Expression &expression, SymbolTable& table) {
 
-  return utils_match(*expression,
+  return utils_match(expression,
     utils_callon(const UnaryExpression&, validateUnaryExpression, table),
     utils_callon(const BinaryExpression&, validateBinaryExpression, table),
     utils_callon(const CallingExpression&, validateCallingExpression, table),
@@ -263,13 +263,13 @@ static void validateStatement(const Statement *statement, SymbolTable& table);
 
 static void validateExpressionStatement(const ExpressionStatement &expression_statement, SymbolTable& table) {
   if (expression_statement.expr)
-    validateExpression(expression_statement.expr, table);
+    validateExpression(*expression_statement.expr, table);
 }
 
 static void validateReturnStatement(const ReturnStatement &return_statement, SymbolTable& table) {
 
   if (return_statement.return_value) {
-    const auto& ret_type = validateExpression(return_statement.return_value, table);
+    const auto& ret_type = validateExpression(*return_statement.return_value, table);
     if (!ret_type.convertible_to(table.returnTypeOfCurrentScope())) {
       std::string context("Scope return type is '");
       context.append(table.returnTypeOfCurrentScope().toString());
@@ -298,7 +298,7 @@ static void validateScopedStatement(const ScopedStatement &scoped, SymbolTable& 
 }
 
 static void validateWhileLoop(const WhileLoop &while_loop, SymbolTable& table) {
-  const auto type = validateExpression(while_loop.condition, table);
+  const auto type = validateExpression(*while_loop.condition, table);
   if (type.isVariant())
     throw ValidationError("Variant in while loop condition.", type.toString(), while_loop.line_number);
 
@@ -310,15 +310,15 @@ static void validateWhileLoop(const WhileLoop &while_loop, SymbolTable& table) {
     throw ValidationError("While Loop condition non-convertible to boolean.", context, while_loop.line_number);
   }
 
-  validateStatement(while_loop.loop_body, table);
+  validateStatement(while_loop.loop_body.get(), table);
 }
 
 static void validateForLoop(const ForLoop &for_loop, SymbolTable& table) {
   table.enterScope();
-  validateStatement(for_loop.var_statement, table);
+  validateStatement(for_loop.var_statement.get(), table);
 
   if (for_loop.condition) {
-    const auto type  = validateExpression(for_loop.condition, table);
+    const auto type  = validateExpression(*for_loop.condition, table);
     if (type.isVariant())
       throw ValidationError("Variant used in for loop condition.", type.toString(), for_loop.line_number);
 
@@ -333,14 +333,14 @@ static void validateForLoop(const ForLoop &for_loop, SymbolTable& table) {
   }
 
   if (for_loop.iteration)
-    validateExpression(for_loop.iteration, table);
+    validateExpression(*for_loop.iteration, table);
 
-  validateStatement(for_loop.loop_body, table);
+  validateStatement(for_loop.loop_body.get(), table);
   table.enterScope();
 }
 
 static void validateIfStatement(const IfStatement &if_statement, SymbolTable& table) {
-  const auto type = validateExpression(if_statement.condition, table);
+  const auto type = validateExpression(*if_statement.condition, table);
   if (type.isVariant())
     throw ValidationError("Variant type used in if statement condition.", type.toString(), if_statement.line_number);
 
@@ -352,9 +352,9 @@ static void validateIfStatement(const IfStatement &if_statement, SymbolTable& ta
 
   }
 
-  validateStatement(if_statement.true_branch, table);
+  validateStatement(if_statement.true_branch.get(), table);
   if (if_statement.false_branch)
-    validateStatement(if_statement.false_branch, table);
+    validateStatement(if_statement.false_branch.get(), table);
 }
 
 static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTable& table) {
@@ -362,8 +362,8 @@ static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTabl
     throw ValidationError("Redefinition of symbol name in variable declaration.", declaration.ident, declaration.line_number);
 
   if (declaration.expr) {
-    const auto initialization_type = validateExpression(declaration.expr, table);
-    if (!declaration.type.convertible_to(validateExpression(declaration.expr, table))) {
+    const auto initialization_type = validateExpression(*declaration.expr, table);
+    if (!declaration.type.convertible_to(validateExpression(*declaration.expr, table))) {
       std::string context("Declared type is '");
       context.append(declaration.type.toString());
       context.append("' and expression '");
@@ -422,7 +422,7 @@ static void validateFunction(SymbolTable &table, ParsedFunction &func) { // TO D
       throw ValidationError("Value returning function has no return statement.", context, 42069);
     }
 
-    func.function_body.push_back(new Statement(ReturnStatement(0)));
+    func.function_body.push_back(new Statement(std::in_place_type<ReturnStatement>, 0));
   }
 
 

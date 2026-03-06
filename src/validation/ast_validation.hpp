@@ -12,12 +12,11 @@ struct ValidatedFunction {
   AST::Type return_type;
   std::string name;
   std::vector<AST::VarDeclaration> parameter_list; // VarDeclarations should have expr = nullptr
-  std::vector<AST::Statement *> function_body; // owned
+  std::vector<AST::Statement*> function_body;
 
-  //takes ownership of pointers
   ValidatedFunction(AST::Type &&_return_type, std::string &&_name,
                  std::vector<AST::VarDeclaration> &&_parameter_list,
-                 std::vector<AST::Statement *> &&_function_body) noexcept
+                 std::vector<AST::Statement*> &&_function_body) noexcept
   : return_type(std::move(_return_type)), name(std::move(_name)), parameter_list(std::move(_parameter_list)), function_body(std::move(_function_body)) {}
 
   ValidatedFunction(ValidatedFunction &&other) noexcept

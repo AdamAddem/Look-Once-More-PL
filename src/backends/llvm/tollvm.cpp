@@ -441,6 +441,7 @@ public:
 
     pass.run(module);
     dest.flush();
+    delete target_machine;
   }
 
   void printModule(raw_ostream& out = outs()) const { module.print(out, nullptr); }

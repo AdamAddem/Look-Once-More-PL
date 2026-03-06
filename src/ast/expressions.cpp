@@ -7,10 +7,10 @@
 using namespace AST;
 
 //see header before you insist I use unique pointer
-UnaryExpression::~UnaryExpression() = default;
-BinaryExpression::~BinaryExpression() = default;
-CallingExpression::~CallingExpression() = default;
-SubscriptExpression::~SubscriptExpression() = default;
+UnaryExpression::~UnaryExpression() { expr.destroy(); }
+BinaryExpression::~BinaryExpression() { expr_left.destroy(); expr_right.destroy(); }
+CallingExpression::~CallingExpression() { func.destroy(); for (const auto e : parameters) delete e;}
+SubscriptExpression::~SubscriptExpression() { arr.destroy(); inside.destroy(); }
 
 
 

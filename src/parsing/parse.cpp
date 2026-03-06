@@ -2,8 +2,8 @@
 #include "ast/statements.hpp"
 
 #include <iostream>
-#include <utility>
 #include <unordered_set>
+#include <utility>
 
 #include "lexing/lex.hpp"
 #include "settings.hpp"
@@ -518,13 +518,14 @@ Statement *parseDoWhile(TokenView&) { assert(false && "dowhile currently unsuppo
 
 // scoped may be {...} or one statement ;
 Statement *parseScoped(TokenView& tokens) {
-  std::vector<Statement *> statements;
+  std::vector<Statement*> statements;
 
   const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::LBRACE)) {
     TokenView scopedTokens = tokens.getTokensBetweenBraces();
-    while (!scopedTokens.empty())
-      statements.push_back(parseStatement(scopedTokens));
+    while (!scopedTokens.empty()) {
+      statements.emplace_back(parseStatement(scopedTokens));
+    }
 
     return new Statement{std::in_place_type<ScopedStatement>, std::move(statements), ln};
   }

@@ -16,10 +16,7 @@ using namespace Validation;
 using namespace AST;
 
 
-ValidatedFunction::~ValidatedFunction() {
-  for (const auto s : function_body)
-    delete s;
-}
+ValidatedFunction::~ValidatedFunction() {for (const auto s : function_body) delete s;}
 
 /* Expressions */
 static Type validateExpression(const Expression &expression, SymbolTable& table);
@@ -259,7 +256,7 @@ static Type validateExpression(const Expression &expression, SymbolTable& table)
 
 /* Statements */
 
-static void validateStatement(const Statement *statement, SymbolTable& table);
+static void validateStatement(const Statement &statement, SymbolTable& table);
 
 static void validateExpressionStatement(const ExpressionStatement &expression_statement, SymbolTable& table) {
   if (expression_statement.expr)
@@ -294,7 +291,7 @@ static void validateReturnStatement(const ReturnStatement &return_statement, Sym
 
 static void validateScopedStatement(const ScopedStatement &scoped, SymbolTable& table) {
   for (const auto s : scoped.scope_body)
-    validateStatement(s, table);
+    validateStatement(*s, table);
 }
 
 static void validateWhileLoop(const WhileLoop &while_loop, SymbolTable& table) {
@@ -310,12 +307,12 @@ static void validateWhileLoop(const WhileLoop &while_loop, SymbolTable& table) {
     throw ValidationError("While Loop condition non-convertible to boolean.", context, while_loop.line_number);
   }
 
-  validateStatement(while_loop.loop_body.get(), table);
+  validateStatement(*while_loop.loop_body, table);
 }
 
 static void validateForLoop(const ForLoop &for_loop, SymbolTable& table) {
   table.enterScope();
-  validateStatement(for_loop.var_statement.get(), table);
+  validateStatement(*for_loop.var_statement, table);
 
   if (for_loop.condition) {
     const auto type  = validateExpression(*for_loop.condition, table);
@@ -335,7 +332,7 @@ static void validateForLoop(const ForLoop &for_loop, SymbolTable& table) {
   if (for_loop.iteration)
     validateExpression(*for_loop.iteration, table);
 
-  validateStatement(for_loop.loop_body.get(), table);
+  validateStatement(*for_loop.loop_body, table);
   table.enterScope();
 }
 
@@ -352,9 +349,9 @@ static void validateIfStatement(const IfStatement &if_statement, SymbolTable& ta
 
   }
 
-  validateStatement(if_statement.true_branch.get(), table);
+  validateStatement(*if_statement.true_branch, table);
   if (if_statement.false_branch)
-    validateStatement(if_statement.false_branch.get(), table);
+    validateStatement(*if_statement.false_branch, table);
 }
 
 static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTable& table) {
@@ -379,9 +376,9 @@ static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTabl
   table.addLocalVariable(declaration.ident, declaration.type);
 }
 
-static void validateStatement(const Statement *statement, SymbolTable& table) {
+static void validateStatement(const Statement &statement, SymbolTable& table) {
 
-  utils_match(*statement,
+  utils_match(statement,
     utils_callon(const VarDeclaration&, validateVarDeclaration, table),
     utils_callon(const IfStatement&, validateIfStatement, table),
     utils_callon(const ForLoop&, validateForLoop, table),
@@ -409,7 +406,7 @@ static void validateFunction(SymbolTable &table, ParsedFunction &func) { // TO D
   const bool is_devoid_return = func.return_type.isDevoid();
   bool has_return_statement = false;
   for (const auto statement : func.function_body) {
-    validateStatement(statement, table);
+    validateStatement(*statement, table);
 
     if (!is_devoid_return && std::holds_alternative<ReturnStatement>(*statement))
       has_return_statement = true;
@@ -422,7 +419,7 @@ static void validateFunction(SymbolTable &table, ParsedFunction &func) { // TO D
       throw ValidationError("Value returning function has no return statement.", context, 42069);
     }
 
-    func.function_body.push_back(new Statement(std::in_place_type<ReturnStatement>, 0));
+    func.function_body.emplace_back(new Statement{std::in_place_type<ReturnStatement>, 0});
   }
 
 

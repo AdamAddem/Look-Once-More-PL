@@ -76,7 +76,7 @@ struct ScopedStatement {
   std::vector<Statement*> scope_body;
   unsigned line_number;
 
-  ScopedStatement(std::vector<Statement *> &&_body, const unsigned line_num)
+  ScopedStatement(std::vector<Statement*> &&_body, const unsigned line_num)
   : scope_body(std::move(_body)), line_number(line_num) {}
 
   ~ScopedStatement();

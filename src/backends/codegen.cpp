@@ -22,7 +22,10 @@ void Backend::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
   std::string compiler{"clang"};
 #elif defined(__GNUC__)
   std::string compiler{"gcc"};
+#else
+  throw std::runtime_error("Linking Objects is currently not supported without clang or gcc. You're probably on windows, in which case, godspeed.");
 #endif
+
   for (const auto& file : obj_paths) {
     compiler.push_back(' ');
     compiler.append(file);

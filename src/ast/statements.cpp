@@ -5,16 +5,15 @@
 using namespace AST;
 
 //see header before you insist I use unique pointer
-VarDeclaration::~VarDeclaration() {delete expr;}
-IfStatement::~IfStatement() {delete condition; delete true_branch; delete false_branch;}
-ForLoop::~ForLoop() {delete var_statement; delete condition; delete iteration; delete loop_body;}
-WhileLoop::~WhileLoop() {delete condition; delete loop_body;}
+VarDeclaration::~VarDeclaration() { delete expr; }
+IfStatement::~IfStatement() { delete condition; delete true_branch; delete false_branch; }
+ForLoop::~ForLoop() { delete var_statement; delete condition; delete iteration; delete loop_body; }
+WhileLoop::~WhileLoop() { delete condition; delete loop_body; }
 ScopedStatement::~ScopedStatement() { for (const auto s : scope_body) delete s; }
 ReturnStatement::~ReturnStatement() { delete return_value; }
 ExpressionStatement::~ExpressionStatement() { delete expr; }
 
-void PrintStatementVisitor::operator()(
-    const ExpressionStatement &stmt) const noexcept {
+void PrintStatementVisitor::operator()(const ExpressionStatement &stmt) const noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
@@ -23,8 +22,7 @@ void PrintStatementVisitor::operator()(
   std::cout << ";";
 }
 
-void PrintStatementVisitor::operator()(
-    const ReturnStatement &stmt) const noexcept {
+void PrintStatementVisitor::operator()(const ReturnStatement &stmt) const noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
   std::cout << "return ";
@@ -34,8 +32,7 @@ void PrintStatementVisitor::operator()(
   std::cout << ";";
 }
 
-void PrintStatementVisitor::operator()(
-    const ScopedStatement &stmt) const noexcept {
+void PrintStatementVisitor::operator()(const ScopedStatement &stmt) const noexcept {
 
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
@@ -105,8 +102,7 @@ void PrintStatementVisitor::operator()(const IfStatement &stmt) const noexcept {
   }
 }
 
-void PrintStatementVisitor::operator()(
-    const VarDeclaration &stmt) const noexcept {
+void PrintStatementVisitor::operator()(const VarDeclaration &stmt) const noexcept {
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 

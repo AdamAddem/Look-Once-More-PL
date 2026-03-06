@@ -9,11 +9,7 @@ using namespace AST;
 //see header before you insist I use unique pointer
 UnaryExpression::~UnaryExpression() { delete expr; }
 BinaryExpression::~BinaryExpression() { delete expr_left; delete expr_right; }
-CallingExpression::~CallingExpression() {
-  delete func;
-  for (const auto p : parameters)
-    delete p;
-}
+CallingExpression::~CallingExpression() { delete func; for (const auto p : parameters) delete p; }
 SubscriptExpression::~SubscriptExpression() { delete arr; delete inside; }
 
 
@@ -32,7 +28,6 @@ SubscriptExpression::~SubscriptExpression() { delete arr; delete inside; }
     return true;
   }
 }
-
 
 [[maybe_unused]] static bool returnsArithmetic(const Operator op) {
   switch (op) {
@@ -68,8 +63,7 @@ SubscriptExpression::~SubscriptExpression() { delete arr; delete inside; }
   }
 }
 
-void PrintExpressionVisitor::operator()(
-    const UnaryExpression &unary) const noexcept {
+void PrintExpressionVisitor::operator()(const UnaryExpression &unary) const noexcept {
   if (isCategoryPREFIX_OPS(unary.opr)) {
     std::cout << operatorToString(unary.opr);
     if (unary.opr == Operator::NOT)
@@ -81,8 +75,7 @@ void PrintExpressionVisitor::operator()(
   }
 }
 
-void PrintExpressionVisitor::operator()(
-    const BinaryExpression &binary) const noexcept {
+void PrintExpressionVisitor::operator()(const BinaryExpression &binary) const noexcept {
   std::cout << "(";
   std::visit(PrintExpressionVisitor{}, binary.expr_left->value);
 
@@ -92,8 +85,7 @@ void PrintExpressionVisitor::operator()(
   std::cout << ")";
 }
 
-void PrintExpressionVisitor::operator()(
-    const CallingExpression &calling) const noexcept {
+void PrintExpressionVisitor::operator()(const CallingExpression &calling) const noexcept {
   std::visit(PrintExpressionVisitor{}, calling.func->value);
   std::cout << "(";
   for (const auto p : calling.parameters) {
@@ -106,21 +98,18 @@ void PrintExpressionVisitor::operator()(
   std::cout << ")";
 }
 
-void PrintExpressionVisitor::operator()(
-    const SubscriptExpression &subscript) const noexcept {
+void PrintExpressionVisitor::operator()(const SubscriptExpression &subscript) const noexcept {
   std::visit(PrintExpressionVisitor{}, subscript.arr->value);
   std::cout << "[";
   std::visit(PrintExpressionVisitor{}, subscript.inside->value);
   std::cout << "]";
 }
 
-void PrintExpressionVisitor::operator()(
-    const IdentifierExpression &identifier) const noexcept {
+void PrintExpressionVisitor::operator()(const IdentifierExpression &identifier) const noexcept {
   std::cout << identifier.ident;
 }
 
-void PrintExpressionVisitor::operator()(
-    const LiteralExpression &literal) const noexcept {
+void PrintExpressionVisitor::operator()(const LiteralExpression &literal) const noexcept {
   switch (literal.type) {
   case LiteralExpression::INT:
     std::cout << std::get<int>(literal.value);
@@ -151,12 +140,7 @@ void PrintExpressionVisitor::operator()(
   }
 }
 
-void PrintExpressionVisitor::operator()(const TemporaryExpr &) const noexcept {
-  std::cout << "temporaryexpr";
-}
-
-std::string ExpressionToStringVisitor::operator()(
-    const UnaryExpression &unary) const noexcept {
+std::string ExpressionToStringVisitor::operator()(const UnaryExpression &unary) const noexcept {
   std::string retval;
   if (isCategoryPREFIX_OPS(unary.opr)) {
     retval.append(operatorToString(unary.opr));
@@ -171,8 +155,7 @@ std::string ExpressionToStringVisitor::operator()(
   return retval;
 }
 
-std::string ExpressionToStringVisitor::operator()(
-    const BinaryExpression &binary) const noexcept {
+std::string ExpressionToStringVisitor::operator()(const BinaryExpression &binary) const noexcept {
   std::string string_rep{"( "};
   string_rep.append(std::visit(ExpressionToStringVisitor{}, binary.expr_left->value));
 
@@ -186,8 +169,7 @@ std::string ExpressionToStringVisitor::operator()(
   return string_rep;
 }
 
-std::string ExpressionToStringVisitor::operator()(
-    const CallingExpression &calling) const noexcept {
+std::string ExpressionToStringVisitor::operator()(const CallingExpression &calling) const noexcept {
   std::string retval = std::visit(ExpressionToStringVisitor{}, calling.func->value);
   retval.append("( ");
   for (const auto p : calling.parameters) {
@@ -204,8 +186,7 @@ std::string ExpressionToStringVisitor::operator()(
   return retval;
 }
 
-std::string ExpressionToStringVisitor::operator()(
-    const SubscriptExpression &subscript) const noexcept {
+std::string ExpressionToStringVisitor::operator()(const SubscriptExpression &subscript) const noexcept {
   std::string retval = std::visit(ExpressionToStringVisitor{}, subscript.arr->value);
   retval.push_back('[');
   retval.append(std::visit(ExpressionToStringVisitor{}, subscript.inside->value));
@@ -213,13 +194,11 @@ std::string ExpressionToStringVisitor::operator()(
   return retval;
 }
 
-std::string ExpressionToStringVisitor::operator()(
-    const IdentifierExpression &identifier) const noexcept {
+std::string ExpressionToStringVisitor::operator()(const IdentifierExpression &identifier) const noexcept {
   return identifier.ident;
 }
 
-std::string ExpressionToStringVisitor::operator()(
-    const LiteralExpression &literal) const noexcept {
+std::string ExpressionToStringVisitor::operator()(const LiteralExpression &literal) const noexcept {
   switch (literal.type) {
   case LiteralExpression::INT:
     return std::to_string(std::get<int>(literal.value));
@@ -241,8 +220,4 @@ std::string ExpressionToStringVisitor::operator()(
   default:
     assert(false && "invalid literalexpression type");
   }
-}
-
-std::string ExpressionToStringVisitor::operator()(const TemporaryExpr &) const noexcept {
-  return "temporaryexpr";
 }

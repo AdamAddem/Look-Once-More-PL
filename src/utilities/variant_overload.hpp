@@ -2,7 +2,7 @@
 
 template<class... Ts>
 struct overload : Ts... {
-    using Ts::operator()...;
+  using Ts::operator()...;
 };
 
 template<class... Ts>

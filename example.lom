@@ -1,15 +1,11 @@
-global mut f32 mut_global = 5.f;
 
+fn fib(i32 num) -> i32 {
+    if(num eq 0) return 0;
+    if(num eq 1) return 1;
 
-fn fib(mut i32 val) -> i32 {
-    if(val eq 0) return 0;
-    if(val eq 1) return 1;
-
-    return fib(val-1) + fib(val-2);
+    return fib(num - 1) + fib(num - 2);
 }
-
 
 fn main() -> i32 {
     return fib(8);
 }
-

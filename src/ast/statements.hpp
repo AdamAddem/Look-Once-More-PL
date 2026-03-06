@@ -48,14 +48,6 @@ struct IfStatement {
   IfStatement(Expression *_condition, Statement *_true_branch, const unsigned line_num, Statement *_false_branch = nullptr)
   : condition(_condition), true_branch(_true_branch), false_branch(_false_branch), line_number(line_num) {}
 
-  IfStatement(IfStatement&& other) noexcept
-  : condition(other.condition), true_branch(other.true_branch),
-  false_branch(other.false_branch), line_number(other.line_number) {
-    other.condition = nullptr;
-    other.true_branch = nullptr;
-    other.false_branch = nullptr;
-  }
-
   ~IfStatement();
 };
 
@@ -70,15 +62,6 @@ struct ForLoop {
   ForLoop(Statement *_decl, Expression *_condition, Expression *_iteration, Statement *_loop_body, const unsigned line_num)
   : var_statement(_decl), condition(_condition), iteration(_iteration), loop_body(_loop_body), line_number(line_num) {}
 
-  ForLoop(ForLoop&& other) noexcept
-  : var_statement(other.var_statement), condition(other.condition),
-  iteration(other.iteration), loop_body(other.loop_body), line_number(other.line_number) {
-    other.var_statement = nullptr;
-    other.condition = nullptr;
-    other.iteration = nullptr;
-    other.loop_body = nullptr;
-  }
-
   ~ForLoop();
 };
 
@@ -90,9 +73,6 @@ struct WhileLoop {
   //takes ownership of pointers
   WhileLoop(Expression *_condition, Statement *_loop_body, const unsigned line_num)
   : condition(_condition), loop_body(_loop_body), line_number(line_num) {}
-  WhileLoop(WhileLoop&& other) noexcept : condition(other.condition), loop_body(other.loop_body), line_number(other.line_number)
-  {other.condition = nullptr; other.loop_body = nullptr;}
-
   ~WhileLoop();
 };
 
@@ -103,10 +83,6 @@ struct ScopedStatement {
   ScopedStatement(std::vector<Statement *> &&_body, const unsigned line_num)
   : scope_body(std::move(_body)), line_number(line_num) {}
 
-  ScopedStatement(ScopedStatement&& other) noexcept : scope_body(std::move(other.scope_body)), line_number(other.line_number) {
-    for (auto& s : other.scope_body)
-      s = nullptr;
-  }
   ~ScopedStatement();
 };
 
@@ -118,9 +94,6 @@ struct ReturnStatement {
   explicit ReturnStatement(const unsigned line_num, Expression *_return_value = nullptr)
   : return_value(_return_value), line_number(line_num) {}
 
-  ReturnStatement(ReturnStatement&& other) noexcept
-  : return_value(other.return_value), line_number(other.line_number) {other.return_value = nullptr;}
-
   ~ReturnStatement();
 };
 
@@ -130,15 +103,13 @@ struct ExpressionStatement {
 
   //takes ownership of pointer
   explicit ExpressionStatement(const unsigned line_num, Expression *_expr = nullptr) : expr(_expr), line_number(line_num) {}
-  ExpressionStatement(ExpressionStatement&& other) noexcept : expr(other.expr), line_number(other.line_number) {other.expr = nullptr;}
   ~ExpressionStatement();
 };
 
 struct Statement {
-  using StatementTypes = std::variant<ExpressionStatement, ReturnStatement, ScopedStatement, WhileLoop, ForLoop, IfStatement, VarDeclaration>;
+  using StatementType = std::variant<ExpressionStatement, ReturnStatement, ScopedStatement, WhileLoop, ForLoop, IfStatement, VarDeclaration>;
 
-  explicit Statement(StatementTypes&& t) noexcept : value(std::move(t)) { }
-  StatementTypes value;
+  StatementType value;
 };
 
 struct PrintStatementVisitor {

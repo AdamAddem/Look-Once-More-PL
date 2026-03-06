@@ -68,9 +68,13 @@ Below are language features, only some of which are implemented currently, that 
     * Native tuples, strings, etc
 ---
 ### Compiling
-Currently the only dependencies are LLVM and either clang or gcc. The CMakeLists.txt specifies version LLVM 20.1.8, 
-although if you can't find that specific version, try removing the version number.
-The linking process is currently bodged together by calling either clang or gcc to create the executable.
+Currently the only dependencies are LLVM version 20.1.8. Compile as such:
+```
+mkdir build && cd build && cmake .. && make
+```
+Either clang or gcc are required to support linking objects into an executable. <br> 
+If you're using MSVC or any other compiler, use the -emit-obj flags to prevent the linking stage, which you can then start yourself.
+Then, stop using MSVC or any other compiler. Thanks.
 
 ### Running
 The executable can be ran with the following arguments:
@@ -78,15 +82,17 @@ The executable can be ran with the following arguments:
     <filenames>.lom             Specifies filenames for compilation
     -o <output>                 Specifies output file name
     -build-location <location>  Specifies the folder for all outputs
-    -emit-lexer                 Prints the result of the lexer and exits 
+    -emit-lexer                 Prints the result of the lexer and exits
     -emit-parser                Prints the result of the parser and exits
-    -validate                   Prints whether the files are legal LOM programs and exits  
+    -validate                   Prints whether the files are legal LOM programs and exits
+    
+    //May be used in conjunction but prevents linking
+    -emit-obj                   Produces object files
     -emit-llvm                  Compiles to LLVM IR
-    -emit-asm                   Compiles to assembly   
+    -emit-asm                   Compiles to assembly
 ```
 As of right now, the module system is not implemented, and forward declarations are not a thing, so compiling multiple files is useless as they can't interact.
-Actually, basically nothing is implemented, so don't bother doing any of this. Come back in a month or so when it'll be somewhat useable.
-
+Actually, barely anything is implemented, so don't bother doing any of this. Come back in a month or so when it'll be somewhat useable.
 ---
 
 ### Disclaimer

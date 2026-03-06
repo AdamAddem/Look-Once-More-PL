@@ -1,12 +1,13 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "ast/expressions.hpp"
+#include "backends/codegen.hpp"
 #include "error.hpp"
-#include "settings.hpp"
 #include "lexing/lex.hpp"
 #include "parsing/parse.hpp"
+#include "settings.hpp"
 #include "validation/ast_validation.hpp"
-#include "backends/codegen.hpp"
 
 #include <cassert>
 #include <filesystem>

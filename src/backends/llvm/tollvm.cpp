@@ -326,7 +326,6 @@ public:
       assert(false && "Invalid literal expression in codegen");
     }
   }
-  Value* genTemporary(const AST::TemporaryExpr &, [[maybe_unused]] FunctionBuilder& f) const noexcept {assert(false);}
   Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) {
     return utils_match(expr.value,
       utils_callon(const AST::UnaryExpression&, genUnary, f),
@@ -334,8 +333,7 @@ public:
       utils_callon(const AST::CallingExpression&, genCalling, f),
       utils_callon(const AST::SubscriptExpression&, genSubscript, f),
       utils_callon(const AST::IdentifierExpression&, genIdentifier, f),
-      utils_callon(const AST::LiteralExpression&, genLiteral),
-      utils_callon(const AST::TemporaryExpr&, genTemporary, f),
+      utils_callon(const AST::LiteralExpression&, genLiteral)
       );
   }
   bool genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) {

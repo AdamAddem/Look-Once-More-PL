@@ -43,6 +43,7 @@ add_executable(LookOnceMore
         src/backends/llvm/tollvm.hpp
 
         src/utilities/variant_overload.hpp
+        src/utilities/owned_ptr.hpp
 )
 
 target_include_directories(LookOnceMore PRIVATE ${LLVM_INCLUDE_DIRS})

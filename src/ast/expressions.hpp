@@ -1,4 +1,5 @@
 #pragma once
+#include "utilities/owned_ptr.hpp"
 #include <cassert>
 #include <string>
 #include <unordered_map>
@@ -95,9 +96,6 @@ struct UnaryExpression {
   UnaryExpression(Expression *_expr, const Operator _opr, const unsigned line_num)
   : expr(_expr), opr(_opr), line_number(line_num) { assert(isCategoryUNARY_OPS(opr)); }
 
-  UnaryExpression(UnaryExpression&& other) noexcept
-  : expr(other.expr), opr(other.opr), line_number(other.line_number) {other.expr = nullptr;}
-
   ~UnaryExpression();
 };
 
@@ -111,12 +109,6 @@ struct BinaryExpression {
   BinaryExpression(Expression *_expr_left, Expression *_expr_right, const Operator _opr, const unsigned line_num)
   : expr_left(_expr_left), expr_right(_expr_right), opr(_opr), line_number(line_num) { assert(isCategoryBINARY_OPS(opr)); }
 
-  BinaryExpression(BinaryExpression&& other) noexcept
-  : expr_left(other.expr_left), expr_right(other.expr_right), opr(other.opr), line_number(other.line_number){
-    other.expr_left = nullptr;
-    other.expr_right = nullptr;
-  }
-
   ~BinaryExpression();
 };
 
@@ -128,9 +120,6 @@ struct CallingExpression {
   //takes ownership over pointers
   CallingExpression(Expression *_f, std::vector<Expression *> &&_params, const unsigned line_num)
   : func(_f), parameters(std::move(_params)), line_number(line_num) {}
-
-  CallingExpression(CallingExpression&& other) noexcept
-  : func(other.func), parameters(std::move(other.parameters)), line_number(other.line_number) {other.func = nullptr;}
 
   ~CallingExpression();
 };
@@ -144,9 +133,6 @@ struct SubscriptExpression {
   SubscriptExpression(Expression *_arr, Expression *_inside, const unsigned line_num)
   : arr(_arr), inside(_inside), line_number(line_num) {}
 
-  SubscriptExpression(SubscriptExpression&& other) noexcept
-  : arr(other.arr), inside(other.inside), line_number(other.line_number) {other.arr = nullptr; other.inside = nullptr;}
-
   ~SubscriptExpression();
 };
 
@@ -156,9 +142,6 @@ struct IdentifierExpression {
 
   explicit IdentifierExpression(std::string &&_ident, const unsigned line_num)
   : ident(std::move(_ident)), line_number(line_num) {}
-
-  IdentifierExpression(IdentifierExpression&& other) noexcept
-  : ident(std::move(other.ident)), line_number(other.line_number) {}
 };
 
 struct LiteralExpression {
@@ -172,17 +155,11 @@ struct LiteralExpression {
   explicit LiteralExpression(LiteralValue &&_v, const LiteralType _t, const unsigned line_num)
   : value(std::move(_v)), type(_t), line_number(line_num) {}
 
-  LiteralExpression(LiteralExpression&& other) noexcept
-: value(std::move(other.value)), type(other.type), line_number(other.line_number) {}
 };
 
-struct TemporaryExpr { }; //deprecated?
-
 struct Expression {
-  std::variant<UnaryExpression, BinaryExpression, CallingExpression,
-               SubscriptExpression, IdentifierExpression, LiteralExpression,
-               TemporaryExpr>
-      value;
+  using ExpressionType = std::variant<UnaryExpression, BinaryExpression, CallingExpression, SubscriptExpression, IdentifierExpression, LiteralExpression>;
+  ExpressionType value;
 };
 
 struct PrintExpressionVisitor {
@@ -192,22 +169,14 @@ struct PrintExpressionVisitor {
   void operator()(const SubscriptExpression &) const noexcept;
   void operator()(const IdentifierExpression &) const noexcept;
   void operator()(const LiteralExpression &) const noexcept;
-  void operator()(const TemporaryExpr &) const noexcept;
 };
 
 struct ExpressionToStringVisitor {
   std::string operator()(const UnaryExpression &) const noexcept;
-
   std::string operator()(const BinaryExpression &) const noexcept;
-
   std::string operator()(const CallingExpression &) const noexcept;
-
   std::string operator()(const SubscriptExpression &) const noexcept;
-
   std::string operator()(const IdentifierExpression &) const noexcept;
-
   std::string operator()(const LiteralExpression &) const noexcept;
-
-  std::string operator()(const TemporaryExpr &) const noexcept;
 };
 }

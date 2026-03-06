@@ -5,10 +5,10 @@
 #include <cassert>
 #include <iostream>
 
-std::unique_ptr<Backend> Backend::codegen(const Validation::ValidatedTU& vtu, const std::string& filename) {
+std::unique_ptr<Backend> Backend::codegen(const Validation::ValidatedTU& vtu, const std::filesystem::path& file) {
   switch (Settings::chosenBackend()) {
   case Settings::Backend::LLVM:
-    return ToLLVM::codegen(vtu, filename);
+    return ToLLVM::codegen(vtu, file);
 
   default:
     assert(false && "Unknown backend type in codegen.cpp");
@@ -23,7 +23,7 @@ void Backend::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
 #elif defined(__GNUC__)
   std::string compiler{"gcc"};
 #else
-  throw std::runtime_error("Linking Objects is currently not supported without clang or gcc. You're probably on windows, in which case, godspeed.");
+  throw std::runtime_error("Linking objects is currently not supported without clang or gcc. You're probably on windows, in which case, godspeed.");
 #endif
 
   for (const auto& file : obj_paths) {

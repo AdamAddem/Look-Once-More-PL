@@ -446,11 +446,11 @@ public:
 
   void printModule(raw_ostream& out = outs()) const { module.print(out, nullptr); }
 
-  virtual std::filesystem::path createASMFile (const std::string &filename) override {
+  virtual std::filesystem::path createASMFile (const std::filesystem::path &file) override {
     static const std::filesystem::path asm_folder = Settings::getBuildLocation() + "asm/";
     std::filesystem::create_directories(asm_folder);
     std::filesystem::path asm_path = asm_folder;
-    asm_path.append(filename);
+    asm_path.append(file.string());
 
 #ifdef _WIN32
     asm_path.replace_extension(".asm");
@@ -462,12 +462,12 @@ public:
     return asm_path;
   }
 
-  virtual std::filesystem::path createIRFile (const std::string &filename) override {
+  virtual std::filesystem::path createIRFile (const std::filesystem::path &file) override {
     static const std::filesystem::path ir_path = Settings::getBuildLocation() + "llvm_ir/";
     std::filesystem::create_directories(ir_path);
 
     std::filesystem::path file_path = ir_path;
-    file_path.append(filename);
+    file_path.append(file.string());
     file_path.replace_extension(".ll");
 
     std::error_code EC;
@@ -481,12 +481,12 @@ public:
     return file_path;
   }
 
-  virtual std::filesystem::path createObjectFile(const std::string &filename) override {
+  virtual std::filesystem::path createObjectFile(const std::filesystem::path &file) override {
     static const std::filesystem::path object_folder = Settings::getBuildLocation() + "obj/";
     std::filesystem::create_directories(object_folder);
 
     std::filesystem::path obj_path = object_folder;
-    obj_path.append(filename);
+    obj_path.append(file.string());
 #ifdef _WIN32
     obj_path.replace_extension(".obj");
 #else
@@ -500,8 +500,8 @@ public:
 }
 
 
-auto ToLLVM::codegen(const Validation::ValidatedTU& vtu, const std::string &filename) -> std::unique_ptr<Backend> {
-  std::unique_ptr<TU> ptr(new TU(filename));
+std::unique_ptr<Backend> ToLLVM::codegen(const Validation::ValidatedTU& vtu, const std::filesystem::path &file) {
+  std::unique_ptr<TU> ptr(new TU(file));
   ptr->lowerToLLVM(vtu);
   return ptr;
 }

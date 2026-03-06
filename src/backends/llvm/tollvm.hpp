@@ -10,6 +10,6 @@ namespace Validation {
 
 namespace ToLLVM {
 
-std::unique_ptr<Backend> codegen(const Validation::ValidatedTU&, const std::string &filename);
+std::unique_ptr<Backend> codegen(const Validation::ValidatedTU&, const std::filesystem::path &file);
 
 }

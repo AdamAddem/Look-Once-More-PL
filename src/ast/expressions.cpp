@@ -7,10 +7,10 @@
 using namespace AST;
 
 //see header before you insist I use unique pointer
-UnaryExpression::~UnaryExpression() { delete expr; }
-BinaryExpression::~BinaryExpression() { delete expr_left; delete expr_right; }
-CallingExpression::~CallingExpression() { delete func; for (const auto p : parameters) delete p; }
-SubscriptExpression::~SubscriptExpression() { delete arr; delete inside; }
+UnaryExpression::~UnaryExpression() = default;
+BinaryExpression::~BinaryExpression() = default;
+CallingExpression::~CallingExpression() = default;
+SubscriptExpression::~SubscriptExpression() = default;
 
 
 
@@ -68,28 +68,27 @@ void PrintExpressionVisitor::operator()(const UnaryExpression &unary) const noex
     std::cout << operatorToString(unary.opr);
     if (unary.opr == Operator::NOT)
       std::cout << ' ';
-    std::visit(PrintExpressionVisitor{}, unary.expr->value);
+    std::visit(PrintExpressionVisitor{}, *unary.expr);
   } else {
-    std::visit(PrintExpressionVisitor{}, unary.expr->value);
+    std::visit(PrintExpressionVisitor{}, *unary.expr);
     std::cout << operatorToString(unary.opr);
   }
 }
 
 void PrintExpressionVisitor::operator()(const BinaryExpression &binary) const noexcept {
   std::cout << "(";
-  std::visit(PrintExpressionVisitor{}, binary.expr_left->value);
-
+  std::visit(PrintExpressionVisitor{}, *binary.expr_left);
   std::cout << ' ' << operatorToString(binary.opr) << ' ';
 
-  std::visit(PrintExpressionVisitor{}, binary.expr_right->value);
+  std::visit(PrintExpressionVisitor{}, *binary.expr_right);
   std::cout << ")";
 }
 
 void PrintExpressionVisitor::operator()(const CallingExpression &calling) const noexcept {
-  std::visit(PrintExpressionVisitor{}, calling.func->value);
+  std::visit(PrintExpressionVisitor{}, *calling.func);
   std::cout << "(";
   for (const auto p : calling.parameters) {
-    std::visit(PrintExpressionVisitor{}, p->value);
+    std::visit(PrintExpressionVisitor{}, *p);
     std::cout << ", ";
   }
   if (!calling.parameters.empty())
@@ -99,9 +98,9 @@ void PrintExpressionVisitor::operator()(const CallingExpression &calling) const 
 }
 
 void PrintExpressionVisitor::operator()(const SubscriptExpression &subscript) const noexcept {
-  std::visit(PrintExpressionVisitor{}, subscript.arr->value);
+  std::visit(PrintExpressionVisitor{}, *subscript.arr);
   std::cout << "[";
-  std::visit(PrintExpressionVisitor{}, subscript.inside->value);
+  std::visit(PrintExpressionVisitor{}, *subscript.inside);
   std::cout << "]";
 }
 
@@ -146,9 +145,9 @@ std::string ExpressionToStringVisitor::operator()(const UnaryExpression &unary) 
     retval.append(operatorToString(unary.opr));
     if (unary.opr == Operator::NOT)
       retval.push_back(' ');
-    retval.append(std::visit(ExpressionToStringVisitor{}, unary.expr->value));
+    retval.append(std::visit(ExpressionToStringVisitor{}, *unary.expr));
   } else {
-    retval.append(std::visit(ExpressionToStringVisitor{}, unary.expr->value));
+    retval.append(std::visit(ExpressionToStringVisitor{}, *unary.expr));
     retval.append(operatorToString(unary.opr));
   }
 
@@ -157,23 +156,23 @@ std::string ExpressionToStringVisitor::operator()(const UnaryExpression &unary) 
 
 std::string ExpressionToStringVisitor::operator()(const BinaryExpression &binary) const noexcept {
   std::string string_rep{"( "};
-  string_rep.append(std::visit(ExpressionToStringVisitor{}, binary.expr_left->value));
+  string_rep.append(std::visit(ExpressionToStringVisitor{}, *binary.expr_left));
 
   string_rep.push_back(' ');
   string_rep.append(operatorToString(binary.opr));
   string_rep.push_back(' ');
 
-  string_rep.append(std::visit(ExpressionToStringVisitor{}, binary.expr_right->value));
+  string_rep.append(std::visit(ExpressionToStringVisitor{}, *binary.expr_right));
   string_rep.append(" )");
 
   return string_rep;
 }
 
 std::string ExpressionToStringVisitor::operator()(const CallingExpression &calling) const noexcept {
-  std::string retval = std::visit(ExpressionToStringVisitor{}, calling.func->value);
+  std::string retval = std::visit(ExpressionToStringVisitor{}, *calling.func);
   retval.append("( ");
   for (const auto p : calling.parameters) {
-    retval.append(std::visit(ExpressionToStringVisitor{}, p->value));
+    retval.append(std::visit(ExpressionToStringVisitor{}, *p));
     retval.append(", ");
   }
 
@@ -187,9 +186,9 @@ std::string ExpressionToStringVisitor::operator()(const CallingExpression &calli
 }
 
 std::string ExpressionToStringVisitor::operator()(const SubscriptExpression &subscript) const noexcept {
-  std::string retval = std::visit(ExpressionToStringVisitor{}, subscript.arr->value);
+  std::string retval = std::visit(ExpressionToStringVisitor{}, *subscript.arr);
   retval.push_back('[');
-  retval.append(std::visit(ExpressionToStringVisitor{}, subscript.inside->value));
+  retval.append(std::visit(ExpressionToStringVisitor{}, *subscript.inside));
   retval.push_back(']');
   return retval;
 }

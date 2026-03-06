@@ -33,6 +33,7 @@ int main(const int argc, const char* argv[]) {
     throw std::runtime_error("At least one file name must be specified");
 
 
+
   const bool output_asm = Settings::doOutputASM();
   const bool output_ir = Settings::doOutputIR();
   const bool output_obj = Settings::doOutputOBJ() || Settings::doLinking();

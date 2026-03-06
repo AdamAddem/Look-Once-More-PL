@@ -166,7 +166,7 @@ public:
   }
 
   Value* genUnary(const AST::UnaryExpression& unary, FunctionBuilder& f) const noexcept {
-    auto* load = cast<LoadInst>(genIdentifier(std::get<AST::IdentifierExpression>(unary.expr->value), f));
+    auto* load = cast<LoadInst>(genIdentifier(std::get<AST::IdentifierExpression>(*unary.expr), f));
     const bool is_float = load->getAccessType()->isFloatingPointTy();
     Value* result;
     IRBuilder<>& builder = f.builder;
@@ -291,7 +291,7 @@ public:
     for (const auto e : calling.parameters)
       params.push_back(genExpression(*e, f));
 
-    const auto& d = std::get<AST::IdentifierExpression>(calling.func->value);
+    const auto d = std::get<AST::IdentifierExpression>(*calling.func);
     return f.builder.CreateCall(module.getFunction(d.ident), params);
   }
   Value* genSubscript(const AST::SubscriptExpression &, FunctionBuilder& ) const noexcept { assert(false); }
@@ -327,7 +327,7 @@ public:
     }
   }
   Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) {
-    return utils_match(expr.value,
+    return utils_match(expr,
       utils_callon(const AST::UnaryExpression&, genUnary, f),
       utils_callon(const AST::BinaryExpression&, genBinary, f),
       utils_callon(const AST::CallingExpression&, genCalling, f),
@@ -392,17 +392,15 @@ public:
   }
   bool genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) { genExpression(*expr_stmt.expr, f); return false; }
   bool genStatement(const AST::Statement* stmt, FunctionBuilder& f) {
-    const bool retval = utils_match( stmt->value,
-        utils_callon(const AST::VarDeclaration&, genVarDeclaration, f),
-        utils_callon(const AST::IfStatement&, genIfStatement, f),
-        utils_callon(const AST::ForLoop&, genForLoop, f),
-        utils_callon(const AST::WhileLoop&, genWhileLoop, f),
-        utils_callon(const AST::ScopedStatement&, genScoped, f),
-        utils_callon(const AST::ReturnStatement&, genReturn, f),
-        utils_callon(const AST::ExpressionStatement&, genExpressionStatement, f)
-      );
-
-    return retval;
+    return utils_match(*stmt,
+      utils_callon(const AST::VarDeclaration&, genVarDeclaration, f),
+      utils_callon(const AST::IfStatement&, genIfStatement, f),
+      utils_callon(const AST::ForLoop&, genForLoop, f),
+      utils_callon(const AST::WhileLoop&, genWhileLoop, f),
+      utils_callon(const AST::ScopedStatement&, genScoped, f),
+      utils_callon(const AST::ReturnStatement&, genReturn, f),
+      utils_callon(const AST::ExpressionStatement&, genExpressionStatement, f)
+    );
   }
 
   void createFile(const std::filesystem::path& obj_path, const CodeGenFileType filetype) {

@@ -71,7 +71,7 @@ static Type validateCallingExpression(const CallingExpression &calling, SymbolTa
   }
 
   std::vector<Type> provided_params;
-  for (const auto param : calling.parameters)
+  for (const auto& param : calling.parameters)
     provided_params.emplace_back(validateExpression(param, table));
 
   return table.returnTypeOfCall(type.getTypename(), provided_params);
@@ -245,7 +245,7 @@ static Type validateUnaryExpression(const UnaryExpression &unary, SymbolTable& t
 
 static Type validateExpression(const Expression *expression, SymbolTable& table) {
 
-  return utils_match(expression->value,
+  return utils_match(*expression,
     utils_callon(const UnaryExpression&, validateUnaryExpression, table),
     utils_callon(const BinaryExpression&, validateBinaryExpression, table),
     utils_callon(const CallingExpression&, validateCallingExpression, table),
@@ -274,7 +274,7 @@ static void validateReturnStatement(const ReturnStatement &return_statement, Sym
       std::string context("Scope return type is '");
       context.append(table.returnTypeOfCurrentScope().toString());
       context.append("' and expression '");
-      context.append(std::visit(ExpressionToStringVisitor{}, return_statement.return_value->value));
+      context.append(std::visit(ExpressionToStringVisitor{}, *return_statement.return_value));
       context.append("' returns type '");
       context.append(ret_type.toString());
       context.push_back('\'');
@@ -367,7 +367,7 @@ static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTabl
       std::string context("Declared type is '");
       context.append(declaration.type.toString());
       context.append("' and expression '");
-      context.append(std::visit(ExpressionToStringVisitor{}, declaration.expr->value));
+      context.append(std::visit(ExpressionToStringVisitor{}, *declaration.expr));
       context.append("' is of type '");
       context.append(initialization_type.toString());
       context.push_back('\'');
@@ -381,8 +381,7 @@ static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTabl
 
 static void validateStatement(const Statement *statement, SymbolTable& table) {
 
-
-  utils_match(statement->value,
+  utils_match(*statement,
     utils_callon(const VarDeclaration&, validateVarDeclaration, table),
     utils_callon(const IfStatement&, validateIfStatement, table),
     utils_callon(const ForLoop&, validateForLoop, table),
@@ -412,7 +411,7 @@ static void validateFunction(SymbolTable &table, ParsedFunction &func) { // TO D
   for (const auto statement : func.function_body) {
     validateStatement(statement, table);
 
-    if (!is_devoid_return && std::holds_alternative<ReturnStatement>(statement->value))
+    if (!is_devoid_return && std::holds_alternative<ReturnStatement>(*statement))
       has_return_statement = true;
   }
 

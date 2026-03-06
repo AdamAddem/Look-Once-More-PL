@@ -1,8 +1,8 @@
 #include "parse.hpp"
-#include "ast/expressions.hpp"
 #include "ast/statements.hpp"
 
 #include <iostream>
+#include <utility>
 #include <unordered_set>
 
 #include "lexing/lex.hpp"
@@ -11,11 +11,11 @@
 using namespace Lexer;
 using namespace Parser;
 using namespace AST;
-using ExpressionType = Expression::ExpressionType;
-using StatementType = Statement::StatementType;
 
+
+namespace {
 /* Type and Identifier */
-static Type parseType(TokenView& tokens) {
+Type parseType(TokenView& tokens) {
   Token token = tokens.take();
   bool is_mutable{false};
   if (token.isTypeModifier()) {
@@ -82,7 +82,7 @@ static Type parseType(TokenView& tokens) {
   throw ParsingError("Expected typename.", token);
 }
 
-static std::string parseIdentifier(TokenView& tokens) {
+std::string parseIdentifier(TokenView& tokens) {
   Token token = tokens.take();
 
   if (token.is(TokenType::IDENTIFIER))
@@ -93,13 +93,13 @@ static std::string parseIdentifier(TokenView& tokens) {
 /* Type and Identifier */
 
 /* Expressions */
-static Expression *parseExpression(TokenView& tokens);
+Expression* parseExpression(TokenView& tokens);
 
-static std::vector<Expression *> parseParameters(TokenView& between_parenthesis) {
+std::vector<Expression*> parseParameters(TokenView& between_parenthesis) {
   if (between_parenthesis.empty())
     return {};
 
-  std::vector<Expression *> retval;
+  std::vector<Expression*>  retval;
 
   while (true) {
     retval.push_back(parseExpression(between_parenthesis));
@@ -110,7 +110,7 @@ static std::vector<Expression *> parseParameters(TokenView& between_parenthesis)
   }
 }
 
-static Expression *parsePrimaryExpression(TokenView& tokens) {
+Expression* parsePrimaryExpression(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
   if (tokens.peek().isLiteral()) {
     LiteralExpression::LiteralType type;
@@ -138,7 +138,7 @@ static Expression *parsePrimaryExpression(TokenView& tokens) {
       throw ParsingError("Impossible error in parsePrimaryExpression function in secondparse", tokens.peek());
     }
 
-    return new Expression{ExpressionType{std::in_place_type<LiteralExpression>, tokens.take().value, type, ln}};
+    return new Expression(std::in_place_type<LiteralExpression>, tokens.take().value, type, ln);
   }
 
   if (tokens.pop_if(TokenType::LPAREN)) {
@@ -146,29 +146,32 @@ static Expression *parsePrimaryExpression(TokenView& tokens) {
     return parseExpression(t);
   }
 
+
   std::string ident = parseIdentifier(tokens);
-  return new Expression{ExpressionType{std::in_place_type<IdentifierExpression>, std::move(ident), ln}};
+  return new Expression(std::in_place_type<IdentifierExpression>, std::move(ident), ln);
 }
 
-static Expression *parsePostfixExpression(TokenView& tokens) {
-  Expression *left = parsePrimaryExpression(tokens);
+Expression* parsePostfixExpression(TokenView& tokens) {
+  Expression* left = parsePrimaryExpression(tokens);
   if (tokens.empty())
     return left;
+
+
 
   const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::PLUSPLUS))
-      left = new Expression{ExpressionType{std::in_place_type<UnaryExpression>, left, Operator::PRE_INCREMENT, ln}};
+      left = new Expression(std::in_place_type<UnaryExpression>, left, Operator::PRE_INCREMENT, ln);
 
     else if (tokens.pop_if(TokenType::MINUSMINUS))
-      left = new Expression{ExpressionType{std::in_place_type<UnaryExpression>, left, Operator::POST_DECREMENT, ln}};
+      left = new Expression(std::in_place_type<UnaryExpression>, left, Operator::POST_DECREMENT, ln);
 
     else if (tokens.pop_if(TokenType::LPAREN)) {
       TokenView t = tokens.getTokensBetweenParenthesis();
-      left = new Expression{ExpressionType{std::in_place_type<CallingExpression>, left, parseParameters(t), ln}};
+      left = new Expression(std::in_place_type<CallingExpression>, left,  parseParameters(t), ln);
     } else if (tokens.pop_if(TokenType::LBRACKET)) {
       TokenView t = tokens.getTokensBetweenBrackets();
-      left = new Expression{ExpressionType{std::in_place_type<SubscriptExpression>, left, parseExpression(t), ln}};
+      left = new Expression(std::in_place_type<SubscriptExpression>, left, parseExpression(t), ln);
     } else
       break;
   };
@@ -176,38 +179,38 @@ static Expression *parsePostfixExpression(TokenView& tokens) {
   return left;
 }
 
-static Expression *parsePrefixExpression(TokenView& tokens) {
+Expression* parsePrefixExpression(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::PLUSPLUS))
     return new Expression{
-      ExpressionType{std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::PRE_INCREMENT, ln}
+      std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::PRE_INCREMENT, ln
     };
 
   if (tokens.pop_if(TokenType::MINUSMINUS))
     return new Expression{
-      ExpressionType{std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::PRE_DECREMENT, ln}
+      std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::PRE_DECREMENT, ln
     };
 
   if (tokens.pop_if(TokenType::MINUS))
     return new Expression{
-      ExpressionType{std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::UNARY_MINUS, ln}
+      std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::UNARY_MINUS, ln
     };
 
   if (tokens.pop_if(TokenType::ADDR))
     return new Expression{
-        ExpressionType{std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::ADDRESS_OF, ln}
+        std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::ADDRESS_OF, ln
     };
 
   if (tokens.pop_if(TokenType::KEYWORD_NOT))
     return new Expression{
-        ExpressionType{std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::NOT, ln}
+        std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::NOT, ln
     };
 
   return parsePostfixExpression(tokens);
 }
 
-static Expression *parseExponentExpression(TokenView& tokens) {
-  Expression *left = parsePrefixExpression(tokens);
+Expression* parseExponentExpression(TokenView& tokens) {
+  Expression* left = parsePrefixExpression(tokens);
   if (tokens.empty())
     return left;
 
@@ -215,7 +218,7 @@ static Expression *parseExponentExpression(TokenView& tokens) {
   while (true) {
     if (tokens.pop_if(TokenType::POW))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>,left, parsePrefixExpression(tokens), Operator::POWER, ln}
+        std::in_place_type<BinaryExpression>,left, parsePrefixExpression(tokens), Operator::POWER, ln
       };
     else
       break;
@@ -224,8 +227,8 @@ static Expression *parseExponentExpression(TokenView& tokens) {
   return left;
 }
 
-static Expression *parseFactorExpression(TokenView& tokens) {
-  Expression *left = parseExponentExpression(tokens);
+Expression* parseFactorExpression(TokenView& tokens) {
+  Expression* left = parseExponentExpression(tokens);
   if (tokens.empty())
     return left;
 
@@ -234,17 +237,17 @@ static Expression *parseFactorExpression(TokenView& tokens) {
   while (true) {
     if (tokens.pop_if(TokenType::STAR))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>,
-          left, parseFactorExpression(tokens), Operator::MULTIPLY, ln}};
+        std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::MULTIPLY, ln
+      };
 
     else if (tokens.pop_if(TokenType::SLASH))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>,
-          left, parseFactorExpression(tokens), Operator::DIVIDE, ln}};
+        std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::DIVIDE, ln
+      };
 
     else if (tokens.pop_if(TokenType::MOD))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::MODULUS, ln}
+        std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::MODULUS, ln
       };
 
     else
@@ -254,8 +257,8 @@ static Expression *parseFactorExpression(TokenView& tokens) {
   return left;
 }
 
-static Expression *parseTermExpression(TokenView& tokens) {
-  Expression *left = parseFactorExpression(tokens);
+Expression* parseTermExpression(TokenView& tokens) {
+  Expression* left = parseFactorExpression(tokens);
   if (tokens.empty())
     return left;
 
@@ -263,12 +266,12 @@ static Expression *parseTermExpression(TokenView& tokens) {
   while (true) {
     if (tokens.pop_if(TokenType::PLUS))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::ADD, ln}
+        std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::ADD, ln
       };
 
     else if (tokens.pop_if(TokenType::MINUS))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>,left, parseFactorExpression(tokens), Operator::SUBTRACT, ln}
+        std::in_place_type<BinaryExpression>,left, parseFactorExpression(tokens), Operator::SUBTRACT, ln
       };
 
     else
@@ -277,8 +280,8 @@ static Expression *parseTermExpression(TokenView& tokens) {
   return left;
 }
 
-static Expression *parseRelationalExpression(TokenView& tokens) {
-  Expression *left = parseTermExpression(tokens);
+Expression* parseRelationalExpression(TokenView& tokens) {
+  Expression* left = parseTermExpression(tokens);
   if (tokens.empty())
     return left;
 
@@ -286,27 +289,27 @@ static Expression *parseRelationalExpression(TokenView& tokens) {
   while (true) {
     if (tokens.pop_if(TokenType::KEYWORD_EQUALS))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::EQUAL, ln}
+        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::EQUAL, ln
       };
     else if (tokens.pop_if(TokenType::KEYWORD_NOT_EQUAL))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>,left, parseTermExpression(tokens), Operator::NOT_EQUAL, ln}
+        std::in_place_type<BinaryExpression>,left, parseTermExpression(tokens), Operator::NOT_EQUAL, ln
       };
     else if (tokens.pop_if(TokenType::LESS))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::LESS, ln}
+        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::LESS, ln
       };
     else if (tokens.pop_if(TokenType::GTR))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::GREATER, ln}
+        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::GREATER, ln
       };
     else if (tokens.pop_if(TokenType::LESSEQ))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::LESS_EQUAL, ln}
+        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::LESS_EQUAL, ln
       };
     else if (tokens.pop_if(TokenType::GTREQ))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::GREATER_EQUAL, ln}
+        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::GREATER_EQUAL, ln
       };
     else
       break;
@@ -315,8 +318,8 @@ static Expression *parseRelationalExpression(TokenView& tokens) {
   return left;
 }
 
-static Expression *parseBitwiseExpression(TokenView& tokens) {
-  Expression *left = parseRelationalExpression(tokens);
+Expression* parseBitwiseExpression(TokenView& tokens) {
+  Expression* left = parseRelationalExpression(tokens);
   if (tokens.empty())
     return left;
 
@@ -324,22 +327,22 @@ static Expression *parseBitwiseExpression(TokenView& tokens) {
   while (true) {
     if (tokens.pop_if(TokenType::KEYWORD_BITAND))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITAND, ln}
+        std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITAND, ln
       };
 
     else if (tokens.pop_if(TokenType::KEYWORD_BITOR))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseRelationalExpression(tokens), Operator::BITOR, ln}
+        std::in_place_type<BinaryExpression>, left, parseRelationalExpression(tokens), Operator::BITOR, ln
       };
 
     else if (tokens.pop_if(TokenType::KEYWORD_BITXOR))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITXOR, ln}
+        std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITXOR, ln
       };
 
     else if (tokens.pop_if(TokenType::KEYWORD_BITNOT))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITNOT, ln}
+        std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITNOT, ln
       };
 
     else
@@ -349,8 +352,8 @@ static Expression *parseBitwiseExpression(TokenView& tokens) {
   return left;
 }
 
-static Expression *parseLogicalExpression(TokenView& tokens) {
-  Expression *left = parseBitwiseExpression(tokens);
+Expression* parseLogicalExpression(TokenView& tokens) {
+  Expression* left = parseBitwiseExpression(tokens);
   if (tokens.empty())
     return left;
 
@@ -358,15 +361,15 @@ static Expression *parseLogicalExpression(TokenView& tokens) {
   while (true) {
     if (tokens.pop_if(TokenType::KEYWORD_AND))
       left = new Expression{
-        ExpressionType{std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::AND, ln}
+        std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::AND, ln
       };
     else if (tokens.pop_if(TokenType::KEYWORD_OR))
       left = new Expression{
-          ExpressionType{std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::OR, ln}
+          std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::OR, ln
       };
     else if (tokens.pop_if(TokenType::KEYWORD_XOR))
       left = new Expression{
-          ExpressionType{std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::XOR, ln}
+          std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::XOR, ln
       };
     else
       break;
@@ -375,22 +378,22 @@ static Expression *parseLogicalExpression(TokenView& tokens) {
   return left;
 }
 
-static Expression *parseAssignmentExpression(TokenView& tokens) {
-  Expression *const left = parseLogicalExpression(tokens);
+Expression* parseAssignmentExpression(TokenView& tokens) {
+  Expression* const left = parseLogicalExpression(tokens);
   if (tokens.empty())
     return left;
 
   const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::ASSIGN))
     return new Expression{
-      ExpressionType{std::in_place_type<BinaryExpression>, left, parseAssignmentExpression(tokens), Operator::ASSIGN, ln}
+      std::in_place_type<BinaryExpression>, left, parseAssignmentExpression(tokens), Operator::ASSIGN, ln
     };
 
   return left;
 }
 
 // assumes tokens holds only the tokens relevant to the expression
-static Expression *parseExpression(TokenView& tokens) {
+Expression* parseExpression(TokenView& tokens) {
   if (tokens.empty())
     return nullptr;
 
@@ -400,20 +403,20 @@ static Expression *parseExpression(TokenView& tokens) {
 
 
 
-static Statement *parseStatement(TokenView& tokens);
-static Statement *parseScoped(TokenView& tokens);
+Statement *parseStatement(TokenView& tokens);
+Statement *parseScoped(TokenView& tokens);
 
-static Statement *parseExpressionStatement(TokenView& tokens) {
+Statement *parseExpressionStatement(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::SEMI_COLON))
-    return new Statement{StatementType{std::in_place_type<ExpressionStatement>, ln}};
+    return new Statement{std::in_place_type<ExpressionStatement>, ln};
 
   TokenView until_semi = tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
   tokens.pop();
-  return new Statement{StatementType{std::in_place_type<ExpressionStatement>, ln, parseExpression(until_semi)}};
+  return new Statement{std::in_place_type<ExpressionStatement>, ln, parseExpression(until_semi)};
 }
 
-static Statement *parseVarDecl(TokenView& tokens) {
+Statement *parseVarDecl(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
   Type type = parseType(tokens);
   std::string ident = parseIdentifier(tokens);
@@ -430,7 +433,9 @@ static Statement *parseVarDecl(TokenView& tokens) {
       throw ParsingError("Non-mutable variables may not be junk initialized.", type, ln);
 
     tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon ending variable declaration.", LOMError::Stage::ParsingError);
-    return new Statement{StatementType{std::in_place_type<VarDeclaration>, std::move(type), std::move(ident), ln }};
+    return new Statement{
+      std::in_place_type<VarDeclaration>, std::move(type), std::move(ident), ln
+    };
   }
 
 
@@ -439,14 +444,14 @@ static Statement *parseVarDecl(TokenView& tokens) {
   if (expression_tokens.empty())
     throw ParsingError("Expected initializing expression in variable declaration.", ";", ln);
 
-  Expression *const expr = parseExpression(expression_tokens);
+  Expression * const expr = parseExpression(expression_tokens);
 
-  return new Statement{StatementType{std::in_place_type<VarDeclaration>, std::move(type), std::move(ident), ln, expr}};
+  return new Statement{std::in_place_type<VarDeclaration>, std::move(type), std::move(ident), ln, expr};
 }
 
 // for the statements below starting with a keyword,
 // that keyword has already been eaten
-static Statement *parseIf(TokenView& tokens) {
+Statement *parseIf(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
   tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in if statement condition.", LOMError::Stage::ParsingError);
 
@@ -454,7 +459,7 @@ static Statement *parseIf(TokenView& tokens) {
   if (condition_tokens.empty())
     throw ParsingError("Expected condition in if statement.", "(...)", ln);
 
-  Expression *const condition = parseExpression(condition_tokens);
+  Expression* const condition = parseExpression(condition_tokens);
 
   Statement *const true_branch = parseScoped(tokens);
   Statement *false_branch = nullptr;
@@ -462,10 +467,10 @@ static Statement *parseIf(TokenView& tokens) {
   if (tokens.pop_if(TokenType::KEYWORD_ELSE))
     false_branch = parseScoped(tokens);
 
-  return new Statement{StatementType{std::in_place_type<IfStatement>, condition, true_branch, ln, false_branch}};
+  return new Statement{std::in_place_type<IfStatement>, condition, true_branch, ln, false_branch};
 }
 
-static Statement *parseFor(TokenView& tokens) {
+Statement *parseFor(TokenView& tokens) {
   tokens.expect_then_pop(TokenType::LPAREN, "Expected opening patenthesis in for loop statement.", LOMError::Stage::ParsingError);
 
   const unsigned ln = tokens.peek().line_number;
@@ -485,34 +490,34 @@ static Statement *parseFor(TokenView& tokens) {
     declOrAssignment = parseExpressionStatement(betweenParen);
 
 
-  Expression *const condition = betweenParen.peek_is(TokenType::SEMI_COLON) ? nullptr : parseExpression(betweenParen);
+  Expression* const condition = betweenParen.peek_is(TokenType::SEMI_COLON) ? nullptr : parseExpression(betweenParen);
   betweenParen.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon after condition in for loop header.", LOMError::Stage::ParsingError);
 
-  Expression *const iteration = parseExpression(betweenParen);
+  Expression* const iteration = parseExpression(betweenParen);
   Statement *const loop_body = parseScoped(tokens);
 
-  return new Statement{StatementType{std::in_place_type<ForLoop>, declOrAssignment, condition, iteration, loop_body, ln}};
+  return new Statement{std::in_place_type<ForLoop>, declOrAssignment, condition, iteration, loop_body, ln};
 }
 
-static Statement *parseWhile(TokenView& tokens) {
+Statement *parseWhile(TokenView& tokens) {
   tokens.expect_then_pop(TokenType::LPAREN,"Expected open parenthesis in while loop condition", LOMError::Stage::ParsingError);
 
   const unsigned ln = tokens.peek().line_number;
   TokenView condition_tokens = tokens.getTokensBetweenParenthesis();
   if (condition_tokens.empty())
     throw ParsingError("Expected condition between parenthesis in while loop", "(...)", ln);
-  Expression *const condition = parseExpression(condition_tokens);
+  Expression* const condition = parseExpression(condition_tokens);
 
   Statement *const loop_body = parseScoped(tokens);
 
-  return new Statement{StatementType{std::in_place_type<WhileLoop>, condition, loop_body, ln}};
+  return new Statement{std::in_place_type<WhileLoop>, condition, loop_body, ln};
 }
 
 //unsupported currently
-static Statement *parseDoWhile(TokenView&) { assert(false && "dowhile currently unsupported"); }
+Statement *parseDoWhile(TokenView&) { assert(false && "dowhile currently unsupported"); }
 
 // scoped may be {...} or one statement ;
-static Statement *parseScoped(TokenView& tokens) {
+Statement *parseScoped(TokenView& tokens) {
   std::vector<Statement *> statements;
 
   const unsigned ln = tokens.peek().line_number;
@@ -521,27 +526,27 @@ static Statement *parseScoped(TokenView& tokens) {
     while (!scopedTokens.empty())
       statements.push_back(parseStatement(scopedTokens));
 
-    return new Statement{StatementType{std::in_place_type<ScopedStatement>, std::move(statements), ln}};
+    return new Statement{std::in_place_type<ScopedStatement>, std::move(statements), ln};
   }
 
   statements.push_back(parseStatement(tokens));
-  return new Statement{StatementType{std::in_place_type<ScopedStatement>, std::move(statements), ln}};
+  return new Statement{std::in_place_type<ScopedStatement>, std::move(statements), ln};
 }
 
-static Statement *parseReturn(TokenView& tokens) {
+Statement *parseReturn(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::SEMI_COLON))
-    return new Statement{StatementType{std::in_place_type<ReturnStatement>, ln}};
+    return new Statement{std::in_place_type<ReturnStatement>, ln};
 
   TokenView retval = tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
   tokens.pop();
-  return new Statement{StatementType{std::in_place_type<ReturnStatement>, ln, parseExpression(retval)}};
+  return new Statement{std::in_place_type<ReturnStatement>, ln, parseExpression(retval)};
 }
 
 //unsupported currently
-static Statement *parseSwitch(TokenView& ) { assert(false && "switch currently unsupported"); }
+Statement *parseSwitch(TokenView& ) { assert(false && "switch currently unsupported"); }
 
-static Statement *parseStatement(TokenView& tokens) {
+Statement *parseStatement(TokenView& tokens) {
   const Token &first = tokens.peek();
   if (first.isPrimitive())
     return parseVarDecl(tokens);
@@ -582,7 +587,7 @@ static Statement *parseStatement(TokenView& tokens) {
   }
 }
 
-static std::vector<Statement *> parseStatements(TokenView& body_tokens) {
+std::vector<Statement *> parseStatements(TokenView& body_tokens) {
   std::vector<Statement *> body_statements;
 
   while (!body_tokens.empty())
@@ -598,36 +603,32 @@ struct UnparsedFunction {
   std::vector<VarDeclaration> parameter_list;
   TokenView body_tokens;
 
-  UnparsedFunction(Type &&_return_type, std::string &&_name,
-                   std::vector<VarDeclaration> &&_parameter_list,
-                   const TokenView _body_tokens)
-      : return_type(std::move(_return_type)), name(std::move(_name)),
-        parameter_list(std::move(_parameter_list)),
-        body_tokens(_body_tokens) {}
+  UnparsedFunction(Type &&_return_type, std::string &&_name, std::vector<VarDeclaration> &&_parameter_list, const TokenView _body_tokens)
+  : return_type(std::move(_return_type)), name(std::move(_name)), parameter_list(std::move(_parameter_list)), body_tokens(_body_tokens) {}
 };
 
 struct UnparsedTU {
   std::vector<VarDeclaration> globals;
   std::vector<UnparsedFunction> functions;
 
-  void registerFunction(Type&& _return_type, std::string _name,
-                        std::vector<VarDeclaration> _decl,
-                        TokenView _body) {
+  void registerFunction(Type&& _return_type, std::string _name, std::vector<VarDeclaration> _decl, TokenView _body) {
     std::vector<Type> param_types;
     for (auto &decl : _decl)
       param_types.emplace_back(decl.type); // this is stupid
 
-    functions.emplace_back(std::move(_return_type), std::move(_name),
-                           std::move(_decl), _body);
+    functions.emplace_back(std::move(_return_type), std::move(_name), std::move(_decl), _body);
   }
 };
 
-static ParsedFunction parseFunction(UnparsedFunction &func) {
-  return {std::move(func.return_type), std::move(func.name),
-          std::move(func.parameter_list), parseStatements(func.body_tokens)};
+
+ParsedFunction parseFunction(UnparsedFunction &func) {
+  return {
+    std::move(func.return_type), std::move(func.name),
+    std::move(func.parameter_list), parseStatements(func.body_tokens)
+  };
 }
 
-static ParsedTU secondPassParsing(UnparsedTU &&unparsedtu) {
+ParsedTU secondPassParsing(UnparsedTU &&unparsedtu) {
 
   std::vector<ParsedFunction> parsed_funcs;
   for (auto &f : unparsedtu.functions)
@@ -639,9 +640,7 @@ static ParsedTU secondPassParsing(UnparsedTU &&unparsedtu) {
   return ptu;
 }
 
-
-
-static std::vector<VarDeclaration> parseParameterDecl(TokenView&& tokens) {
+std::vector<VarDeclaration> parseParameterDecl(TokenView&& tokens) {
   if (tokens.empty())
     return {};
 
@@ -662,19 +661,20 @@ static std::vector<VarDeclaration> parseParameterDecl(TokenView&& tokens) {
 }
 
 // returns false when we're done
-static bool parseGlobals(UnparsedTU &tu, TokenView& tokens) {
+bool parseGlobals(UnparsedTU &tu, TokenView& tokens) {
   if (tokens.peek_is(TokenType::KEYWORD_FN))
     return false;
 
   tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.", LOMError::Stage::ParsingError);
+
   Statement* v = parseVarDecl(tokens);
 
-  tu.globals.emplace_back(std::get<VarDeclaration>(std::move(v->value)));
+  tu.globals.emplace_back(std::get<VarDeclaration>(std::move(*v)));
   delete v;
   return true;
 }
 
-static void parseGlobalFunctions(UnparsedTU &tu, TokenView& tokens) {
+void parseGlobalFunctions(UnparsedTU &tu, TokenView& tokens) {
   tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function.", LOMError::Stage::ParsingError);
 
   std::string ident = parseIdentifier(tokens);
@@ -693,7 +693,7 @@ static void parseGlobalFunctions(UnparsedTU &tu, TokenView& tokens) {
                       tokens.getTokensBetweenBraces());
 }
 
-static UnparsedTU firstPassParsing(TokenView tokens) {
+UnparsedTU firstPassParsing(TokenView tokens) {
   UnparsedTU pass_one_tu;
 
   while (parseGlobals(pass_one_tu, tokens)) {}
@@ -702,6 +702,7 @@ static UnparsedTU firstPassParsing(TokenView tokens) {
     parseGlobalFunctions(pass_one_tu, tokens);
 
   return pass_one_tu;
+}
 }
 
 static void printTU(const ParsedTU& tu);
@@ -738,7 +739,7 @@ static void printFunction(const ParsedFunction& func) {
   std::cout << " {\n";
 
   for (const auto s : func.function_body) {
-    std::visit(PrintStatementVisitor{1}, s->value);
+    std::visit(PrintStatementVisitor{1}, *s);
     std::cout << "\n";
   }
 

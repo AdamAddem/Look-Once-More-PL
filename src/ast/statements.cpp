@@ -18,7 +18,7 @@ void PrintStatementVisitor::operator()(const ExpressionStatement &stmt) const no
     std::cout << "  ";
 
   if (stmt.expr)
-    std::visit(PrintExpressionVisitor{}, stmt.expr->value);
+    std::visit(PrintExpressionVisitor{}, *stmt.expr);
   std::cout << ";";
 }
 
@@ -28,7 +28,7 @@ void PrintStatementVisitor::operator()(const ReturnStatement &stmt) const noexce
   std::cout << "return ";
 
   if (stmt.return_value)
-    std::visit(PrintExpressionVisitor{}, stmt.return_value->value);
+    std::visit(PrintExpressionVisitor{}, *stmt.return_value);
   std::cout << ";";
 }
 
@@ -45,7 +45,7 @@ void PrintStatementVisitor::operator()(const ScopedStatement &stmt) const noexce
   std::cout << "{\n";
 
   for (const auto s : stmt.scope_body) {
-    std::visit(PrintStatementVisitor{indent + 1}, s->value);
+    std::visit(PrintStatementVisitor{indent + 1}, *s);
     std::cout << "\n";
   }
 
@@ -60,9 +60,9 @@ void PrintStatementVisitor::operator()(const WhileLoop &stmt) const noexcept {
     std::cout << "  ";
 
   std::cout << "while (";
-  std::visit(PrintExpressionVisitor{}, stmt.condition->value);
+  std::visit(PrintExpressionVisitor{}, *stmt.condition);
   std::cout << ")\n";
-  std::visit(PrintStatementVisitor{indent}, stmt.loop_body->value);
+  std::visit(PrintStatementVisitor{indent}, *stmt.loop_body);
 }
 
 void PrintStatementVisitor::operator()(const ForLoop &stmt) const noexcept {
@@ -71,16 +71,16 @@ void PrintStatementVisitor::operator()(const ForLoop &stmt) const noexcept {
 
   std::cout << "for (";
   if (stmt.var_statement)
-    std::visit(PrintStatementVisitor{}, stmt.var_statement->value);
+    std::visit(PrintStatementVisitor{}, *stmt.var_statement);
   std::cout << " ";
   if (stmt.condition)
-    std::visit(PrintExpressionVisitor{}, stmt.condition->value);
+    std::visit(PrintExpressionVisitor{}, *stmt.condition);
   std::cout << "; ";
   if (stmt.iteration)
-    std::visit(PrintExpressionVisitor{}, stmt.iteration->value);
+    std::visit(PrintExpressionVisitor{}, *stmt.iteration);
 
   std::cout << ")\n";
-  std::visit(PrintStatementVisitor{indent}, stmt.loop_body->value);
+  std::visit(PrintStatementVisitor{indent}, *stmt.loop_body);
 }
 
 void PrintStatementVisitor::operator()(const IfStatement &stmt) const noexcept {
@@ -88,17 +88,17 @@ void PrintStatementVisitor::operator()(const IfStatement &stmt) const noexcept {
     std::cout << "  ";
 
   std::cout << "if ( ";
-  std::visit(PrintExpressionVisitor{}, stmt.condition->value);
+  std::visit(PrintExpressionVisitor{}, *stmt.condition);
   std::cout << " )\n";
 
-  std::visit(PrintStatementVisitor{indent}, stmt.true_branch->value);
+  std::visit(PrintStatementVisitor{indent}, *stmt.true_branch);
 
   if (stmt.false_branch) {
     std::cout << '\n';
     for (unsigned i{}; i < indent; ++i)
       std::cout << "  ";
     std::cout << "else\n";
-    std::visit(PrintStatementVisitor{indent}, stmt.false_branch->value);
+    std::visit(PrintStatementVisitor{indent}, *stmt.false_branch);
   }
 }
 
@@ -112,7 +112,7 @@ void PrintStatementVisitor::operator()(const VarDeclaration &stmt) const noexcep
   if (stmt.expr == nullptr)
     std::cout << "junk";
   else
-    std::visit(PrintExpressionVisitor{}, stmt.expr->value);
+    std::visit(PrintExpressionVisitor{}, *stmt.expr);
 
   std::cout << ";";
 }

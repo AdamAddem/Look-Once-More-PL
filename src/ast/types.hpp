@@ -7,11 +7,11 @@
 
 
 namespace AST {
-struct Type;
+
+class Type;
 using Types = std::vector<Type>;
 
-struct Type {
-private:
+class Type {
   struct Normal {};
   struct Variant {};
   struct Function {};
@@ -49,8 +49,7 @@ public:
   void addTypeToVariantList(Type new_type) noexcept { std::get<Types>(type_name).emplace_back(std::move(new_type)); }
 
 
-
-  //these two are so fucked. just come up with official rules for type conversion already jesus christ
+  //these two are so fucked. just come up with official rules for type conversion already
   [[nodiscard]] bool operator==(const Type& other) const noexcept;
   [[nodiscard]] bool convertible_to(const Type& other) const noexcept;
 

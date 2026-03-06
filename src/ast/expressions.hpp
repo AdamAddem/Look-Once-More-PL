@@ -1,5 +1,4 @@
 #pragma once
-#include "utilities/owned_ptr.hpp"
 #include <cassert>
 #include <string>
 #include <unordered_map>
@@ -75,62 +74,57 @@ constexpr bool isCategoryCASTS(const Operator e) { return std::to_underlying(e) 
 constexpr bool isCategoryPREFIX_OPS(const Operator e) { return std::to_underlying(e) >= 20 && std::to_underlying(e) < 28; }
 constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 23 && std::to_underlying(e) < 30; }
 
-struct Expression;
+struct UnaryExpression;
+struct BinaryExpression;
+struct CallingExpression;
+struct SubscriptExpression;
+struct IdentifierExpression;
+struct LiteralExpression;
 
-// Note: Each AST Node holds ownership over the expressions and statements it has pointers to
-// The reason I don't use unique pointer is twofold
-// 1: They are ugly and syntactically bulky
 
-// And more importantly,
-// 2: Since I'm forward declaring the expression and statement types,
-//    unique pointer throws a fit unless the AST Node defines the destructor, which partially defeats the very purpose of unique pointer.
-//    In addition, it forces the constructors to be defined in a cpp file, which prevents many of these very trivial constructors from being inlined.
-//    It also prevents many of the optional pointers from having a default parameter. (You'll catch me dead before I use std::optional<std::unique_ptr<Expression>>)
+using Expression = std::variant<UnaryExpression, BinaryExpression, CallingExpression, SubscriptExpression, IdentifierExpression, LiteralExpression>;
 
 struct UnaryExpression {
-  Expression *expr; //owned
+  Expression* expr;
   Operator opr;
   unsigned line_number;
 
-  //takes ownership over pointer
-  UnaryExpression(Expression *_expr, const Operator _opr, const unsigned line_num)
+  UnaryExpression(Expression* _expr, const Operator _opr, const unsigned line_num)
   : expr(_expr), opr(_opr), line_number(line_num) { assert(isCategoryUNARY_OPS(opr)); }
 
   ~UnaryExpression();
 };
 
 struct BinaryExpression {
-  Expression *expr_left; //owned
-  Expression *expr_right; //owned
+  Expression* expr_left;
+  Expression* expr_right;
   Operator opr;
   unsigned line_number;
 
-  //takes ownership over pointers
-  BinaryExpression(Expression *_expr_left, Expression *_expr_right, const Operator _opr, const unsigned line_num)
+  BinaryExpression(Expression* _expr_left, Expression* _expr_right, const Operator _opr, const unsigned line_num)
   : expr_left(_expr_left), expr_right(_expr_right), opr(_opr), line_number(line_num) { assert(isCategoryBINARY_OPS(opr)); }
 
   ~BinaryExpression();
 };
 
 struct CallingExpression {
-  Expression *func; //owned
-  std::vector<Expression *> parameters; //owned
+  Expression* func;
+  std::vector<Expression*> parameters;
   unsigned line_number;
 
-  //takes ownership over pointers
-  CallingExpression(Expression *_f, std::vector<Expression *> &&_params, const unsigned line_num)
+  CallingExpression(Expression* _f, std::vector<Expression*> &&_params, const unsigned line_num)
   : func(_f), parameters(std::move(_params)), line_number(line_num) {}
 
   ~CallingExpression();
 };
 
 struct SubscriptExpression {
-  Expression *arr; //owned
-  Expression *inside; //owned
+  Expression* arr;
+  Expression* inside;
   unsigned line_number;
 
-  //takes ownership over pointers
-  SubscriptExpression(Expression *_arr, Expression *_inside, const unsigned line_num)
+
+  SubscriptExpression(Expression* _arr, Expression* _inside, const unsigned line_num)
   : arr(_arr), inside(_inside), line_number(line_num) {}
 
   ~SubscriptExpression();
@@ -140,8 +134,9 @@ struct IdentifierExpression {
   std::string ident;
   unsigned line_number;
 
-  explicit IdentifierExpression(std::string &&_ident, const unsigned line_num)
+  IdentifierExpression(std::string &&_ident, const unsigned line_num)
   : ident(std::move(_ident)), line_number(line_num) {}
+
 };
 
 struct LiteralExpression {
@@ -157,10 +152,6 @@ struct LiteralExpression {
 
 };
 
-struct Expression {
-  using ExpressionType = std::variant<UnaryExpression, BinaryExpression, CallingExpression, SubscriptExpression, IdentifierExpression, LiteralExpression>;
-  ExpressionType value;
-};
 
 struct PrintExpressionVisitor {
   void operator()(const UnaryExpression &) const noexcept;
@@ -170,7 +161,6 @@ struct PrintExpressionVisitor {
   void operator()(const IdentifierExpression &) const noexcept;
   void operator()(const LiteralExpression &) const noexcept;
 };
-
 struct ExpressionToStringVisitor {
   std::string operator()(const UnaryExpression &) const noexcept;
   std::string operator()(const BinaryExpression &) const noexcept;

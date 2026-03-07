@@ -161,7 +161,7 @@ Expression* parsePostfixExpression(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
   while (true) {
     if (tokens.pop_if(TokenType::PLUSPLUS))
-      left = new Expression(std::in_place_type<UnaryExpression>, left, Operator::PRE_INCREMENT, ln);
+      left = new Expression(std::in_place_type<UnaryExpression>, left, Operator::POST_INCREMENT, ln);
 
     else if (tokens.pop_if(TokenType::MINUSMINUS))
       left = new Expression(std::in_place_type<UnaryExpression>, left, Operator::POST_DECREMENT, ln);

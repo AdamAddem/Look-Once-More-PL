@@ -166,29 +166,40 @@ public:
   }
 
   Value* genUnary(const AST::UnaryExpression& unary, FunctionBuilder& f) const noexcept {
-    auto* load = cast<LoadInst>(genIdentifier(std::get<AST::IdentifierExpression>(*unary.expr), f));
+    const auto load = cast<LoadInst>(genIdentifier(std::get<AST::IdentifierExpression>(*unary.expr), f));
     const bool is_float = load->getAccessType()->isFloatingPointTy();
     Value* result;
     IRBuilder<>& builder = f.builder;
-    bool dostore;
     switch (unary.opr) {
     case AST::Operator::PRE_INCREMENT:
       result = is_float ? builder.CreateFAdd(load, f32_1) : builder.CreateAdd(load, i32_1);
-      dostore = true;
-      break;
+      builder.CreateStore(result, load->getPointerOperand() );
+      return result;
+
     case AST::Operator::PRE_DECREMENT:
       result = is_float ? builder.CreateFSub(load, f32_1) : builder.CreateSub(load, i32_1);
-      dostore = true;
-      break;
+      builder.CreateStore(result, load->getPointerOperand() );
+      return result;
+
     case AST::Operator::UNARY_MINUS:
-      result = is_float ? builder.CreateFNeg(load) : builder.CreateNeg(load);
-      dostore = false;
-      break;
+      return is_float ? builder.CreateFNeg(load) : builder.CreateNeg(load);
 
     case AST::Operator::ADDRESS_OF:
     case AST::Operator::NOT:
+      assert(false && "Unimplemented expression in codegen srry");
+
     case AST::Operator::POST_INCREMENT:
+      builder.CreateStore(
+        is_float ? builder.CreateFAdd(load, f32_1) : builder.CreateAdd(load, i32_1),
+        load->getPointerOperand());
+      return load;
+
     case AST::Operator::POST_DECREMENT:
+      builder.CreateStore(
+      is_float ? builder.CreateFSub(load, f32_1) : builder.CreateSub(load, i32_1),
+      load->getPointerOperand());
+      return load;
+
     case AST::Operator::CAST:
     case AST::Operator::CAST_IF:
     case AST::Operator::UNSAFE_CAST:
@@ -196,67 +207,70 @@ public:
       assert(false && "Unimplemented expression in codegen srry");
     }
 
-    if (dostore)
-      builder.CreateStore(result, load->getPointerOperand() );
-
-    return result;
+    assert(false && "wtf");
   }
   Value* genBinary(const AST::BinaryExpression& binary,  FunctionBuilder& f) noexcept {
     Value* left = genExpression(*binary.expr_left, f);
-    Value* right = genExpression(*binary.expr_right, f);
-    Value* result;
     const bool is_float = left->getType()->isFloatingPointTy();
     IRBuilder<>& builder = f.builder;
 
     switch (binary.opr) {
-    case AST::Operator::ADD:
-      result = is_float ? builder.CreateFAdd(left, right) : builder.CreateAdd(left, right);
-      break;
-    case AST::Operator::SUBTRACT:
-      result = is_float ? builder.CreateFSub(left, right) : builder.CreateSub(left, right);
-      break;
-    case AST::Operator::MULTIPLY:
-      result = is_float ? builder.CreateFMul(left, right) : builder.CreateMul(left, right);
-      break;
-    case AST::Operator::DIVIDE:
-      result = is_float ? builder.CreateFDiv(left, right) : builder.CreateSDiv(left, right);
-      break;
+    case AST::Operator::ADD: {
+      Value* right = genExpression(*binary.expr_right, f);
+      return is_float ? builder.CreateFAdd(left, right) : builder.CreateAdd(left, right);
+    }
+    case AST::Operator::SUBTRACT: {
+      Value* right = genExpression(*binary.expr_right, f);
+      return is_float ? builder.CreateFAdd(left, right) : builder.CreateAdd(left, right);
+    }
+    case AST::Operator::MULTIPLY: {
+      Value* right = genExpression(*binary.expr_right, f);
+      return is_float ? builder.CreateFMul(left, right) : builder.CreateMul(left, right);
+    }
+    case AST::Operator::DIVIDE: {
+      Value* right = genExpression(*binary.expr_right, f);
+      return is_float ? builder.CreateFDiv(left, right) : builder.CreateSDiv(left, right);
+    }
     case AST::Operator::POWER:
       assert(false && "Unimplemented exponent operator");
-    case AST::Operator::MODULUS:
-      result = is_float ? builder.CreateFRem(left, right) : builder.CreateSRem(left, right);
-      break;
+    case AST::Operator::MODULUS: {
+      Value* right = genExpression(*binary.expr_right, f);
+      return is_float ? builder.CreateFRem(left, right) : builder.CreateSRem(left, right);
+    }
     case AST::Operator::ASSIGN:
+      builder.CreateStore(genExpression(*binary.expr_right, f), cast<LoadInst>(left)->getPointerOperand());
+      return left;
       assert(isa<LoadInst>(left));
-      builder.CreateStore(right, cast<LoadInst>(left)->getPointerOperand());
-      result = left;
-      break;
-    case AST::Operator::LESS: {
-      using enum CmpInst::Predicate;
-      const auto predicate = is_float ? FCMP_OLT : ICMP_ULT;
-      result = builder.CreateCmp(predicate, left, right);
-      break;
-    }
-    case AST::Operator::GREATER: {
-      using enum CmpInst::Predicate;
-      const auto predicate = is_float ? FCMP_OGT : ICMP_UGT;
-      result = builder.CreateCmp(predicate, left, right);
-      break;
-    }
-    case AST::Operator::LESS_EQUAL: {
-      using enum CmpInst::Predicate;
-      const auto predicate = is_float ? FCMP_OLE : ICMP_ULE;
-      result = builder.CreateCmp(predicate, left, right);
-      break;
-    }
-    case AST::Operator::GREATER_EQUAL: {
-      using enum CmpInst::Predicate;
-      const auto predicate = is_float ? FCMP_OGE : ICMP_UGE;
-      result = builder.CreateCmp(predicate, left, right);
-      break;
-    }
+    case AST::Operator::LESS:
+      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OLT : CmpInst::Predicate::ICMP_ULT, left, genExpression(*binary.expr_right, f));
+    case AST::Operator::GREATER:
+      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OGT : CmpInst::Predicate::ICMP_UGT, left, genExpression(*binary.expr_right, f));
+    case AST::Operator::LESS_EQUAL:
+      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OLE : CmpInst::Predicate::ICMP_ULE, left, genExpression(*binary.expr_right, f));
+    case AST::Operator::GREATER_EQUAL:
+      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OGE : CmpInst::Predicate::ICMP_UGE, left, genExpression(*binary.expr_right, f));
+    case AST::Operator::AND: {
+      assert(!is_float && "float expression used as conditional");
+      const auto first_value = builder.CreateCmp(CmpInst::Predicate::ICMP_NE, builder.CreateZExtOrTrunc(left, i1), i1_0);
 
-    case AST::Operator::AND:
+      BasicBlock* begin = builder.GetInsertBlock();
+      BasicBlock* test_second = BasicBlock::Create(context); f.func->insert(f.func->end(), test_second);
+      BasicBlock* end = BasicBlock::Create(context);
+      builder.CreateCondBr(first_value, test_second, end);
+
+      builder.SetInsertPoint(test_second);
+      Value* right = genExpression(*binary.expr_right, f);
+      const auto second_value = builder.CreateCmp(CmpInst::Predicate::ICMP_NE, builder.CreateZExtOrTrunc(right, i1), i1_0);
+      f.func->insert(f.func->end(), end);
+      builder.CreateBr(end);
+
+      builder.SetInsertPoint(end);
+      auto p =  builder.CreatePHI(i1, 2);
+      p->addIncoming(i1_0, begin);
+      p->addIncoming(second_value, test_second);
+      return p;
+    }
+      break;
     case AST::Operator::OR:
     case AST::Operator::XOR:
     case AST::Operator::BITAND:
@@ -265,25 +279,15 @@ public:
     case AST::Operator::BITNOT:
       assert(false && "Binary operator not supported");
 
-    case AST::Operator::EQUAL: {
-      using enum CmpInst::Predicate;
-      const auto predicate = is_float ? FCMP_OEQ : ICMP_EQ;
-      result = builder.CreateCmp(predicate, left, right);
-      break;
+    case AST::Operator::EQUAL:
+      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OEQ : CmpInst::Predicate::ICMP_EQ, left, genExpression(*binary.expr_right, f));
+    case AST::Operator::NOT_EQUAL:
+      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_ONE : CmpInst::Predicate::ICMP_NE, left, genExpression(*binary.expr_right, f));
+
+    default: assert(false && "Binary operator not supported");
     }
 
-    case AST::Operator::NOT_EQUAL: {
-      using enum CmpInst::Predicate;
-      const auto predicate = is_float ? FCMP_ONE : ICMP_NE;
-      result = builder.CreateCmp(predicate, left, right);
-      break;
-    }
-
-    default:
-      assert(false && "Binary operator not supported");
-    }
-
-    return result;
+    assert(false && "wtf");
   }
   Value* genCalling(const AST::CallingExpression& calling, FunctionBuilder& f) noexcept {
     std::vector<Value*> params;
@@ -340,12 +344,13 @@ public:
     IRBuilder<> func_entry(&f.func->getEntryBlock());
     AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type), nullptr);
     f.locals.emplace(declaration.ident, i);
-    f.builder.CreateStore(i, genExpression(*declaration.expr, f));
+    f.builder.CreateStore( genExpression(*declaration.expr, f), i);
     return false;
   }
   bool genIfStatement(const AST::IfStatement& ifstmt, FunctionBuilder& f) {
     IRBuilder<>& builder = f.builder;
     Value* condition_val = genExpression(*ifstmt.condition, f);
+    condition_val = builder.CreateZExtOrTrunc(condition_val, i1);
 
     BasicBlock* thenBB = BasicBlock::Create(context); f.func->insert(f.func->end(), thenBB);
     BasicBlock* mergeBB = BasicBlock::Create(context);

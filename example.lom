@@ -1,11 +1,12 @@
-
-fn fib(i32 num) -> i32 {
-    if(num eq 0) return 0;
-    if(num eq 1) return 1;
-
-    return fib(num - 1) + fib(num - 2);
-}
-
 fn main() -> i32 {
-    return fib(8);
+    bool first = true;
+    bool second = false;
+    if(first and second)
+        return 5;
+
+    else
+        return 6;
+
+
+    return -1;
 }

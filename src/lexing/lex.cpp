@@ -22,6 +22,9 @@ struct FileInAnalysis {
 
 /* Lexer Functions */
 
+static void grabNumber(FileInAnalysis& file);
+
+static bool is_num(const int c) { return c >= '0' && c <= '9'; }
 static int charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
   switch (c) {
   case 'n':
@@ -95,6 +98,11 @@ static void grabCharLiteral(FileInAnalysis &file) {
 static void grabSymbol(FileInAnalysis &file) {
   TokenType type;
   const int c = file.stream.get();
+  if (c == '-' && is_num(file.stream.peek())) {
+    file.stream.putback('-');
+    return grabNumber(file);
+  }
+
   std::string symbol(1, static_cast<char>(c));
   switch (c) {
 
@@ -191,12 +199,11 @@ static void grabSymbol(FileInAnalysis &file) {
   file.token_list.emplace_back(type, file.line_number);
 }
 
-// first digit in front of file
 static void grabNumber(FileInAnalysis &file) {
   auto type = TokenType::INT_LITERAL;
   Token::TokenValue value;
   int c = file.stream.get();
-  std::string num_stringrep(1, c);
+  std::string num_stringrep(1, static_cast<char>(c));
   while ((c = file.stream.get()) != EOF) {
     // i hate file handling so much, replace
     // this stupid monkey code eventually
@@ -300,6 +307,7 @@ static bool canStartIdentifier(const int c) {
   return std::isalpha(c) || c == '_';
 }
 
+
 std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
   FileInAnalysis file;
   file.stream.open(file_path);
@@ -315,7 +323,7 @@ std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
       continue;
 
 
-    if (c >= '0' && c <= '9')
+    if (is_num(c))
       grabNumber(file);
     else if (canStartIdentifier(c))
       grabIdentOrKeyword(file);

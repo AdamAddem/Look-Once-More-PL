@@ -19,7 +19,7 @@ using namespace AST;
 ValidatedFunction::~ValidatedFunction() {for (const auto s : function_body) delete s;}
 
 /* Expressions */
-static Type validateExpression(const Expression &expression, SymbolTable& table);
+static Type validateExpression(Expression &expression, SymbolTable& table);
 
 static Type validateLiteralExpression(const LiteralExpression &literal) {
   switch (literal.type) {
@@ -74,9 +74,7 @@ static Type validateCallingExpression(const CallingExpression &calling, SymbolTa
   return table.returnTypeOfCall(type.getTypename(), provided_params);
 }
 
-// current implementation returns the left expressions type for arithmetic operations
-// fix that lol
-static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable& table) {
+static Type validateBinaryExpression(BinaryExpression &binary, SymbolTable& table) {
   Type left_type = validateExpression(*binary.expr_left, table);
   const bool left_is_mutable = left_type.details.is_mutable;
   Type right_type = validateExpression(*binary.expr_right, table);
@@ -116,7 +114,7 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
       std::string context = left_type.toString();
       context.append(" and ");
       context.append(right_type.toString());
-      throw ValidationError("Non-boolean expression in boolean binary operation.", context, binary.line_number);
+      throw ValidationError("Non-boolean expression(s) in boolean binary operation.", context, binary.line_number);
     }
     break;
 
@@ -124,7 +122,6 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
   case Operator::BITAND:
   case Operator::BITOR:
   case Operator::BITXOR:
-  case Operator::BITNOT:
     if (!left_arithmetic || !right_arithmetic) {
       std::string context = left_type.toString();
       context.append(" and ");
@@ -132,7 +129,7 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
       throw ValidationError("Non-arithmetic expression(s) in bitwise operation.", context, binary.line_number);
     }
 
-    if (!right_type.convertible_to(left_type)) { //since they're both single types, convertible will evaluate equality. prolly should change tho
+    if (right_type != left_type) {
       std::string context = left_type.toString();
       context.append(" and ");
       context.append(right_type.toString());
@@ -147,7 +144,7 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
       throw ValidationError("Left expression in assignment non-mutable.", context, binary.line_number);
     }
 
-    if (!right_type.convertible_to(left_type)) { //see above comment
+    if (right_type != left_type) {
       std::string context = left_type.toString();
       context.append(" and ");
       context.append(right_type.toString());
@@ -178,7 +175,7 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
   case Operator::DIVIDE:
   case Operator::POWER:
   case Operator::MODULUS:
-    return  left_type;
+    return left_type;
 
   case Operator::LESS:
   case Operator::GREATER:
@@ -186,7 +183,9 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
   case Operator::GREATER_EQUAL:
   case Operator::AND:
   case Operator::OR:
+    return bool_literal_type;
   case Operator::XOR:
+    binary.opr = Operator::NOT_EQUAL;
     return bool_literal_type;
 
   case Operator::BITAND:
@@ -202,32 +201,42 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
     return bool_literal_type;
 
   default:
-    throw ValidationError("Non binary operator set in binary expression. How?", operatorToString(binary.opr), binary.line_number);
+    throw ValidationError("Non-binary operator set in binary expression. How?", operatorToString(binary.opr), binary.line_number);
   }
 }
 
-static Type validateUnaryExpression(const UnaryExpression &unary, SymbolTable& table) {
+static Type validateUnaryExpression(UnaryExpression &unary, SymbolTable& table) {
   Type type = validateExpression(*unary.expr, table);
   if (type.isVariant()) {
     const std::string context = type.toString();
-    throw ValidationError("Binary operator used on variant type(s).", context, unary.line_number);
+    throw ValidationError("Unary operator used on variant type(s).", context, unary.line_number);
   }
 
   const bool arithmetic = type.details.arithmetic;
-  if (!arithmetic) {
-    const std::string context = type.toString();
-    throw ValidationError("Unary operator used on non-arithmetic expression.", context, unary.line_number);
-  }
-
   if (unary.opr == Operator::UNARY_MINUS) {
+    if (!arithmetic)
+      throw ValidationError("Unary minus used on non-arithmetic expression.", type.toString(), unary.line_number);
     type.details.is_mutable = false;
     return type;
   }
 
+  if (unary.opr == Operator::BITNOT) {
+    if (!arithmetic)
+      throw ValidationError("bitnot operator used non-arithmetic expression", type.toString(), unary.line_number);
+    type.details.is_mutable = false;
+    return type;
+  }
 
-  if (unary.opr == Operator::NOT)
-    return bool_literal_type;
+  if (unary.opr == Operator::NOT) {
+    if (!type.isBool())
+      throw ValidationError("not operator used non-boolean expression", type.toString(), unary.line_number);
+    unary.opr = Operator::BITNOT;
+    type.details.is_mutable = false;
+    return type;
+  }
 
+  if (unary.opr == Operator::ADDRESS_OF)
+    return Type(Type::pointer, PointerType::RAW, new Type(std::move(type)));
 
   if (!type.details.is_mutable) {
     const std::string context = type.toString();
@@ -241,17 +250,15 @@ static Type validateUnaryExpression(const UnaryExpression &unary, SymbolTable& t
     return type;
   }
 
-  if (unary.opr == Operator::ADDRESS_OF)
-    return Type(Type::pointer, PointerType::RAW, new Type(type));
 
   return type;
 }
 
-static Type validateExpression(const Expression &expression, SymbolTable& table) {
+static Type validateExpression(Expression &expression, SymbolTable& table) {
 
   return utils_match(expression,
-    utils_callon(const UnaryExpression&, validateUnaryExpression, table),
-    utils_callon(const BinaryExpression&, validateBinaryExpression, table),
+    utils_callon(UnaryExpression&, validateUnaryExpression, table),
+    utils_callon(BinaryExpression&, validateBinaryExpression, table),
     utils_callon(const CallingExpression&, validateCallingExpression, table),
     utils_callon(const SubscriptExpression&, validateSubscriptExpression, table),
     utils_callon(const IdentifierExpression&, validateIdentifierExpression, table),
@@ -364,7 +371,7 @@ static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTabl
 
   if (declaration.expr) {
     const auto initialization_type = validateExpression(*declaration.expr, table);
-    if (!declaration.type.convertible_to(validateExpression(*declaration.expr, table))) {
+    if (declaration.type != initialization_type) {
       std::string context("Declared type is '");
       context.append(declaration.type.toString());
       context.append("' and expression '");
@@ -373,7 +380,7 @@ static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTabl
       context.append(initialization_type.toString());
       context.push_back('\'');
 
-      throw ValidationError("Initialization statement's type is not compatible with return type of scope.", context, declaration.line_number);
+      throw ValidationError("Initialization statement's type is not compatible with variable type.", context, declaration.line_number);
     }
   }
 

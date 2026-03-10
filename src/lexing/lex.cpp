@@ -92,7 +92,7 @@ static void grabCharLiteral(FileInAnalysis &file) {
   } else if (c2 != '\'')
     throw LexingError("Expected ending ' in char literal.", std::to_string(static_cast<char>(c2)), file.line_number);
 
-  file.token_list.emplace_back(TokenType::CHAR_LITERAL, c1, file.line_number);
+  file.token_list.emplace_back(TokenType::CHAR_LITERAL, static_cast<uint64_t>(c1), file.line_number);
 }
 
 static void grabSymbol(FileInAnalysis &file) {
@@ -203,6 +203,8 @@ static void grabNumber(FileInAnalysis &file) {
   auto type = TokenType::INT_LITERAL;
   Token::TokenValue value;
   int c = file.stream.get();
+  if (c == '-')
+    type = TokenType::UINT_LITERAL;
   std::string num_stringrep(1, static_cast<char>(c));
   while ((c = file.stream.get()) != EOF) {
     // i hate file handling so much, replace
@@ -228,12 +230,19 @@ static void grabNumber(FileInAnalysis &file) {
 
   switch (type) {
   case TokenType::INT_LITERAL:
-    value = std::stoi(num_stringrep);
+    static_assert((sizeof(long long) == 8) && "The following line of code may cause problems if long longs are not 64 bits in width");
+    value = std::bit_cast<std::uint64_t>(static_cast<std::int64_t>(std::stoll(num_stringrep)));
+    break;
+  case TokenType::UINT_LITERAL:
+    static_assert((sizeof(unsigned long long) == 8) && "The following line of code may cause problems if unsigned long longs are not 64 bits in width");
+    value = static_cast<std::uint64_t>(std::stoull(num_stringrep));
     break;
   case TokenType::FLOAT_LITERAL:
-    value = std::stof(num_stringrep);
+    static_assert((sizeof(float) == 4) && "The following line of code may cause problems if floats are not 32 bits in width");
+    value = static_cast<std::float32_t>(std::stof(num_stringrep));
     break;
   case TokenType::DOUBLE_LITERAL:
+    static_assert((sizeof(double) == 8) && "The following line of code may cause problems if doubles are not 64 bits in width");
     value = std::stod(num_stringrep);
     break;
 
@@ -267,11 +276,11 @@ static void grabIdentOrKeyword(FileInAnalysis &file) {
     return;
   }
   if (word == "true") [[unlikely]] {
-    file.token_list.emplace_back(TokenType::BOOL_LITERAL, Token::TokenValue(1), file.line_number);
+    file.token_list.emplace_back(TokenType::BOOL_LITERAL, Token::TokenValue(std::in_place_type<std::uint64_t>, 1), file.line_number);
     return;
   }
   if (word == "false") [[unlikely]] {
-    file.token_list.emplace_back(TokenType::BOOL_LITERAL, Token::TokenValue(0), file.line_number);
+    file.token_list.emplace_back(TokenType::BOOL_LITERAL, Token::TokenValue(std::in_place_type<std::uint64_t>, 1), file.line_number);
     return;
   }
 
@@ -307,7 +316,6 @@ static bool canStartIdentifier(const int c) {
   return std::isalpha(c) || c == '_';
 }
 
-
 std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
   FileInAnalysis file;
   file.stream.open(file_path);
@@ -332,7 +340,6 @@ std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
   }
 
   file.stream.close();
-
 
   if (Settings::doOutputLexer()) {
     std::cout << "\n--- Lexer Output ---";

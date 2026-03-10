@@ -32,17 +32,17 @@ std::string Token::toString() const {
   if (isLiteral()) {
     switch (type) {
     case TokenType::INT_LITERAL:
-      return std::to_string(std::get<int>(value));
+      return std::to_string(getInt());
     case TokenType::FLOAT_LITERAL:
-      return std::to_string(std::get<float>(value));
+      return std::to_string(getFloat());
     case TokenType::DOUBLE_LITERAL:
-      return std::to_string(std::get<double>(value));
+      return std::to_string(getDouble());
     case TokenType::CHAR_LITERAL:
-      return std::to_string(static_cast<char>(std::get<int>(value)));
+      return std::to_string(getChar());
     case TokenType::STRING_LITERAL:
       return std::get<std::string>(value);
     case TokenType::BOOL_LITERAL:
-      return std::get<int>(value) ? "true" : "false";
+      return getBool() ? "true" : "false";
 
     default:
       throw std::runtime_error("Error in isLiteral method");
@@ -54,53 +54,33 @@ std::string Token::toString() const {
 
 std::string Token::toDebugString() const {
 
-  std::string retval;
-  if (type == TokenType::IDENTIFIER) {
-    retval.append("id::");
-    retval.append( std::get<std::string>(value));
-    return retval;
-  }
+  if (type == TokenType::IDENTIFIER)
+    return {"id::" + toString()};
 
   if (isLiteral()) {
     switch (type) {
     case TokenType::INT_LITERAL:
-      retval.append(std::to_string(std::get<int>(value)));
-      retval.push_back('i');
-      break;
+      return {toString() + 'i'};
     case TokenType::FLOAT_LITERAL:
-      retval.append(std::to_string(std::get<float>(value)));
-      retval.push_back('f');
-      break;
+      return {toString() + 'f'};
     case TokenType::DOUBLE_LITERAL:
-      retval.append(std::to_string(std::get<double>(value)));
-      retval.push_back('d');
-      break;
+      return {toString() + 'd'};
     case TokenType::CHAR_LITERAL:
-      retval.push_back('\'');
-      retval.push_back(static_cast<char>(std::get<int>(value)));
-      retval.push_back('\'');
-      break;
+      return {'\'' + toString() + '\''};
     case TokenType::STRING_LITERAL:
-      retval.push_back('\"');
-      retval.append(std::get<std::string>(value));
-      retval.push_back('\"');
-      break;
+      return {'\"' + toString() + '\"'};
 
     case TokenType::BOOL_LITERAL:
-      retval.append(std::get<int>(value) ? "true_b" : "false_b");
-      break;
+      return getBool() ? "true_b" : "false_b";
 
     default:
-      throw std::runtime_error("Error in isLiteral method");
+      throw std::runtime_error("Error in toDebugString method");
     }
-    return retval;
+    throw std::runtime_error("Error in toDebugString method");
   }
 
-  if (type == TokenType::KEYWORD_DEVOID) [[unlikely]] {
-    retval.append("devoid");
-    return retval;
-  }
-
+  if (type == TokenType::KEYWORD_DEVOID) [[unlikely]]
+    return {"devoid"};
 
   return tokenTypeToString(type);
 }

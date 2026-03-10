@@ -6,12 +6,13 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <stdfloat>
 
 namespace Lexer {
 
 
 struct Token {
-  using TokenValue = std::variant<int, float, double, std::string>;
+  using TokenValue = std::variant<std::uint64_t, std::float32_t, std::float64_t, std::string>;
   TokenType type;
   TokenValue value;
   unsigned line_number{};
@@ -35,10 +36,12 @@ struct Token {
   [[nodiscard]] std::string toString() const;
   [[nodiscard]] std::string toDebugString() const;
 
-  [[nodiscard]] int getInt() const { return std::get<int>(value); }
-  [[nodiscard]] float getFloat() const { return std::get<float>(value); }
-  [[nodiscard]] double getDouble() const { return std::get<double>(value); }
-  [[nodiscard]] bool getBool() const { return std::get<int>(value); }
+  [[nodiscard]] std::int64_t getInt() const { return std::bit_cast<std::int64_t>(std::get<uint64_t>(value)); }
+  [[nodiscard]] std::uint64_t getUint() const { return std::get<uint64_t>(value); }
+  [[nodiscard]] float getFloat() const { return std::get<std::float32_t>(value); }
+  [[nodiscard]] double getDouble() const { return std::get<std::float64_t>(value); }
+  [[nodiscard]] bool getBool() const { return std::get<uint64_t>(value); }
+  [[nodiscard]] char getChar() const { return static_cast<char>(std::get<uint64_t>(value)); }
   [[nodiscard]] std::string takeString() { return std::get<std::string>(std::move(value)); }
 };
 

@@ -48,7 +48,42 @@ Type parseType(TokenView& tokens) {
     }
 
 
-    return Type(Type::normal, token.toString(), is_mutable);
+    PrimitiveType p;
+    switch (token.type) {
+    case TokenType::KEYWORD_i8:
+      p = PrimitiveType::I8; break;
+    case TokenType::KEYWORD_i16:
+      p = PrimitiveType::I16; break;
+    case TokenType::KEYWORD_i32:
+      p = PrimitiveType::I32; break;
+    case TokenType::KEYWORD_i64:
+      p = PrimitiveType::I64; break;
+    case TokenType::KEYWORD_u8:
+      p = PrimitiveType::U8; break;
+    case TokenType::KEYWORD_u16:
+      p = PrimitiveType::U16; break;
+    case TokenType::KEYWORD_u32:
+      p = PrimitiveType::U32; break;
+    case TokenType::KEYWORD_u64:
+      p = PrimitiveType::U64; break;
+    case TokenType::KEYWORD_f32:
+      p = PrimitiveType::F32; break;
+    case TokenType::KEYWORD_f64:
+      p = PrimitiveType::F64; break;
+
+    case TokenType::KEYWORD_CHAR:
+      p = PrimitiveType::CHAR; break;
+    case TokenType::KEYWORD_BOOL:
+      p = PrimitiveType::BOOL; break;
+    case TokenType::KEYWORD_STRING:
+      p = PrimitiveType::STRING; break;
+    case TokenType::KEYWORD_DEVOID:
+      p = PrimitiveType::DEVOID; break;
+
+    default:
+      assert(false);
+    }
+    return Type(Type::primitive, p, is_mutable);
   }
 
   if (token.is(TokenType::LESS)) {
@@ -212,6 +247,12 @@ Expression* parsePrefixExpression(TokenView& tokens) {
         std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::NOT, ln
     };
 
+  if (tokens.pop_if(TokenType::KEYWORD_BITNOT))
+    return new Expression{
+      std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::BITNOT, ln
+  };
+
+
   return parsePostfixExpression(tokens);
 }
 
@@ -346,10 +387,6 @@ Expression* parseBitwiseExpression(TokenView& tokens) {
         std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITXOR, ln
       };
 
-    else if (tokens.pop_if(TokenType::KEYWORD_BITNOT))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITNOT, ln
-      };
 
     else
       break;

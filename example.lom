@@ -1,16 +1,7 @@
-global mut i32 num_calls = 0;
 
-
-fn is_five(i32 val) -> bool {
-    ++num_calls;
-    return val eq 5;
-}
 
 fn main() -> i32 {
+    u8 num = 5;
 
-    if( (is_five(5) or is_five(6)) eq is_five(5))
-        return num_calls;
-
-
-    return num_calls;
+    return 0;
 }

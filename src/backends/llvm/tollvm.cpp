@@ -186,8 +186,10 @@ public:
       return is_float ? builder.CreateFNeg(load) : builder.CreateNeg(load);
 
     case AST::Operator::ADDRESS_OF:
+    case AST::Operator::BITNOT:
+      return builder.CreateNot(load);
     case AST::Operator::NOT:
-      assert(false && "Unimplemented expression in codegen srry");
+      assert(false && "Operator NOT used in codegen, should have been changed to operator bitnot in the ast_validator. Fix that thx");
 
     case AST::Operator::POST_INCREMENT:
       builder.CreateStore(
@@ -239,9 +241,9 @@ public:
       return is_float ? builder.CreateFRem(left, right) : builder.CreateSRem(left, right);
     }
     case AST::Operator::ASSIGN:
+      assert(isa<LoadInst>(left));
       builder.CreateStore(genExpression(*binary.expr_right, f), cast<LoadInst>(left)->getPointerOperand());
       return left;
-      assert(isa<LoadInst>(left));
     case AST::Operator::LESS:
       return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OLT : CmpInst::Predicate::ICMP_ULT, left, genExpression(*binary.expr_right, f));
     case AST::Operator::GREATER:
@@ -293,11 +295,13 @@ public:
       return phi;
     }
     case AST::Operator::XOR:
+      assert(false && "Operator XOR should have been changed to not_eq in the ast_validator. If you're seeing this, that didn't happen for some reason, soz");
     case AST::Operator::BITAND:
+      return builder.CreateAnd(left, genExpression(*binary.expr_right, f));
     case AST::Operator::BITOR:
+      return builder.CreateOr(left, genExpression(*binary.expr_right, f));
     case AST::Operator::BITXOR:
-    case AST::Operator::BITNOT:
-      assert(false && "Binary operator not supported");
+      return builder.CreateXor(left, genExpression(*binary.expr_right, f));
 
     case AST::Operator::EQUAL:
       return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OEQ : CmpInst::Predicate::ICMP_EQ, left, genExpression(*binary.expr_right, f));
@@ -335,17 +339,21 @@ public:
   }
   Value* genLiteral(const AST::LiteralExpression& literal) noexcept {
     switch (literal.type) {
+    case AST::LiteralExpression::UINT:
+      return ConstantInt::get(i64, literal.getUint(), true);
     case AST::LiteralExpression::INT:
-      return ConstantInt::get(i32, std::get<int>(literal.value));
+      return ConstantInt::get(i64, literal.getInt());
+
     case AST::LiteralExpression::FLOAT:
-      return ConstantFP::get(f32, std::get<float>(literal.value));
+      return ConstantFP::get(f32, literal.getFloat());
     case AST::LiteralExpression::DOUBLE:
-      return ConstantFP::get(f32, std::get<double>(literal.value));
+      return ConstantFP::get(f64, literal.getDouble());
+
     case AST::LiteralExpression::BOOL:
     case AST::LiteralExpression::CHAR:
-      return ConstantInt::get(i8, std::get<int>(literal.value));
+      return ConstantInt::get(i8, literal.getUint());
     case AST::LiteralExpression::STRING:
-      return ConstantDataArray::getString(context, std::get<std::string>(literal.value));
+      return ConstantDataArray::getString(context, literal.getString());
     default:
       assert(false && "Invalid literal expression in codegen");
     }

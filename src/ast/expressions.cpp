@@ -12,61 +12,10 @@ BinaryExpression::~BinaryExpression() { expr_left.destroy(); expr_right.destroy(
 CallingExpression::~CallingExpression() { func.destroy(); for (const auto e : parameters) delete e;}
 SubscriptExpression::~SubscriptExpression() { arr.destroy(); inside.destroy(); }
 
-
-
-[[maybe_unused]] static bool isLeftAssociative(const Operator op) {
-  switch (op) {
-  case Operator::ADDRESS_OF:
-  case Operator::CAST:
-  case Operator::CAST_IF:
-  case Operator::UNSAFE_CAST:
-  case Operator::NOT:
-  case Operator::ASSIGN:
-    return false;
-
-  default:
-    return true;
-  }
-}
-
-[[maybe_unused]] static bool returnsArithmetic(const Operator op) {
-  switch (op) {
-  case Operator::ADD:
-  case Operator::PRE_INCREMENT:
-  case Operator::POST_INCREMENT:
-  case Operator::SUBTRACT:
-  case Operator::UNARY_MINUS:
-  case Operator::PRE_DECREMENT:
-  case Operator::POST_DECREMENT:
-  case Operator::MULTIPLY:
-  case Operator::DIVIDE:
-  case Operator::POWER:
-  case Operator::MODULUS:
-  case Operator::LESS:
-  case Operator::GREATER:
-  case Operator::LESS_EQUAL:
-  case Operator::GREATER_EQUAL:
-  case Operator::EQUAL:
-  case Operator::NOT_EQUAL:
-  case Operator::AND:
-  case Operator::OR:
-  case Operator::XOR:
-  case Operator::NOT:
-  case Operator::BITAND:
-  case Operator::BITOR:
-  case Operator::BITXOR:
-  case Operator::BITNOT:
-    return true;
-
-  default:
-    return false;
-  }
-}
-
 void PrintExpressionVisitor::operator()(const UnaryExpression &unary) const noexcept {
   if (isCategoryPREFIX_OPS(unary.opr)) {
     std::cout << operatorToString(unary.opr);
-    if (unary.opr == Operator::NOT)
+    if (unary.opr == Operator::NOT || unary.opr == Operator::BITNOT)
       std::cout << ' ';
     std::visit(PrintExpressionVisitor{}, *unary.expr);
   } else {
@@ -111,27 +60,30 @@ void PrintExpressionVisitor::operator()(const IdentifierExpression &identifier) 
 void PrintExpressionVisitor::operator()(const LiteralExpression &literal) const noexcept {
   switch (literal.type) {
   case LiteralExpression::INT:
-    std::cout << std::get<int>(literal.value);
+    std::cout << literal.getInt();
+    return;
+  case LiteralExpression::UINT:
+    std::cout << literal.getUint();
     return;
   case LiteralExpression::FLOAT:
-    std::cout << std::get<float>(literal.value);
+    std::cout << literal.getFloat();
     return;
   case LiteralExpression::DOUBLE:
-    std::cout << std::get<double>(literal.value);
+    std::cout << literal.getDouble();
     return;
 
   case LiteralExpression::BOOL:
-    if (std::get<int>(literal.value) == 1)
+    if (literal.getBool())
       std::cout << "true";
-    else
-      std::cout << "false";
+
+    std::cout << "false";
     return;
   case LiteralExpression::CHAR:
-    std::cout << '\'' << static_cast<char>(std::get<int>(literal.value)) << '\'';
+    std::cout << '\'' << literal.getChar() << '\'';
     return;
 
   case LiteralExpression::STRING:
-    std::cout << '"' << std::get<std::string>(literal.value) << '"';
+    std::cout << '"' << literal.getString() << '"';
     return;
 
   default:
@@ -143,7 +95,7 @@ std::string ExpressionToStringVisitor::operator()(const UnaryExpression &unary) 
   std::string retval;
   if (isCategoryPREFIX_OPS(unary.opr)) {
     retval.append(operatorToString(unary.opr));
-    if (unary.opr == Operator::NOT)
+    if (unary.opr == Operator::NOT || unary.opr == Operator::BITNOT)
       retval.push_back(' ');
     retval.append(std::visit(ExpressionToStringVisitor{}, *unary.expr));
   } else {
@@ -200,21 +152,21 @@ std::string ExpressionToStringVisitor::operator()(const IdentifierExpression &id
 std::string ExpressionToStringVisitor::operator()(const LiteralExpression &literal) const noexcept {
   switch (literal.type) {
   case LiteralExpression::INT:
-    return std::to_string(std::get<int>(literal.value));
+    return std::to_string(literal.getInt());
   case LiteralExpression::FLOAT:
-    return std::to_string(std::get<float>(literal.value));
+    return std::to_string(static_cast<float>(literal.getFloat()));
   case LiteralExpression::DOUBLE:
-    return std::to_string(std::get<double>(literal.value));
+    return std::to_string(static_cast<double>(literal.getDouble()));
   case LiteralExpression::BOOL:
-    if (std::get<int>(literal.value) == 1)
+    if (literal.getBool())
       return "true";
 
     return "false";
   case LiteralExpression::CHAR:
-    return std::string(1, static_cast<char>(std::get<int>(literal.value)));
+    return std::string(1, literal.getChar());
 
   case LiteralExpression::STRING:
-    return std::get<std::string>(literal.value);
+    return literal.getString();
 
   default:
     assert(false && "invalid literalexpression type");

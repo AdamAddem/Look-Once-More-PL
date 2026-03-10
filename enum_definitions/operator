@@ -18,7 +18,6 @@ Operator Expressions
     BITAND bitand
     BITOR bitor
     BITXOR bitxor
-    BITNOT bitnot
     EQUAL eq
     NOT_EQUAL not_eq
 !END BINARY_OPS
@@ -35,6 +34,7 @@ Operator Expressions
     PRE_DECREMENT ---
     UNARY_MINUS --
     ADDRESS_OF @
+    BITNOT bitnot
     NOT not
 !END PREFIX_OPS
 

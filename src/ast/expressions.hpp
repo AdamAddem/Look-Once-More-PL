@@ -1,13 +1,17 @@
 #pragma once
+#include "utilities/owned_ptr.hpp"
 #include <cassert>
+#include <cstdint>
+#include <stdfloat>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
-#include "utilities/owned_ptr.hpp"
 
 namespace AST {
+
+
 enum class Operator : unsigned {
   ADD,
   SUBTRACT,
@@ -26,7 +30,6 @@ enum class Operator : unsigned {
   BITAND,
   BITOR,
   BITXOR,
-  BITNOT,
   EQUAL,
   NOT_EQUAL,
   CAST,
@@ -36,6 +39,7 @@ enum class Operator : unsigned {
   PRE_DECREMENT,
   UNARY_MINUS,
   ADDRESS_OF,
+  BITNOT,
   NOT,
   POST_INCREMENT,
   POST_DECREMENT,
@@ -43,37 +47,40 @@ enum class Operator : unsigned {
 
 
 inline const std::unordered_map<std::string, Operator> stringToOperator{
-	  {"+", Operator::ADD}, {"-", Operator::SUBTRACT}, {"*", Operator::MULTIPLY},
-          {"/", Operator::DIVIDE}, {"^", Operator::POWER}, {"%", Operator::MODULUS},
-          {"=", Operator::ASSIGN}, {"<", Operator::LESS}, {">", Operator::GREATER},
-          {"<=", Operator::LESS_EQUAL}, {">=", Operator::GREATER_EQUAL}, {"and", Operator::AND},
-          {"or", Operator::OR}, {"xor", Operator::XOR}, {"bitand", Operator::BITAND},
-          {"bitor", Operator::BITOR}, {"bitxor", Operator::BITXOR}, {"bitnot", Operator::BITNOT},
-          {"eq", Operator::EQUAL}, {"not_eq", Operator::NOT_EQUAL}, {"cast", Operator::CAST},
-          {"cast_if", Operator::CAST_IF}, {"unsafe_cast", Operator::UNSAFE_CAST}, {"++", Operator::PRE_INCREMENT},
-          {"--", Operator::PRE_DECREMENT}, {"-", Operator::UNARY_MINUS}, {"@", Operator::ADDRESS_OF},
-          {"not", Operator::NOT}, {"++", Operator::POST_INCREMENT}, {"--", Operator::POST_DECREMENT},
-  };
+
+	{"+", Operator::ADD}, {"-", Operator::SUBTRACT}, {"*", Operator::MULTIPLY},
+	{"/", Operator::DIVIDE}, {"^", Operator::POWER}, {"%", Operator::MODULUS},
+	{"=", Operator::ASSIGN}, {"<", Operator::LESS}, {">", Operator::GREATER},
+	{"<=", Operator::LESS_EQUAL}, {">=", Operator::GREATER_EQUAL}, {"and", Operator::AND},
+	{"or", Operator::OR}, {"xor", Operator::XOR}, {"bitand", Operator::BITAND},
+	{"bitor", Operator::BITOR}, {"bitxor", Operator::BITXOR}, {"eq", Operator::EQUAL},
+	{"not_eq", Operator::NOT_EQUAL}, {"cast", Operator::CAST}, {"cast_if", Operator::CAST_IF},
+	{"unsafe_cast", Operator::UNSAFE_CAST}, {"++", Operator::PRE_INCREMENT}, {"--", Operator::PRE_DECREMENT},
+	{"-", Operator::UNARY_MINUS}, {"@", Operator::ADDRESS_OF}, {"bitnot", Operator::BITNOT},
+	{"not", Operator::NOT}, {"++", Operator::POST_INCREMENT}, {"--", Operator::POST_DECREMENT},
+};
+
 
 constexpr const char* operatorToString(const Operator e) {
-  constexpr const char* toString[] = {
-    "+","-","*",
-    "/","^","%",
-    "=","<",">",
-    "<=",">=","and",
-    "or","xor","bitand",
-    "bitor","bitxor","bitnot",
-    "eq","not_eq","cast",
-    "cast_if","unsafe_cast","++",
-    "--","-","@",
-    "not","++","--",
+constexpr const char* toString[] = {
+
+	"+","-","*",
+	"/","^","%",
+	"=","<",">",
+	"<=",">=","and",
+	"or","xor","bitand",
+	"bitor","bitxor","eq",
+	"not_eq","cast","cast_if",
+	"unsafe_cast","++","--",
+	"-","@","bitnot",
+	"not","++","--",
 };
-  return toString[std::to_underlying(e)];
+	return toString[std::to_underlying(e)];
 }
-constexpr bool isCategoryBINARY_OPS(const Operator e) { return std::to_underlying(e) < 20; }
-constexpr bool isCategoryCASTS(const Operator e) { return std::to_underlying(e) >= 20 && std::to_underlying(e) < 23; }
-constexpr bool isCategoryPREFIX_OPS(const Operator e) { return std::to_underlying(e) >= 20 && std::to_underlying(e) < 28; }
-constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 23 && std::to_underlying(e) < 30; }
+constexpr bool isCategoryBINARY_OPS(const Operator e) { return std::to_underlying(e) < 19; }
+constexpr bool isCategoryCASTS(const Operator e) { return std::to_underlying(e) >= 19 && std::to_underlying(e) < 22; }
+constexpr bool isCategoryPREFIX_OPS(const Operator e) { return std::to_underlying(e) >= 19 && std::to_underlying(e) < 28; }
+constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 22 && std::to_underlying(e) < 30; }
 
 struct UnaryExpression;
 struct BinaryExpression;
@@ -141,8 +148,8 @@ struct IdentifierExpression {
 };
 
 struct LiteralExpression {
-  using LiteralValue = std::variant<int, float, double, std::string>;
-  enum LiteralType { INT, FLOAT, DOUBLE, BOOL, CHAR, STRING };
+  using LiteralValue = std::variant<std::uint64_t, std::float32_t, std::float64_t, std::string>;
+  enum LiteralType { INT, UINT, FLOAT, DOUBLE, BOOL, CHAR, STRING };
 
   LiteralValue value;
   LiteralType type;
@@ -151,6 +158,13 @@ struct LiteralExpression {
   explicit LiteralExpression(LiteralValue &&_v, const LiteralType _t, const unsigned line_num)
   : value(std::move(_v)), type(_t), line_number(line_num) {}
 
+  [[nodiscard]] std::int64_t getInt() const { return std::bit_cast<std::int64_t>(std::get<uint64_t>(value)); }
+  [[nodiscard]] std::uint64_t getUint() const { return std::get<uint64_t>(value); }
+  [[nodiscard]] float getFloat() const { return std::get<std::float32_t>(value); }
+  [[nodiscard]] double getDouble() const { return std::get<std::float64_t>(value); }
+  [[nodiscard]] bool getBool() const { return std::get<uint64_t>(value); }
+  [[nodiscard]] char getChar() const { return static_cast<char>(std::get<uint64_t>(value)); }
+  [[nodiscard]] std::string getString() const { return std::get<std::string>(value); }
 };
 
 

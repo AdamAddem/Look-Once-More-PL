@@ -19,7 +19,7 @@ add_executable(LookOnceMore
 
         src/lexing/lex.cpp
         src/lexing/lex.hpp
-        src/lexing/tokenhandler.cpp
+        src/lexing/tokenview.cpp
         src/lexing/tokentype.hpp
 
         src/parsing/parse.cpp
@@ -46,6 +46,7 @@ add_executable(LookOnceMore
         src/utilities/owned_ptr.hpp
         src/utilities/general_enums.hpp
 )
+
 
 target_include_directories(LookOnceMore PRIVATE ${LLVM_INCLUDE_DIRS})
 llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_TARGETS_TO_BUILD} core support irreader codegen mc mcparser option)

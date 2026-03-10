@@ -39,7 +39,7 @@ public:
   }details;
 
   constexpr explicit Type(Normal) {}
-  constexpr explicit Type(Normal, std::string primitive_typename, bool is_mutable) : type_name(std::in_place_type<std::string>) {
+  constexpr explicit Type(Normal, std::string primitive_typename, const bool is_mutable) : type_name(std::in_place_type<std::string>) {
     switch (primitive_typename.front()) { // this is so dumb
     case 'i':
     case 'u':

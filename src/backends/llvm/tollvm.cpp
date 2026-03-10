@@ -106,14 +106,14 @@ public:
 
     assert(false && "invalid type idfk");
   }
-  void addGlobal(const AST::VarDeclaration& var) {
-    Value* v = var.expr ? genLiteral(std::get<AST::LiteralExpression>(*var.expr)) : nullptr;
+  void genGlobal(const AST::VarDeclaration& var) {
+    Constant* v = var.expr ?  genConstant(*var.expr) : Constant::getNullValue(getType(var.type));
     module.insertGlobalVariable(
       new GlobalVariable(
        getType(var.type),
        !var.type.details.is_mutable,
        GlobalValue::LinkageTypes::ExternalLinkage,
-       cast<Constant>(v),
+       v,
        var.ident
        )
      );
@@ -154,7 +154,7 @@ public:
   }
   void lowerToLLVM(const Validation::ValidatedTU& vtu) {
     for (const auto& v : vtu.globals)
-      addGlobal(v);
+      genGlobal(v);
 
     for (const auto& func : vtu.functions) {
       auto function_builder = createFunction(func);
@@ -350,7 +350,7 @@ public:
       assert(false && "Invalid literal expression in codegen");
     }
   }
-  Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) {
+  Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) noexcept {
     return utils_match(expr,
       utils_callon(const AST::UnaryExpression&, genUnary, f),
       utils_callon(const AST::BinaryExpression&, genBinary, f),
@@ -360,6 +360,17 @@ public:
       utils_callon(const AST::LiteralExpression&, genLiteral)
       );
   }
+  Constant* genConstant(const AST::Expression& expr) noexcept {
+    if (std::holds_alternative<AST::LiteralExpression>(expr))
+      return cast<Constant>(genLiteral(std::get<AST::LiteralExpression>(expr)));
+
+    if (std::holds_alternative<AST::IdentifierExpression>(expr))
+      return module.getGlobalVariable(std::get<AST::IdentifierExpression>(expr).ident, true);
+
+    assert(false && "Non-constant expression used to initialize global variable");
+  }
+
+
   bool genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) {
     IRBuilder<> func_entry(&f.func->getEntryBlock());
     AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type), nullptr);

@@ -36,11 +36,7 @@ static bool output_obj{false};
 static auto chosen_backend{Settings::Backend::LLVM};
 static uint8_t optimization_level{0};
 
-#ifdef _WIN22
-static std::string output_name{"lom_program.exe"};
-#else
-static std::string output_name{"lom_program.out"};
-#endif
+static std::string output_name;
 
 static std::string build_location{"lom_build/"};
 
@@ -126,6 +122,12 @@ std::vector<std::filesystem::path> Settings::setArgs(const unsigned argc, const 
     }
 
   }
+  if (output_name.empty())
+#ifdef _WIN32
+    output_name = "lom.exe";
+#else
+      output_name = "lom.out";
+#endif
 
   return filepaths;
 }

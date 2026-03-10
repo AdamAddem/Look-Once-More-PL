@@ -97,6 +97,10 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
   case Operator::DIVIDE:
   case Operator::POWER:
   case Operator::MODULUS:
+  case Operator::LESS:
+  case Operator::GREATER:
+  case Operator::LESS_EQUAL:
+  case Operator::GREATER_EQUAL:
     if (!left_arithmetic || !right_arithmetic) {
       std::string context = left_type.toString();
       context.append(" and ");
@@ -105,10 +109,6 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
     }
     break;
 
-  case Operator::LESS:
-  case Operator::GREATER:
-  case Operator::LESS_EQUAL:
-  case Operator::GREATER_EQUAL:
   case Operator::AND:
   case Operator::OR:
   case Operator::XOR:
@@ -129,7 +129,7 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
       std::string context = left_type.toString();
       context.append(" and ");
       context.append(right_type.toString());
-      throw ValidationError("Non-arithmetic expression in arithmetic binary operation.", context, binary.line_number);
+      throw ValidationError("Non-arithmetic expression(s) in bitwise operation.", context, binary.line_number);
     }
 
     if (!right_type.convertible_to(left_type)) { //since they're both single types, convertible will evaluate equality. prolly should change tho

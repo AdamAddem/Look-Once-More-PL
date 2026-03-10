@@ -107,12 +107,13 @@ public:
     assert(false && "invalid type idfk");
   }
   void addGlobal(const AST::VarDeclaration& var) {
+    Value* v = var.expr ? genLiteral(std::get<AST::LiteralExpression>(*var.expr)) : nullptr;
     module.insertGlobalVariable(
       new GlobalVariable(
        getType(var.type),
        !var.type.details.is_mutable,
        GlobalValue::LinkageTypes::ExternalLinkage,
-       nullptr,
+       cast<Constant>(v),
        var.ident
        )
      );
@@ -265,12 +266,32 @@ public:
       builder.CreateBr(end);
 
       builder.SetInsertPoint(end);
-      auto p =  builder.CreatePHI(i1, 2);
-      p->addIncoming(i1_0, begin);
-      p->addIncoming(second_value, test_second);
-      return p;
+      const auto phi =  builder.CreatePHI(i1, 2);
+      phi->addIncoming(i1_0, begin);
+      phi->addIncoming(second_value, test_second);
+      return phi;
     }
-    case AST::Operator::OR:
+    case AST::Operator::OR: {
+      assert(!is_float && "float expression used as conditional");
+      const auto first_value = builder.CreateCmp(CmpInst::Predicate::ICMP_NE, builder.CreateZExtOrTrunc(left, i1), i1_0);
+
+      BasicBlock* begin = builder.GetInsertBlock();
+      BasicBlock* test_second = BasicBlock::Create(context); f.func->insert(f.func->end(), test_second);
+      BasicBlock* end = BasicBlock::Create(context);
+      builder.CreateCondBr(first_value, end, test_second);
+
+      builder.SetInsertPoint(test_second);
+      Value* right = genExpression(*binary.expr_right, f);
+      const auto second_value = builder.CreateCmp(CmpInst::Predicate::ICMP_NE, builder.CreateZExtOrTrunc(right, i1), i1_0);
+      f.func->insert(f.func->end(), end);
+      builder.CreateBr(end);
+
+      builder.SetInsertPoint(end);
+      const auto phi =  builder.CreatePHI(i1, 2);
+      phi->addIncoming(i1_1, begin);
+      phi->addIncoming(second_value, test_second);
+      return phi;
+    }
     case AST::Operator::XOR:
     case AST::Operator::BITAND:
     case AST::Operator::BITOR:

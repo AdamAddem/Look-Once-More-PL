@@ -48,8 +48,7 @@ Type parseType(TokenView& tokens) {
     }
 
 
-    std::string s = token.toString();
-    return Type(Type::normal, std::move(s), Type::Details{});
+    return Type(Type::normal, token.toString(), is_mutable);
   }
 
   if (token.is(TokenType::LESS)) {

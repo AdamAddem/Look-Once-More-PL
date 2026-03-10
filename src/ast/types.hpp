@@ -39,6 +39,19 @@ public:
   }details;
 
   constexpr explicit Type(Normal) {}
+  constexpr explicit Type(Normal, std::string primitive_typename, bool is_mutable) : type_name(std::in_place_type<std::string>) {
+    switch (primitive_typename.front()) { // this is so dumb
+    case 'i':
+    case 'u':
+    case 'f':
+      details.arithmetic = true;
+    default:
+      break;
+    }
+    details.is_mutable = is_mutable;
+
+    type_name.emplace<std::string>(std::move(primitive_typename));
+  }
   constexpr explicit Type(Normal, std::string type_name, Details typedetails)
   : type_name(std::move(type_name)), details(typedetails) {}
 
@@ -77,8 +90,8 @@ public:
     details = other.details;
     return *this;
   }
-  constexpr Type(Type&& other) noexcept : type_name(std::move(other.type_name)), subtype(std::move(other.subtype)) {}
-  constexpr Type& operator=(Type&& other) noexcept { type_name = std::move(other.type_name); subtype = std::move(other.subtype); return *this; }
+  constexpr Type(Type&& other) noexcept : type_name(std::move(other.type_name)), subtype(std::move(other.subtype)), details(other.details) {}
+  constexpr Type& operator=(Type&& other) noexcept { type_name = std::move(other.type_name); subtype = std::move(other.subtype); details = other.details; return *this; }
 
   constexpr ~Type() {subtype.destroy();}
 
@@ -101,7 +114,7 @@ public:
   [[nodiscard]] std::string toString() const;
 };
 
-static constexpr Type devoid_type{Type::normal, "", Type::Details{.arithmetic = true, .callable = false, .array = false}};
+static constexpr Type devoid_type{Type::normal, "", Type::Details{.arithmetic = false, .callable = false, .array = false}};
 static constexpr Type int_literal_type{Type::normal, "i32", Type::Details{.arithmetic = true, .callable = false, .array = false}};
 static constexpr Type float_literal_type{Type::normal, "f32", Type::Details{.arithmetic = true, .callable = false, .array = false}};
 static constexpr Type double_literal_type{Type::normal, "f64", Type::Details{.arithmetic = true, .callable = false, .array = false}};

@@ -1,6 +1,6 @@
 #pragma once
+#include "validation/symbol_table.hpp"
 #include "expressions.hpp"
-#include "types.hpp"
 #include <memory>
 #include <string>
 #include <variant>
@@ -24,8 +24,7 @@ struct VarDeclaration {
   nullable_owned_ptr<Expression> expr;
   unsigned line_number;
 
-  //takes ownership of sub_expression
-  VarDeclaration(Type &&_type, std::string &&_ident, const unsigned line_num, nullable_owned_ptr<Expression> sub_expression = nullptr ) noexcept
+  VarDeclaration(Type&& _type, std::string &&_ident, const unsigned line_num, nullable_owned_ptr<Expression> sub_expression = nullptr ) noexcept
   : type(std::move(_type)), ident(std::move(_ident)), expr(std::move(sub_expression)), line_number(line_num){}
 
   VarDeclaration(VarDeclaration &&other) noexcept
@@ -93,7 +92,7 @@ struct ReturnStatement {
 };
 
 struct ExpressionStatement {
-  nullable_owned_ptr<Expression> expr; //owned, may be nullptr
+  nullable_owned_ptr<Expression> expr;
   unsigned line_number;
 
   explicit ExpressionStatement(const unsigned line_num, nullable_owned_ptr<Expression> _expr = nullptr) : expr(std::move(_expr)), line_number(line_num) {}

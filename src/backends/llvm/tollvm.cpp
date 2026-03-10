@@ -110,7 +110,7 @@ public:
     module.insertGlobalVariable(
       new GlobalVariable(
        getType(var.type),
-       !var.type.is_mutable,
+       !var.type.details.is_mutable,
        GlobalValue::LinkageTypes::ExternalLinkage,
        nullptr,
        var.ident
@@ -270,7 +270,6 @@ public:
       p->addIncoming(second_value, test_second);
       return p;
     }
-      break;
     case AST::Operator::OR:
     case AST::Operator::XOR:
     case AST::Operator::BITAND:

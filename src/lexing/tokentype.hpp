@@ -160,23 +160,14 @@ constexpr const char* toString[] = {
 	return toString[std::to_underlying(e)];
 }
 constexpr bool isCategoryLITERALS(const TokenType e) { return std::to_underlying(e) >= 2 && std::to_underlying(e) < 8; }
-
 constexpr bool isCategorySYMBOLS(const TokenType e) { return std::to_underlying(e) >= 8 && std::to_underlying(e) < 31; }
-
 constexpr bool isCategoryCOMP_BITWISE(const TokenType e) { return std::to_underlying(e) >= 31 && std::to_underlying(e) < 41; }
-
 constexpr bool isCategoryPOINTERS(const TokenType e) { return std::to_underlying(e) >= 55 && std::to_underlying(e) < 58; }
-
 constexpr bool isCategoryPRIMITIVES(const TokenType e) { return std::to_underlying(e) >= 41 && std::to_underlying(e) < 58; }
-
 constexpr bool isCategoryTYPE_MODIFIERS(const TokenType e) { return std::to_underlying(e) >= 58 && std::to_underlying(e) < 59; }
-
 constexpr bool isCategoryCONTROL_FLOW(const TokenType e) { return std::to_underlying(e) >= 59 && std::to_underlying(e) < 71; }
-
 constexpr bool isCategoryCAST(const TokenType e) { return std::to_underlying(e) >= 71 && std::to_underlying(e) < 74; }
-
 constexpr bool isCategoryALLOC_LIFETIMES(const TokenType e) { return std::to_underlying(e) >= 74 && std::to_underlying(e) < 78; }
-
 constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 31 && std::to_underlying(e) < 84; }
 
 }; //namespace Lexer

@@ -34,45 +34,52 @@ Type parseType(TokenView& tokens) {
     if (token.isPointer()) { // add reference support eventually
       tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.", LOMError::Stage::ParsingError);
 
-      return {token.toString(), is_mutable, new Type(parseType(tokens))};
+      PointerType t;
+      switch (token.type) {
+      case TokenType::KEYWORD_RAW: t = PointerType::RAW; break;
+      case TokenType::KEYWORD_UNIQUE: t = PointerType::UNIQUE; break;
+      case TokenType::KEYWORD_VAGUE: t = PointerType::VAGUE; break;
+
+      default:
+        assert(false);
+      }
+
+      return Type(Type::pointer, t,new Type(parseType(tokens)));
     }
 
+
     std::string s = token.toString();
-    return {std::move(s), is_mutable};
+    return Type(Type::normal, std::move(s), Type::Details{});
   }
 
   if (token.is(TokenType::LESS)) {
     TokenView variant_types_tokens = tokens.getTokensBetweenAngleBrackets();
 
-    Type variant_types(Type::variant, parseType(variant_types_tokens));
-    variant_types.is_mutable = is_mutable;
+    Type variant_types(Type::variant);
+    variant_types.details.is_mutable = is_mutable;
 
     std::unordered_set<std::string> typenames; //prevent duplicate types
 
-
     const unsigned variant_ln = variant_types_tokens.peek().line_number;
-    while (variant_types_tokens.pop_if(TokenType::COMMA)) {
+    do {
       const unsigned subtype_ln = variant_types_tokens.peek().line_number;
       Type type = parseType(variant_types_tokens);
       if (type.isVariant())
         throw ParsingError("Nested variant types not allowed.", type, subtype_ln);
 
-      if (type.is_mutable)
+      if (type.details.is_mutable)
         throw ParsingError("Mutability cannot be specified within variant type list, must be specified prior to type list.", type, subtype_ln);
 
       if (typenames.contains(type.getTypename()))
         throw ParsingError("Duplicate types specified in variant declaration.", type, subtype_ln);
 
-      if (type.isDevoid()) {
+      if (type.isDevoid())
         typenames.emplace("");
-        variant_types.addTypeToVariantList(std::move(type));
-        continue;
-      }
-
-      typenames.emplace(type.getTypename());
+      else
+        typenames.emplace(type.getTypename());
 
       variant_types.addTypeToVariantList(std::move(type));
-    }
+    } while (variant_types_tokens.pop_if(TokenType::COMMA));
 
     if (variant_types.numVariantTypes() < 2)
       throw ParsingError("Two or more types must be specified in variant type list.", variant_types, variant_ln);
@@ -429,7 +436,7 @@ Statement *parseVarDecl(TokenView& tokens) {
 
 
   if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
-    if (!type.is_mutable)
+    if (!type.details.is_mutable)
       throw ParsingError("Non-mutable variables may not be junk initialized.", type, ln);
 
     tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon ending variable declaration.", LOMError::Stage::ParsingError);
@@ -613,10 +620,6 @@ struct UnparsedTU {
   std::vector<UnparsedFunction> functions;
 
   void registerFunction(Type&& _return_type, std::string _name, std::vector<VarDeclaration> _decl, TokenView _body) {
-    std::vector<Type> param_types;
-    for (auto &decl : _decl)
-      param_types.emplace_back(decl.type); // this is stupid
-
     functions.emplace_back(std::move(_return_type), std::move(_name), std::move(_decl), _body);
   }
 };

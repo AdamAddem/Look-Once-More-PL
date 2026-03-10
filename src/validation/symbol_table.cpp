@@ -9,81 +9,66 @@ using namespace AST;
 SymbolTable::SymbolTable() {
 
   //0 alignment represents undefined alignment
-  type_registry[""] = {.arithmetic = false, .callable = false, .array = false, .alignment = 0};
-  type_registry["devoid"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 0}; //likely redundant
+  type_registry.emplace("");
+  type_registry.emplace("devoid");
 
-  type_registry["i8"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 1};
-  type_registry["i16"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 2};
-  type_registry["i32"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 4};
-  type_registry["i64"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 8};
+  type_registry.emplace("i8");
+  type_registry.emplace("i16");
+  type_registry.emplace("i32");
+  type_registry.emplace("i64");
 
-  type_registry["u8"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 1};
-  type_registry["u16"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 2};
-  type_registry["u32"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 4};
-  type_registry["u64"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 8};
+  type_registry.emplace("u8");
+  type_registry.emplace("u16");
+  type_registry.emplace("u32");
+  type_registry.emplace("u64");
 
-  type_registry["f32"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 4};
-  type_registry["f64"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 8};
+  type_registry.emplace("f32");
+  type_registry.emplace("f64");
 
-  type_registry["char"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 1};
-  type_registry["string"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 0};
-  type_registry["bool"] = {.arithmetic = true, .callable = false, .array = false, .alignment = 1};
+  type_registry.emplace("char");
+  type_registry.emplace("string");
+  type_registry.emplace("bool");
 
-  type_registry["raw"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 8};
-  type_registry["unique"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 8};
-  type_registry["vague"] = {.arithmetic = false, .callable = false, .array = false, .alignment = 8};
+  type_registry.emplace("raw");
+  type_registry.emplace("unique");
+  type_registry.emplace("vague");
+
 }
 
-void SymbolTable::Function::print() const {
-  std::cout << return_type.toString();
-  std::cout << " (";
 
-  for (auto &t : parameter_types) {
-    std::cout << t.toString();
-    std::cout << ", ";
-  }
-
-  if (!parameter_types.empty())
-    std::cout << "\b\b";
-  std::cout << ")";
+constexpr SymbolTable::FunctionSignature::FunctionSignature(Types&& initial_parameter_types, Type&& initial_return_type) {
+  addFunction(std::move(initial_parameter_types), std::move(initial_return_type));
 }
 
-void SymbolTable::FunctionSignature::addFunction(Type &&t, std::vector<Type> &&param_types) { functions.emplace_back(std::move(t), std::move(param_types)); }
+void SymbolTable::FunctionSignature::addFunction(Types&& parameter_types, Type&& return_type) {
+  function_types.emplace_back(Type::function, std::move(parameter_types), std::move(return_type));
+}
 
-Type SymbolTable::FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) const {
-  bool is_valid{false};
-  Type ret_type{devoid_type};
-  for (const auto &f : functions) {
-    if (provided_param.size() != f.parameter_types.size())
+const Type& SymbolTable::FunctionSignature::returnTypeOfCall(const std::vector<Type> &provided_param) const {
+  const auto num_params = provided_param.size();
+  int valid_index = -1;
+  for (auto i{0uz}; i<function_types.size(); ++i) {
+    const auto& f = function_types[i].getTypes();
+
+    if (num_params != (f.size() - 1))
       continue;
 
-    for (auto i{0uz}; i < provided_param.size(); ++i) {
-      if (!provided_param[i].convertible_to(f.parameter_types[i]))
+    for (auto param{0uz}; param < provided_param.size(); ++param) {
+      if (!provided_param[param].convertible_to(f[param]))
         goto escape;
     }
 
-    if (is_valid)
+    if (valid_index != -1)
       throw std::runtime_error("Ambiguous function overload");
 
-    is_valid = true;
-    ret_type = f.return_type;
-
+    valid_index = i;
   escape:
   }
 
-  if (!is_valid)
-    throw std::runtime_error(
-        "No viable function overload found");
+  if (valid_index == -1)
+    throw std::runtime_error("No viable function overload found");
 
-  return ret_type;
-}
-
-void SymbolTable::FunctionSignature::print() const {
-  for (auto &f : functions) {
-    f.print();
-    std::cout << ", ";
-  }
-  std::cout << "\b\b";
+  return function_types[valid_index].getTypes().back();
 }
 
 bool SymbolTable::containsVariable(const std::string &name) const {
@@ -92,7 +77,7 @@ bool SymbolTable::containsVariable(const std::string &name) const {
       return true;
 
   if (globals.contains(name))
-    return std::holds_alternative<Variable>(globals.at(name));
+    return std::holds_alternative<TypeInstance>(globals.at(name));
   return false;
 }
 
@@ -104,7 +89,7 @@ void SymbolTable::addGlobalVariable(std::string name, Type type) {
     throw std::runtime_error("Redefinition of global symbol with name: " +
                              name);
 
-  globals.emplace(std::move(name), Variable(std::move(type)));
+  globals.emplace(std::move(name), TypeInstance(std::move(type)));
 }
 
 void SymbolTable::addLocalVariable(std::string name, Type type) {
@@ -115,23 +100,23 @@ void SymbolTable::addLocalVariable(std::string name, Type type) {
     throw std::runtime_error("Redefinition of local symbol with name: " + name);
 
   locals.back().variables.emplace(std::move(name),
-                                  Variable(std::move(type)));
+                                  TypeInstance(std::move(type)));
 }
 
-auto SymbolTable::closestVariable(const std::string &name) const -> const Variable & {
+auto SymbolTable::closestVariable(const std::string &name) const -> const TypeInstance & {
   const auto end = locals.rend();
   for (auto curr = locals.rbegin(); curr != end; ++curr)
     if (curr->variables.contains(name))
       return curr->variables.at(name);
 
   if (globals.contains(name))
-    return std::get<Variable>(globals.at(name));
+    return std::get<TypeInstance>(globals.at(name));
 
   throw std::runtime_error(
       "No variable found in typeOfMatchingVariable method");
 }
 
-Type SymbolTable::closestVariableType(const std::string &name) const {
+const Type& SymbolTable::closestVariableType(const std::string &name) const {
   return closestVariable(name).type;
 }
 
@@ -141,29 +126,25 @@ void SymbolTable::enterScope(Type expected_return_type) {
 
 void SymbolTable::leaveScope() { locals.pop_back(); }
 
-Type SymbolTable::returnTypeOfCurrentScope() const {
+const Type& SymbolTable::returnTypeOfCurrentScope() const {
   assert(!locals.empty());
   return locals.back().expected_return_type;
 }
 
-void SymbolTable::addFunction(const std::string &name, Type return_type,
-                              std::vector<Type> &&parameter_types) {
+void SymbolTable::addFunction(const std::string &name, Type return_type, std::vector<Type> &&parameter_types) {
   if (!isRegisteredType(return_type))
     throw std::runtime_error("Function return type undefined");
 
   if (globals.contains(name)) {
-    if (std::holds_alternative<Variable>(globals.at(name)))
+    if (std::holds_alternative<TypeInstance>(globals.at(name)))
       throw std::runtime_error("Redefinition of global variable with name: " +
                                name);
   } else {
-    globals.emplace(name,
-                    FunctionSignature(Function(std::move(return_type),
-                                               std::move(parameter_types))));
+    globals.emplace(name, FunctionSignature(std::move(parameter_types), std::move(return_type)));
     return;
   }
 
-  std::get<FunctionSignature>(globals.at(name))
-      .addFunction(std::move(return_type), std::move(parameter_types));
+  std::get<FunctionSignature>(globals.at(name)).addFunction(std::move(parameter_types), std::move(return_type));
 }
 
 bool SymbolTable::containsFunction(const std::string &name) const {
@@ -172,14 +153,11 @@ bool SymbolTable::containsFunction(const std::string &name) const {
   return false;
 }
 
-Type
-SymbolTable::returnTypeOfCall(const std::string &name,
-                              const std::vector<Type> &provided_params) const {
+const Type& SymbolTable::returnTypeOfCall(const std::string &name, const std::vector<Type> &provided_params) const {
   if (!containsFunction(name))
     throw std::runtime_error("Identifier not recognized as callable");
 
-  return std::get<FunctionSignature>(globals.at(name))
-      .returnTypeOfCall(provided_params).asImmutable();
+  return std::get<FunctionSignature>(globals.at(name)).returnTypeOfCall(provided_params);
 }
 
 bool SymbolTable::isSymbolInCurrentScope(const std::string &name) const {
@@ -193,20 +171,13 @@ bool SymbolTable::isVarMutable(const std::string &var_name) const {
   if (!containsVariable(var_name))
     return false;
 
-  return closestVariable(var_name).type.is_mutable;
+  return closestVariable(var_name).is_mutable;
 }
 
-auto SymbolTable::detailsOfType(const std::string &type_name) const
-    -> TypeDetails {
-  if (!type_registry.contains(type_name))
-    throw std::runtime_error("Type name not registered");
-
-  return type_registry.at(type_name);
-}
 
 bool SymbolTable::isRegisteredType(const Type &t) const noexcept {
   if (t.isVariant()) {
-    for (auto& type : t.getTypes()) {
+    for (const auto& type : t.getTypes()) {
       if (!type_registry.contains(type.getTypename()))
         return false;
     }
@@ -217,33 +188,3 @@ bool SymbolTable::isRegisteredType(const Type &t) const noexcept {
 }
 
 void SymbolTable::clearLocalTable() { locals.clear(); }
-
-
-void SymbolTable::printGlobals() {
-  std::cout << "\nGlobals:\n{\n" << std::endl;
-  for (auto &[name, entry] : globals) {
-    if (const auto *var = std::get_if<Variable>(&entry)) {
-      std::cout << "Variable: ";
-      std::cout << var->type.toString();
-      std::cout << " " << name;
-    } else {
-      std::cout << "Function: ";
-      std::get<FunctionSignature>(entry).print();
-    }
-
-    std::cout << std::endl;
-  }
-  std::cout << "\n}" << std::endl;
-}
-
-void SymbolTable::printLocals() {
-  if (locals.back().variables.empty())
-    return;
-
-  std::cout << "\nScope:\n{\n" << std::endl;
-  for (auto &[name, var] : locals.back().variables) {
-    std::cout << var.type.toString();
-    std::cout << " " << name << ";\n";
-  }
-  std::cout << "\n}" << std::endl;
-}

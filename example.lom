@@ -1,6 +1,6 @@
 fn main() -> i32 {
     bool first = true;
-    bool second = false;
+    bool second = true;
     if(first and second)
         return 5;
 

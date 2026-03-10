@@ -60,7 +60,7 @@ static Type validateCallingExpression(const CallingExpression &calling, SymbolTa
 
   //this exists for when/if a callable type exists outside of a function itself
   if (!table.containsFunction(type.getTypename())) {
-    if (!table.detailsOfType(type.getTypename()).callable)
+    if (!type.details.callable)
       throw ValidationError("Call operator used on non-callable.", type.toString(), calling.line_number);
 
 
@@ -77,9 +77,9 @@ static Type validateCallingExpression(const CallingExpression &calling, SymbolTa
 // current implementation returns the left expressions type for arithmetic operations
 // fix that lol
 static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable& table) {
-  const auto& left_type = validateExpression(*binary.expr_left, table);
-  const bool left_is_mutable = left_type.is_mutable;
-  const auto& right_type = validateExpression(*binary.expr_right, table);
+  Type left_type = validateExpression(*binary.expr_left, table);
+  const bool left_is_mutable = left_type.details.is_mutable;
+  Type right_type = validateExpression(*binary.expr_right, table);
 
   if (left_type.isVariant() || right_type.isVariant()) {
     std::string context = left_type.toString();
@@ -88,11 +88,8 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
     throw ValidationError("Binary operator used on variant type(s).", context, binary.line_number);
   }
 
-  const auto [left_arithmetic, left_callable, left_array, left_alignment] =
-      table.detailsOfType(left_type.getTypename());
-  const auto [right_arithmetic, right_callable, right_array, right_alignment] =
-      table.detailsOfType(right_type.getTypename());
-
+  const bool left_arithmetic = left_type.details.arithmetic;
+  const bool right_arithmetic = right_type.details.arithmetic;
   switch (binary.opr) {
   case Operator::ADD:
   case Operator::SUBTRACT:
@@ -100,13 +97,6 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
   case Operator::DIVIDE:
   case Operator::POWER:
   case Operator::MODULUS:
-  case Operator::LESS:
-  case Operator::GREATER:
-  case Operator::LESS_EQUAL:
-  case Operator::GREATER_EQUAL:
-  case Operator::AND:
-  case Operator::OR:
-  case Operator::XOR:
     if (!left_arithmetic || !right_arithmetic) {
       std::string context = left_type.toString();
       context.append(" and ");
@@ -114,6 +104,22 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
       throw ValidationError("Non-arithmetic expression in arithmetic binary operation.", context, binary.line_number);
     }
     break;
+
+  case Operator::LESS:
+  case Operator::GREATER:
+  case Operator::LESS_EQUAL:
+  case Operator::GREATER_EQUAL:
+  case Operator::AND:
+  case Operator::OR:
+  case Operator::XOR:
+    if (!left_type.isBool() || !right_type.isBool()) {
+      std::string context = left_type.toString();
+      context.append(" and ");
+      context.append(right_type.toString());
+      throw ValidationError("Non-boolean expression in boolean binary operation.", context, binary.line_number);
+    }
+    break;
+
 
   case Operator::BITAND:
   case Operator::BITOR:
@@ -141,11 +147,7 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
       throw ValidationError("Left expression in assignment non-mutable.", context, binary.line_number);
     }
 
-
-    if (left_arithmetic && right_arithmetic)
-      break;
-
-    if (right_type.convertible_to(left_type)) { //see above comment
+    if (!right_type.convertible_to(left_type)) { //see above comment
       std::string context = left_type.toString();
       context.append(" and ");
       context.append(right_type.toString());
@@ -192,7 +194,8 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
   case Operator::BITXOR:
   case Operator::BITNOT:
   case Operator::ASSIGN:
-    return left_type.asImmutable();
+    left_type.details.is_mutable = false;
+    return left_type;
 
   case Operator::EQUAL:
   case Operator::NOT_EQUAL:
@@ -204,38 +207,42 @@ static Type validateBinaryExpression(const BinaryExpression &binary, SymbolTable
 }
 
 static Type validateUnaryExpression(const UnaryExpression &unary, SymbolTable& table) {
-  const auto& type = validateExpression(*unary.expr, table);
+  Type type = validateExpression(*unary.expr, table);
   if (type.isVariant()) {
     const std::string context = type.toString();
     throw ValidationError("Binary operator used on variant type(s).", context, unary.line_number);
   }
 
-  const auto [arithmetic, callable, array, alignment] = table.detailsOfType(type.getTypename());
+  const bool arithmetic = type.details.arithmetic;
   if (!arithmetic) {
     const std::string context = type.toString();
     throw ValidationError("Unary operator used on non-arithmetic expression.", context, unary.line_number);
   }
 
-  if (unary.opr == Operator::UNARY_MINUS)
-    return type.asImmutable();
+  if (unary.opr == Operator::UNARY_MINUS) {
+    type.details.is_mutable = false;
+    return type;
+  }
 
 
   if (unary.opr == Operator::NOT)
     return bool_literal_type;
 
 
-  if (!type.is_mutable) {
+  if (!type.details.is_mutable) {
     const std::string context = type.toString();
     throw ValidationError("Pre/Postfix operator used on non-mutable expression.", context, unary.line_number);
   }
 
 
   if (unary.opr == Operator::POST_INCREMENT ||
-      unary.opr == Operator::POST_DECREMENT)
-    return type.asImmutable();
+      unary.opr == Operator::POST_DECREMENT) {
+    type.details.is_mutable = false;
+    return type;
+  }
 
   if (unary.opr == Operator::ADDRESS_OF)
-    return Type("raw", false, new Type(type));
+    return Type(Type::pointer, PointerType::RAW, new Type(type));
 
   return type;
 }
@@ -295,12 +302,12 @@ static void validateScopedStatement(const ScopedStatement &scoped, SymbolTable& 
 }
 
 static void validateWhileLoop(const WhileLoop &while_loop, SymbolTable& table) {
-  const auto type = validateExpression(*while_loop.condition, table);
+  const Type type = validateExpression(*while_loop.condition, table);
   if (type.isVariant())
     throw ValidationError("Variant in while loop condition.", type.toString(), while_loop.line_number);
 
 
-  const auto [arithmetic, callable, array, alignment] = table.detailsOfType(type.getTypename());
+  const bool arithmetic = type.details.arithmetic;
   if (!arithmetic) {
     std::string context("Condition is of type ");
     context.append(type.toString());
@@ -311,16 +318,15 @@ static void validateWhileLoop(const WhileLoop &while_loop, SymbolTable& table) {
 }
 
 static void validateForLoop(const ForLoop &for_loop, SymbolTable& table) {
-  table.enterScope();
+  table.enterScope(devoid_type);
   validateStatement(*for_loop.var_statement, table);
 
   if (for_loop.condition) {
-    const auto type  = validateExpression(*for_loop.condition, table);
+    const Type type  = validateExpression(*for_loop.condition, table);
     if (type.isVariant())
       throw ValidationError("Variant used in for loop condition.", type.toString(), for_loop.line_number);
 
-    const auto [arithmetic, callable, array, alignment] =
-        table.detailsOfType(type.getTypename());
+    const bool arithmetic = type.details.arithmetic;
 
     if (!arithmetic) {
       std::string context("Condition is of type ");
@@ -333,20 +339,18 @@ static void validateForLoop(const ForLoop &for_loop, SymbolTable& table) {
     validateExpression(*for_loop.iteration, table);
 
   validateStatement(*for_loop.loop_body, table);
-  table.enterScope();
+  table.leaveScope();
 }
 
 static void validateIfStatement(const IfStatement &if_statement, SymbolTable& table) {
-  const auto type = validateExpression(*if_statement.condition, table);
+  const Type type = validateExpression(*if_statement.condition, table);
   if (type.isVariant())
     throw ValidationError("Variant type used in if statement condition.", type.toString(), if_statement.line_number);
 
-  const auto [arithmetic, callable, array, alignment] = table.detailsOfType(type.getTypename());
-  if (!arithmetic) {
+  if (!type.isBool()) {
     std::string context("Condition is of type ");
     context.append(type.toString());
-    throw ValidationError("If statement condition non-convertible to boolean.", context, if_statement.line_number);
-
+    throw ValidationError("If statement condition non-boolean.", context, if_statement.line_number);
   }
 
   validateStatement(*if_statement.true_branch, table);

@@ -44,6 +44,7 @@ add_executable(LookOnceMore
 
         src/utilities/variant_overload.hpp
         src/utilities/owned_ptr.hpp
+        src/utilities/general_enums.hpp
 )
 
 target_include_directories(LookOnceMore PRIVATE ${LLVM_INCLUDE_DIRS})

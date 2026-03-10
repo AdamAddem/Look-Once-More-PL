@@ -19,8 +19,8 @@ public:
   [[nodiscard]] constexpr T& operator*() const noexcept {return *owned;}
   [[nodiscard]] constexpr T* operator->() const noexcept {return owned;}
 
-  constexpr bool operator==(const decltype(nullptr)) const noexcept { return owned; }
-  constexpr operator bool() const noexcept { return owned; }
+  constexpr bool operator==(const decltype(nullptr)) const noexcept { return owned == nullptr; }
+  constexpr operator bool() const noexcept { return owned != nullptr; }
 };
 
 template <class T>

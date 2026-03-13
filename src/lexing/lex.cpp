@@ -200,11 +200,11 @@ static void grabSymbol(FileInAnalysis &file) {
 }
 
 static void grabNumber(FileInAnalysis &file) {
-  auto type = TokenType::INT_LITERAL;
+  auto type = TokenType::UINT_LITERAL;
   Token::TokenValue value;
   int c = file.stream.get();
   if (c == '-')
-    type = TokenType::UINT_LITERAL;
+    type = TokenType::INT_LITERAL;
   std::string num_stringrep(1, static_cast<char>(c));
   while ((c = file.stream.get()) != EOF) {
     // i hate file handling so much, replace

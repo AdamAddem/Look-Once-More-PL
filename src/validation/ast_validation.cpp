@@ -1,16 +1,15 @@
 #include "ast_validation.hpp"
 #include "ast/expressions.hpp"
+#include "error.hpp"
 #include "parsing/parse.hpp"
+#include "settings.hpp"
 #include "symbol_table.hpp"
 #include "utilities/variant_overload.hpp"
-#include <iostream>
-#include <stdexcept>
-#include <variant>
-
-#include "error.hpp"
-#include "settings.hpp"
 
 #include <cassert>
+#include <iostream>
+#include <variant>
+
 using namespace Parser;
 using namespace Validation;
 using namespace AST;
@@ -19,75 +18,121 @@ using namespace AST;
 ValidatedFunction::~ValidatedFunction() {for (const auto s : function_body) delete s;}
 
 /* Expressions */
-static Type validateExpression(Expression &expression, SymbolTable& table);
+static InstantiatedType validateExpression(Expression &expression, SymbolTable& table);
 
-static Type validateLiteralExpression(const LiteralExpression &literal) {
+static InstantiatedType validateLiteralExpression(const LiteralExpression &literal) {
   switch (literal.type) {
   case LiteralExpression::INT:
-    return int_literal_type;
+    switch (literal.bit_width) {
+    case 8:
+      return i8_instance;
+    case 16:
+      return i16_instance;
+    case 32:
+      return i32_instance;
+    case 64:
+      return i64_instance;
+    default:
+      assert(false);
+    }
+  case LiteralExpression::UINT:
+    switch (literal.bit_width) {
+    case 8:
+      return u8_instance;
+    case 16:
+      return u16_instance;
+    case 32:
+      return u32_instance;
+    case 64:
+      return u64_instance;
+    default:
+      assert(false);
+    }
   case LiteralExpression::FLOAT:
-    return float_literal_type;
+    return f32_instance;
   case LiteralExpression::DOUBLE:
-    return double_literal_type;
+    return f64_instance;
   case LiteralExpression::BOOL:
-    return bool_literal_type;
+    return bool_instance;
   case LiteralExpression::CHAR:
-    return char_literal_type;
+    return char_instance;
   case LiteralExpression::STRING:
-    return string_literal_type;
+    return string_instance;
 
   default:
-    throw std::runtime_error("Unrecognized literal expression type");
+    assert(false);
   }
 }
 
-static Type validateIdentifierExpression(const IdentifierExpression &identifier, const SymbolTable& table) {
-  if (!table.containsSymbol(identifier.ident))
-    throw ValidationError("Undeclared identifier.", identifier.ident, identifier.line_number);
+static InstantiatedType validateVariableExpression(const IdentifierExpression &identifier, const SymbolTable& table) {
+  if (!table.containsVariable(identifier.ident))
+    throw ValidationError("Expected variable name.", identifier.ident, identifier.line_number);
 
 
-  return table.closestSymbolType(identifier.ident);
+  return table.closestVariable(identifier.ident);
 }
 
-static Type validateSubscriptExpression(const SubscriptExpression &, SymbolTable&) {assert(false);}
+static InstantiatedType validateSubscriptExpression(const SubscriptExpression &, SymbolTable&) {assert(false);}
 
-//this function is very iffy, revisit
-static Type validateCallingExpression(const CallingExpression &calling, SymbolTable& table) {
-  const auto type = validateExpression(*calling.func, table);
-  if (type.isVariant())
-    throw ValidationError("Call operator used on variant type.", type.toString(), calling.line_number);
+static InstantiatedType validateCallingExpression(const CallingExpression &calling, SymbolTable& table) {
+  if (not std::holds_alternative<IdentifierExpression>(*calling.func))
+    throw ValidationError("Callable non-functions unfortunately not supported :(", std::visit(ExpressionToStringVisitor{}, *calling.func), calling.line_number);
 
+  const auto& identifier = std::get<IdentifierExpression>(*calling.func);
+  if (not table.containsFunction(identifier.ident))
+    throw ValidationError("Callable non-functions unfortunately not supported :(", identifier.ident, calling.line_number);
 
-  //this exists for when/if a callable type exists outside of a function itself
-  if (!table.containsFunction(type.getTypename())) {
-    if (!type.details.callable)
-      throw ValidationError("Call operator used on non-callable.", type.toString(), calling.line_number);
-
-
-    assert(false && "Calling a non-function not yet supported");
-  }
-
-  std::vector<Type> provided_params;
+  std::vector<InstantiatedType> provided_params;
   for (const auto& param : calling.parameters)
     provided_params.emplace_back(validateExpression(*param, table));
 
-  return table.returnTypeOfCall(type.getTypename(), provided_params);
-}
+  const auto result = table.returnTypeOfCall(identifier.ident, provided_params);
+  if (result)
+    return {result.value(), {}};
 
-static Type validateBinaryExpression(BinaryExpression &binary, SymbolTable& table) {
-  Type left_type = validateExpression(*binary.expr_left, table);
-  const bool left_is_mutable = left_type.details.is_mutable;
-  Type right_type = validateExpression(*binary.expr_right, table);
-
-  if (left_type.isVariant() || right_type.isVariant()) {
-    std::string context = left_type.toString();
-    context.append(" and ");
-    context.append(right_type.toString());
-    throw ValidationError("Binary operator used on variant type(s).", context, binary.line_number);
+  const auto error = result.error();
+  std::string context{"Types of parameters used in call: "};
+  for (const auto& t : provided_params) {
+    context.append(t.toString());
+    context.append(", ");
+  }
+  if (provided_params.empty())
+    context = "Called with no parameters";
+  else {
+    context.pop_back();
+    context.pop_back();
   }
 
-  const bool left_arithmetic = left_type.details.arithmetic;
-  const bool right_arithmetic = right_type.details.arithmetic;
+  if (error == SymbolTable::CallError::NO_SUITABLE_FUNCTION)
+    throw ValidationError("No suitable function found for call.", context, calling.line_number);
+
+  throw ValidationError("Ambiguous function call.", context, calling.line_number);
+}
+
+static InstantiatedType validateBinaryExpression(BinaryExpression &binary, SymbolTable& table) {
+  InstantiatedType left_instance = validateExpression(*binary.expr_left, table);
+  const bool left_is_mutable = left_instance.details.is_mutable;
+  const InstantiatedType right_instance = validateExpression(*binary.expr_right, table);
+
+  const auto left_type = left_instance.type;
+  const auto right_type = right_instance.type;
+
+  if (left_type not_eq right_type) {
+    std::string context = left_type->toString();
+    context.append(" and ");
+    context.append(right_type->toString());
+    throw ValidationError("Binary operator used on differing types.", context, binary.line_number);
+  }
+
+  if (left_type->isVariant()) {
+    std::string context = left_type->toString();
+    context.append(" and ");
+    context.append(right_type->toString());
+    throw ValidationError("Binary operator used on variant types.", context, binary.line_number);
+  }
+
+  const bool left_arithmetic = left_type->isArithmetic();
+  const bool right_arithmetic = right_type->isArithmetic();
   switch (binary.opr) {
   case Operator::ADD:
   case Operator::SUBTRACT:
@@ -99,10 +144,10 @@ static Type validateBinaryExpression(BinaryExpression &binary, SymbolTable& tabl
   case Operator::GREATER:
   case Operator::LESS_EQUAL:
   case Operator::GREATER_EQUAL:
-    if (!left_arithmetic || !right_arithmetic) {
-      std::string context = left_type.toString();
+    if (not left_arithmetic) { //types should be same, so checking just one is sufficient
+      std::string context = left_type->toString();
       context.append(" and ");
-      context.append(right_type.toString());
+      context.append(right_type->toString());
       throw ValidationError("Non-arithmetic expression in arithmetic binary operation.", context, binary.line_number);
     }
     break;
@@ -110,10 +155,10 @@ static Type validateBinaryExpression(BinaryExpression &binary, SymbolTable& tabl
   case Operator::AND:
   case Operator::OR:
   case Operator::XOR:
-    if (!left_type.isBool() || !right_type.isBool()) {
-      std::string context = left_type.toString();
+    if (not left_type->isBool()) {
+      std::string context = left_type->toString();
       context.append(" and ");
-      context.append(right_type.toString());
+      context.append(right_type->toString());
       throw ValidationError("Non-boolean expression(s) in boolean binary operation.", context, binary.line_number);
     }
     break;
@@ -122,50 +167,37 @@ static Type validateBinaryExpression(BinaryExpression &binary, SymbolTable& tabl
   case Operator::BITAND:
   case Operator::BITOR:
   case Operator::BITXOR:
-    if (!left_arithmetic || !right_arithmetic) {
-      std::string context = left_type.toString();
+    if (not left_arithmetic) {
+      std::string context = left_type->toString();
       context.append(" and ");
-      context.append(right_type.toString());
+      context.append(right_type->toString());
       throw ValidationError("Non-arithmetic expression(s) in bitwise operation.", context, binary.line_number);
     }
 
-    if (right_type != left_type) {
-      std::string context = left_type.toString();
-      context.append(" and ");
-      context.append(right_type.toString());
-      throw ValidationError("Bitwise operations on different types not allowed.", context, binary.line_number);
-    }
     break;
 
   case Operator::ASSIGN:
-    if (!left_is_mutable) {
+    if (not left_is_mutable) {
       std::string context("Type of expression is ");
-      context.append(left_type.toString());
+      context.append(left_type->toString());
       throw ValidationError("Left expression in assignment non-mutable.", context, binary.line_number);
-    }
-
-    if (right_type != left_type) {
-      std::string context = left_type.toString();
-      context.append(" and ");
-      context.append(right_type.toString());
-      throw ValidationError("Assignment with non-convertible types.", context, binary.line_number);
     }
     break;
 
   case Operator::EQUAL:
   case Operator::NOT_EQUAL:
-    if ((left_arithmetic && right_arithmetic) || left_type == right_type)
+    if (left_arithmetic and right_arithmetic)
       break;
 
     {
-      std::string context = left_type.toString();
+      std::string context = left_type->toString();
       context.append(" and ");
-      context.append(right_type.toString());
-      throw ValidationError("Equality operator used on different non-arithmetic types.", context, binary.line_number);
+      context.append(right_type->toString());
+      throw ValidationError("Equality operator used on non-arithmetic types.", context, binary.line_number);
     }
 
   default:
-    throw ValidationError("Non binary operator set in binary expression. How?", operatorToString(binary.opr), binary.line_number);
+    assert(false);
   }
 
   switch (binary.opr) {
@@ -175,7 +207,7 @@ static Type validateBinaryExpression(BinaryExpression &binary, SymbolTable& tabl
   case Operator::DIVIDE:
   case Operator::POWER:
   case Operator::MODULUS:
-    return left_type;
+    return left_instance;
 
   case Operator::LESS:
   case Operator::GREATER:
@@ -183,85 +215,84 @@ static Type validateBinaryExpression(BinaryExpression &binary, SymbolTable& tabl
   case Operator::GREATER_EQUAL:
   case Operator::AND:
   case Operator::OR:
-    return bool_literal_type;
+    return bool_instance;
   case Operator::XOR:
     binary.opr = Operator::NOT_EQUAL;
-    return bool_literal_type;
+    return bool_instance;
 
   case Operator::BITAND:
   case Operator::BITOR:
   case Operator::BITXOR:
   case Operator::BITNOT:
   case Operator::ASSIGN:
-    left_type.details.is_mutable = false;
-    return left_type;
+    left_instance.details.is_mutable = false;
+    return left_instance;
 
   case Operator::EQUAL:
   case Operator::NOT_EQUAL:
-    return bool_literal_type;
+    return bool_instance;
 
   default:
-    throw ValidationError("Non-binary operator set in binary expression. How?", operatorToString(binary.opr), binary.line_number);
+    assert(false);
   }
 }
 
-static Type validateUnaryExpression(UnaryExpression &unary, SymbolTable& table) {
-  Type type = validateExpression(*unary.expr, table);
-  if (type.isVariant()) {
-    const std::string context = type.toString();
+static InstantiatedType validateUnaryExpression(UnaryExpression &unary, SymbolTable& table) {
+  InstantiatedType instance = validateExpression(*unary.expr, table);
+  if (instance.type->isVariant()) {
+    const std::string context = instance.toString();
     throw ValidationError("Unary operator used on variant type(s).", context, unary.line_number);
   }
 
-  const bool arithmetic = type.details.arithmetic;
+  const bool arithmetic = instance.type->isArithmetic();
   if (unary.opr == Operator::UNARY_MINUS) {
-    if (!arithmetic)
-      throw ValidationError("Unary minus used on non-arithmetic expression.", type.toString(), unary.line_number);
-    type.details.is_mutable = false;
-    return type;
+    if (not arithmetic)
+      throw ValidationError("Unary minus used on non-arithmetic expression.", instance.toString(), unary.line_number);
+    instance.details.is_mutable = false;
+    return instance;
   }
 
   if (unary.opr == Operator::BITNOT) {
-    if (!arithmetic)
-      throw ValidationError("bitnot operator used non-arithmetic expression", type.toString(), unary.line_number);
-    type.details.is_mutable = false;
-    return type;
+    if (not arithmetic)
+      throw ValidationError("bitnot operator used non-arithmetic expression", instance.toString(), unary.line_number);
+    instance.details.is_mutable = false;
+    return instance;
   }
 
   if (unary.opr == Operator::NOT) {
-    if (!type.isBool())
-      throw ValidationError("not operator used non-boolean expression", type.toString(), unary.line_number);
+    if (not instance.type->isBool())
+      throw ValidationError("not operator used non-boolean expression", instance.toString(), unary.line_number);
     unary.opr = Operator::BITNOT;
-    type.details.is_mutable = false;
-    return type;
+    instance.details.is_mutable = false;
+    return instance;
   }
 
   if (unary.opr == Operator::ADDRESS_OF)
-    return Type(Type::pointer, PointerType::RAW, new Type(std::move(type)));
+    return {table.addRawPointer(instance.type, instance.details.is_mutable), {}};
 
-  if (!type.details.is_mutable) {
-    const std::string context = type.toString();
+  if (not instance.details.is_mutable) {
+    const std::string context = instance.toString();
     throw ValidationError("Pre/Postfix operator used on non-mutable expression.", context, unary.line_number);
   }
 
 
   if (unary.opr == Operator::POST_INCREMENT ||
       unary.opr == Operator::POST_DECREMENT) {
-    type.details.is_mutable = false;
-    return type;
+    instance.details.is_mutable = false;
+    return instance;
   }
 
 
-  return type;
+  return instance;
 }
 
-static Type validateExpression(Expression &expression, SymbolTable& table) {
-
+static InstantiatedType validateExpression(Expression &expression, SymbolTable& table) {
   return utils_match(expression,
     utils_callon(UnaryExpression&, validateUnaryExpression, table),
     utils_callon(BinaryExpression&, validateBinaryExpression, table),
     utils_callon(const CallingExpression&, validateCallingExpression, table),
     utils_callon(const SubscriptExpression&, validateSubscriptExpression, table),
-    utils_callon(const IdentifierExpression&, validateIdentifierExpression, table),
+    utils_callon(const IdentifierExpression&, validateVariableExpression, table),
     utils_callon(const LiteralExpression&, validateLiteralExpression)
   );
 }
@@ -280,10 +311,10 @@ static void validateExpressionStatement(const ExpressionStatement &expression_st
 static void validateReturnStatement(const ReturnStatement &return_statement, SymbolTable& table) {
 
   if (return_statement.return_value) {
-    const auto& ret_type = validateExpression(*return_statement.return_value, table);
-    if (!ret_type.convertible_to(table.returnTypeOfCurrentScope())) {
+    const InstantiatedType ret_type = validateExpression(*return_statement.return_value, table);
+    if (not ret_type.type->convertibleTo(table.returnTypeOfCurrentScope())) {
       std::string context("Scope return type is '");
-      context.append(table.returnTypeOfCurrentScope().toString());
+      context.append(table.returnTypeOfCurrentScope()->toString());
       context.append("' and expression '");
       context.append(std::visit(ExpressionToStringVisitor{}, *return_statement.return_value));
       context.append("' returns type '");
@@ -296,9 +327,9 @@ static void validateReturnStatement(const ReturnStatement &return_statement, Sym
     return;
   }
 
-  if (!table.returnTypeOfCurrentScope().isDevoid()) {
+  if (!table.returnTypeOfCurrentScope()->isDevoid()) {
     std::string context("Scope return type is ");
-    context.append(table.returnTypeOfCurrentScope().toString());
+    context.append(table.returnTypeOfCurrentScope()->toString());
     throw ValidationError("No value returned from return statement when scope expects a value.", context, return_statement.line_number);
   }
 }
@@ -309,15 +340,12 @@ static void validateScopedStatement(const ScopedStatement &scoped, SymbolTable& 
 }
 
 static void validateWhileLoop(const WhileLoop &while_loop, SymbolTable& table) {
-  const Type type = validateExpression(*while_loop.condition, table);
-  if (type.isVariant())
-    throw ValidationError("Variant in while loop condition.", type.toString(), while_loop.line_number);
+  const InstantiatedType instance = validateExpression(*while_loop.condition, table);
 
-
-  const bool arithmetic = type.details.arithmetic;
-  if (!arithmetic) {
+  const bool arithmetic = instance.type->isArithmetic();
+  if (not arithmetic) {
     std::string context("Condition is of type ");
-    context.append(type.toString());
+    context.append(instance.toString());
     throw ValidationError("While Loop condition non-convertible to boolean.", context, while_loop.line_number);
   }
 
@@ -329,15 +357,14 @@ static void validateForLoop(const ForLoop &for_loop, SymbolTable& table) {
   validateStatement(*for_loop.var_statement, table);
 
   if (for_loop.condition) {
-    const Type type  = validateExpression(*for_loop.condition, table);
-    if (type.isVariant())
-      throw ValidationError("Variant used in for loop condition.", type.toString(), for_loop.line_number);
+    const InstantiatedType instance  = validateExpression(*for_loop.condition, table);
+    if (instance.type->isVariant())
+      throw ValidationError("Variant used in for loop condition.", instance.toString(), for_loop.line_number);
 
-    const bool arithmetic = type.details.arithmetic;
-
-    if (!arithmetic) {
+    const bool arithmetic = instance.type->isArithmetic();
+    if (not arithmetic) {
       std::string context("Condition is of type ");
-      context.append(type.toString());
+      context.append(instance.toString());
       throw ValidationError("For Loop condition non-convertible to boolean.", context, for_loop.line_number);
     }
   }
@@ -350,13 +377,13 @@ static void validateForLoop(const ForLoop &for_loop, SymbolTable& table) {
 }
 
 static void validateIfStatement(const IfStatement &if_statement, SymbolTable& table) {
-  const Type type = validateExpression(*if_statement.condition, table);
-  if (type.isVariant())
-    throw ValidationError("Variant type used in if statement condition.", type.toString(), if_statement.line_number);
+  const InstantiatedType instance = validateExpression(*if_statement.condition, table);
+  if (instance.type->isVariant())
+    throw ValidationError("Variant type used in if statement condition.", instance.toString(), if_statement.line_number);
 
-  if (!type.isBool()) {
+  if (not instance.type->isBool()) {
     std::string context("Condition is of type ");
-    context.append(type.toString());
+    context.append(instance.toString());
     throw ValidationError("If statement condition non-boolean.", context, if_statement.line_number);
   }
 
@@ -370,8 +397,8 @@ static void validateVarDeclaration(const VarDeclaration &declaration, SymbolTabl
     throw ValidationError("Redefinition of symbol name in variable declaration.", declaration.ident, declaration.line_number);
 
   if (declaration.expr) {
-    const auto initialization_type = validateExpression(*declaration.expr, table);
-    if (declaration.type != initialization_type) {
+    const InstantiatedType initialization_type = validateExpression(*declaration.expr, table);
+    if (not declaration.type.type->convertibleTo(initialization_type.type)) {
       std::string context("Declared type is '");
       context.append(declaration.type.toString());
       context.append("' and expression '");
@@ -404,17 +431,17 @@ static void validateStatement(const Statement &statement, SymbolTable& table) {
 /* Statements */
 
 static void validateFunction(SymbolTable &table, ParsedFunction &func) { // TO DO: Add line number functionality for functions
-  std::vector<Type> param_types;
+  std::vector<const Type*> param_types;
   table.enterScope(func.return_type);
 
   for (auto &decl : func.parameter_list) {
     validateVarDeclaration(decl, table);
-    param_types.emplace_back(decl.type);
+    param_types.emplace_back(decl.type.type);
   }
 
-  table.addFunction(func.name, func.return_type, std::move(param_types));
+  table.addFunction(func.name, std::move(param_types), func.return_type);
 
-  const bool is_devoid_return = func.return_type.isDevoid();
+  const bool is_devoid_return = func.return_type->isDevoid();
   bool has_return_statement = false;
   for (const auto statement : func.function_body) {
     validateStatement(*statement, table);
@@ -426,7 +453,7 @@ static void validateFunction(SymbolTable &table, ParsedFunction &func) { // TO D
   if (!has_return_statement) {
     if (!is_devoid_return) {
       std::string context("Expected type '");
-      context.append(func.return_type.toString());
+      context.append(func.return_type->toString());
       throw ValidationError("Value returning function has no return statement.", context, 42069);
     }
 
@@ -453,7 +480,6 @@ static std::vector<ValidatedFunction> parsedToValidated(std::vector<ParsedFuncti
 
 ValidatedTU Validation::validateTU(ParsedTU &&ptu) {
   SymbolTable table;
-
   validateGlobals(table, ptu.globals);
 
   for (auto &f : ptu.functions)
@@ -464,7 +490,5 @@ ValidatedTU Validation::validateTU(ParsedTU &&ptu) {
     std::quick_exit(0);
   }
 
-  return {std::move(ptu.globals),
-     parsedToValidated(ptu.functions), std::move(table)
-  };
+  return {std::move(table), std::move(ptu.globals), parsedToValidated(ptu.functions)};
 }

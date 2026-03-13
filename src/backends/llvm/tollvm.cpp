@@ -69,7 +69,7 @@ class TU final : public Backend {
 
 
 public:
-  explicit TU(const std::string& filename) : module(filename, context) {
+  explicit TU(const std::string& filename) : module(filename, context)  {
     i1 = Type::getInt1Ty(context); i1_0 = ConstantInt::get(i1, 0); i1_1 = ConstantInt::get(i1, 1);
     i8 = Type::getInt8Ty(context); i8_0 = ConstantInt::get(i8, 0); i8_1 = ConstantInt::get(i8, 1);
     i16 = Type::getInt16Ty(context); i16_0 = ConstantInt::get(i16, 0); i16_1 = ConstantInt::get(i16, 1);
@@ -81,37 +81,37 @@ public:
     devoid = Type::getVoidTy(context);
   }
 
-  [[nodiscard]] Type* getType(const AST::Type& t) const {
-    assert(!t.isVariant());
-    assert(t.subtype == nullptr);
-    const auto& n = t.getTypename();
-    assert(n != "string");
+  [[nodiscard]] Type* getType(const AST::Type* t) const {
+    assert(not t->isCustom());
+    assert(not t->isVariant());
+    assert(not t->isPointer());
+    assert(t not_eq &AST::string_type);
 
-    if (n == "i32" || n == "u32")
+    if (t == &AST::i32_type || t == &AST::u32_type)
       return i32;
-    if (n.empty())
+    if (t == AST::devoid_type)
       return devoid;
-    if (n == "i64" || n == "u64")
+    if (t == &AST::i64_type || t == &AST::u64_type)
       return i64;
 
-    if (n == "f32")
+    if (t == &AST::f32_type)
       return f32;
-    if (n == "f64")
+    if (t == &AST::f64_type)
       return f64;
 
-    if (n == "bool" || n == "char" || n == "i8" || n == "u8")
+    if (t == &AST::bool_type || t == &AST::char_type || t == &AST::i8_type || t == &AST::u8_type)
       return i8;
-    if (n == "i16" || n == "u16")
+    if (t == &AST::i16_type || t == &AST::u16_type)
       return i16;
 
     assert(false && "invalid type idfk");
   }
   void genGlobal(const AST::VarDeclaration& var) {
-    Constant* v = var.expr ?  genConstant(*var.expr) : Constant::getNullValue(getType(var.type));
+    Constant* v = var.expr ?  genConstant(*var.expr) : Constant::getNullValue(getType(var.type.type));
     module.insertGlobalVariable(
       new GlobalVariable(
-       getType(var.type),
-       !var.type.details.is_mutable,
+       getType(var.type.type),
+       not var.type.details.is_mutable,
        GlobalValue::LinkageTypes::ExternalLinkage,
        v,
        var.ident
@@ -122,10 +122,10 @@ public:
     std::vector<Type*> arg_types;
     arg_types.reserve(func.parameter_list.size());
     for (const auto& v : func.parameter_list)
-      arg_types.push_back(getType(v.type));
+      arg_types.push_back(getType(v.type.type));
 
     //hack
-    Type* ret_type = func.return_type.getTypename() != "bool" ? getType(func.return_type) : i1;
+    Type* ret_type = func.return_type->isBool() ? i1 : getType(func.return_type);
     const auto func_type = FunctionType::get(ret_type, {arg_types.data(), arg_types.size()}, false);
     const auto llvmfunc = Function::Create(func_type, Function::ExternalLinkage, 0, func.name, &module);
     const auto entry = BasicBlock::Create(context, "__entry", llvmfunc);
@@ -338,12 +338,26 @@ public:
     return f.builder.CreateLoad(t, v);
   }
   Value* genLiteral(const AST::LiteralExpression& literal) noexcept {
-    switch (literal.type) {
-    case AST::LiteralExpression::UINT:
-      return ConstantInt::get(i64, literal.getUint(), true);
-    case AST::LiteralExpression::INT:
-      return ConstantInt::get(i64, literal.getInt());
 
+    switch (literal.type) {
+    case AST::LiteralExpression::INT:
+    case AST::LiteralExpression::UINT:
+      IntegerType* p;
+      switch (literal.bit_width) {
+      case 8:
+        p = i8;
+        break;
+      case 16:
+        p = i16;
+        break;
+      case 32:
+        p = i32;
+        break;
+      default:
+        p = i64;
+        break;
+      }
+      return ConstantInt::get(p, literal.getUint(), literal.type == AST::LiteralExpression::INT);
     case AST::LiteralExpression::FLOAT:
       return ConstantFP::get(f32, literal.getFloat());
     case AST::LiteralExpression::DOUBLE:
@@ -381,7 +395,7 @@ public:
 
   bool genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) {
     IRBuilder<> func_entry(&f.func->getEntryBlock());
-    AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type), nullptr);
+    AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type.type), nullptr);
     f.locals.emplace(declaration.ident, i);
     f.builder.CreateStore( genExpression(*declaration.expr, f), i);
     return false;

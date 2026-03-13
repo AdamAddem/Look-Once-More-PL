@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <unordered_map>
 
 enum class Args : unsigned {
   OUTPUT_LEXER,

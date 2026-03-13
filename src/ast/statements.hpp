@@ -1,7 +1,6 @@
 #pragma once
 #include "validation/symbol_table.hpp"
 #include "expressions.hpp"
-#include <memory>
 #include <string>
 #include <variant>
 #include <vector>
@@ -19,16 +18,16 @@ struct VarDeclaration;
 using Statement = std::variant<ExpressionStatement, ReturnStatement, ScopedStatement, WhileLoop, ForLoop, IfStatement, VarDeclaration>;
 
 struct VarDeclaration {
-  Type type;
+  InstantiatedType type;
   std::string ident;
   nullable_owned_ptr<Expression> expr;
   unsigned line_number;
 
-  VarDeclaration(Type&& _type, std::string &&_ident, const unsigned line_num, nullable_owned_ptr<Expression> sub_expression = nullptr ) noexcept
-  : type(std::move(_type)), ident(std::move(_ident)), expr(std::move(sub_expression)), line_number(line_num){}
+  VarDeclaration(const InstantiatedType _type, std::string &&_ident, const unsigned line_num, nullable_owned_ptr<Expression> sub_expression = nullptr ) noexcept
+  : type(_type), ident(std::move(_ident)), expr(std::move(sub_expression)), line_number(line_num){}
 
   VarDeclaration(VarDeclaration &&other) noexcept
-  : type(std::move(other.type)), ident(std::move(other.ident)),
+  : type(other.type), ident(std::move(other.ident)),
     expr(std::move(other.expr)), line_number(other.line_number) {}
 
   ~VarDeclaration();
@@ -65,7 +64,6 @@ struct WhileLoop {
   owned_ptr<Statement> loop_body;
   unsigned line_number;
 
-  //takes ownership of pointers
   WhileLoop(owned_ptr<Expression> _condition, owned_ptr<Statement> _loop_body, const unsigned line_num)
   : condition(std::move(_condition)), loop_body(std::move(_loop_body)), line_number(line_num) {}
   ~WhileLoop();

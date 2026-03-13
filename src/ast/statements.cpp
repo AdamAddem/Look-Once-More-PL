@@ -4,7 +4,7 @@
 
 using namespace AST;
 
-//see header before you insist I use unique pointer
+//look man, unique_ptr is annoying okay?
 VarDeclaration::~VarDeclaration() { expr.destroy(); }
 IfStatement::~IfStatement() { condition.destroy(); true_branch.destroy(); false_branch.destroy(); }
 ForLoop::~ForLoop() { var_statement.destroy(); condition.destroy(); iteration.destroy(); loop_body.destroy(); }
@@ -106,7 +106,7 @@ void PrintStatementVisitor::operator()(const VarDeclaration &stmt) const noexcep
   for (unsigned i{}; i < indent; ++i)
     std::cout << "  ";
 
-  std::cout << stmt.type.toString();
+  std::cout << stmt.type.type->toString();
   std::cout << " " << stmt.ident << " = ";
 
   if (stmt.expr == nullptr)

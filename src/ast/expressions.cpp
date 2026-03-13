@@ -1,7 +1,6 @@
 #include "expressions.hpp"
 #include <cassert>
 #include <iostream>
-#include <utility>
 
 
 using namespace AST;
@@ -153,6 +152,8 @@ std::string ExpressionToStringVisitor::operator()(const LiteralExpression &liter
   switch (literal.type) {
   case LiteralExpression::INT:
     return std::to_string(literal.getInt());
+  case LiteralExpression::UINT:
+    return std::to_string(literal.getUint());
   case LiteralExpression::FLOAT:
     return std::to_string(static_cast<float>(literal.getFloat()));
   case LiteralExpression::DOUBLE:

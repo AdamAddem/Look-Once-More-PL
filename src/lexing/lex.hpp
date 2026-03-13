@@ -3,10 +3,10 @@
 #include "../error.hpp"
 
 #include <filesystem>
+#include <stdfloat>
 #include <string>
 #include <variant>
 #include <vector>
-#include <stdfloat>
 
 namespace Lexer {
 

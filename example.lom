@@ -3,5 +3,5 @@
 fn main() -> i32 {
     u8 num = 5;
 
-    return 0;
+    return num;
 }

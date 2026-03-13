@@ -33,6 +33,8 @@ std::string Token::toString() const {
     switch (type) {
     case TokenType::INT_LITERAL:
       return std::to_string(getInt());
+    case TokenType::UINT_LITERAL:
+      return std::to_string(getUint());
     case TokenType::FLOAT_LITERAL:
       return std::to_string(getFloat());
     case TokenType::DOUBLE_LITERAL:
@@ -61,6 +63,8 @@ std::string Token::toDebugString() const {
     switch (type) {
     case TokenType::INT_LITERAL:
       return {toString() + 'i'};
+    case TokenType::UINT_LITERAL:
+      return {toString() + 'u'};
     case TokenType::FLOAT_LITERAL:
       return {toString() + 'f'};
     case TokenType::DOUBLE_LITERAL:

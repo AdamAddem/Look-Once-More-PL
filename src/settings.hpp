@@ -2,8 +2,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
-#include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace Settings {
@@ -27,4 +25,5 @@ uint8_t getOptimizationLevel();
 
 std::vector<std::filesystem::path> setArgs(unsigned argc, const char* argv[]);
 
+static constexpr unsigned short MAX_FUNCTION_PARAMETERS = 4;
 }

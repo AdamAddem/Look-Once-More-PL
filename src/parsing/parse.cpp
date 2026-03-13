@@ -15,7 +15,7 @@ using namespace AST;
 
 namespace {
 /* Type and Identifier */
-Type parseType(TokenView& tokens) {
+InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
   Token token = tokens.take();
   bool is_mutable{false};
   if (token.isTypeModifier()) {
@@ -29,95 +29,98 @@ Type parseType(TokenView& tokens) {
 
   if (token.isPrimitive() || token.is(TokenType::IDENTIFIER)) {
     if (token.is(TokenType::KEYWORD_DEVOID))
-      return devoid_type;
+      return devoid_instance;
 
-    if (token.isPointer()) { // add reference support eventually
+    if (token.isPointer()) { //add reference support eventually
       tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.", LOMError::Stage::ParsingError);
 
-      PointerType t;
+      const InstantiatedType subtype_instance = parseType(tokens, table);
       switch (token.type) {
-      case TokenType::KEYWORD_RAW: t = PointerType::RAW; break;
-      case TokenType::KEYWORD_UNIQUE: t = PointerType::UNIQUE; break;
-      case TokenType::KEYWORD_VAGUE: t = PointerType::VAGUE; break;
+      case TokenType::KEYWORD_RAW:
+        return InstantiatedType(table.addRawPointer(subtype_instance.type, subtype_instance.details.is_mutable), is_mutable);
+      case TokenType::KEYWORD_UNIQUE:
+        return InstantiatedType(table.addUniquePointer(subtype_instance.type, subtype_instance.details.is_mutable), is_mutable);
+      case TokenType::KEYWORD_VAGUE:
+        return InstantiatedType(&vague_pointer, is_mutable);
 
       default:
         assert(false);
       }
 
-      return Type(Type::pointer, t,new Type(parseType(tokens)));
     }
 
-
-    PrimitiveType p;
     switch (token.type) {
     case TokenType::KEYWORD_i8:
-      p = PrimitiveType::I8; break;
+      return InstantiatedType(&i8_type, is_mutable);
     case TokenType::KEYWORD_i16:
-      p = PrimitiveType::I16; break;
+      return InstantiatedType(&i16_type, is_mutable);
     case TokenType::KEYWORD_i32:
-      p = PrimitiveType::I32; break;
+      return InstantiatedType(&i32_type, is_mutable);
     case TokenType::KEYWORD_i64:
-      p = PrimitiveType::I64; break;
+      return InstantiatedType(&i64_type, is_mutable);
     case TokenType::KEYWORD_u8:
-      p = PrimitiveType::U8; break;
+      return InstantiatedType(&u8_type, is_mutable);
     case TokenType::KEYWORD_u16:
-      p = PrimitiveType::U16; break;
+      return InstantiatedType(&u16_type, is_mutable);
     case TokenType::KEYWORD_u32:
-      p = PrimitiveType::U32; break;
+      return InstantiatedType(&u32_type, is_mutable);
     case TokenType::KEYWORD_u64:
-      p = PrimitiveType::U64; break;
+      return InstantiatedType(&u64_type, is_mutable);
     case TokenType::KEYWORD_f32:
-      p = PrimitiveType::F32; break;
+      return InstantiatedType(&f32_type, is_mutable);
     case TokenType::KEYWORD_f64:
-      p = PrimitiveType::F64; break;
+      return InstantiatedType(&f64_type, is_mutable);
 
     case TokenType::KEYWORD_CHAR:
-      p = PrimitiveType::CHAR; break;
+      return InstantiatedType(&char_type, is_mutable);
     case TokenType::KEYWORD_BOOL:
-      p = PrimitiveType::BOOL; break;
+      return InstantiatedType(&bool_type, is_mutable);
     case TokenType::KEYWORD_STRING:
-      p = PrimitiveType::STRING; break;
+      return InstantiatedType(&string_type, is_mutable);
     case TokenType::KEYWORD_DEVOID:
-      p = PrimitiveType::DEVOID; break;
-
+      assert(is_mutable == false && "Mutable devoid? Is that allowed?");
+      return devoid_instance;
     default:
       assert(false);
     }
-    return Type(Type::primitive, p, is_mutable);
   }
 
   if (token.is(TokenType::LESS)) {
     TokenView variant_types_tokens = tokens.getTokensBetweenAngleBrackets();
 
-    Type variant_types(Type::variant);
-    variant_types.details.is_mutable = is_mutable;
 
-    std::unordered_set<std::string> typenames; //prevent duplicate types
+    bool nullable{false};
+    std::vector<const Type*> subtypes;
+    std::unordered_set<const Type* > typenames; //prevent duplicate types
 
     const unsigned variant_ln = variant_types_tokens.peek().line_number;
     do {
       const unsigned subtype_ln = variant_types_tokens.peek().line_number;
-      Type type = parseType(variant_types_tokens);
-      if (type.isVariant())
-        throw ParsingError("Nested variant types not allowed.", type, subtype_ln);
+      const InstantiatedType subtype = parseType(variant_types_tokens, table);
+      if (subtype.type->isVariant())
+        throw ParsingError("Nested variant types not allowed.", subtype.toString(), subtype_ln);
 
-      if (type.details.is_mutable)
-        throw ParsingError("Mutability cannot be specified within variant type list, must be specified prior to type list.", type, subtype_ln);
+      if (subtype.details.is_mutable)
+        throw ParsingError("Mutability cannot be specified within variant type list, must be specified prior to type list.", subtype.toString(), subtype_ln);
 
-      if (typenames.contains(type.getTypename()))
-        throw ParsingError("Duplicate types specified in variant declaration.", type, subtype_ln);
+      if (typenames.contains(subtype.type))
+        throw ParsingError("Duplicate types specified in variant declaration.", subtype.toString(), subtype_ln);
 
-      if (type.isDevoid())
-        typenames.emplace("");
+      if (subtype.type->isDevoid()) {
+        if (nullable) throw ParsingError("Devoid may not be specified more than once in variant declaration", "", subtype_ln);
+
+        nullable = true;
+      }
       else
-        typenames.emplace(type.getTypename());
+        typenames.emplace(subtype.type);
 
-      variant_types.addTypeToVariantList(std::move(type));
+      subtypes.push_back(subtype.type);
     } while (variant_types_tokens.pop_if(TokenType::COMMA));
 
-    if (variant_types.numVariantTypes() < 2)
-      throw ParsingError("Two or more types must be specified in variant type list.", variant_types, variant_ln);
-    return variant_types;
+    if (subtypes.size() < 2)
+      throw ParsingError("Two or more types must be specified in variant type list.", "", variant_ln);
+
+    return InstantiatedType(table.addVariant(subtypes, nullable), is_mutable);
   }
 
   throw ParsingError("Expected typename.", token);
@@ -140,14 +143,14 @@ std::vector<Expression*> parseParameters(TokenView& between_parenthesis) {
   if (between_parenthesis.empty())
     return {};
 
-  std::vector<Expression*>  retval;
+  std::vector<Expression*> retval;
 
   while (true) {
     retval.push_back(parseExpression(between_parenthesis));
     if (between_parenthesis.empty())
       return retval;
 
-    between_parenthesis.expect_then_pop(TokenType::COMMA, "Expected comma between function parameters in function call.", LOMError::Stage::ParsingError);
+    between_parenthesis.expect_then_pop(TokenType::COMMA, "Expected comma between function parameters in calling expression.", LOMError::Stage::ParsingError);
   }
 }
 
@@ -158,6 +161,9 @@ Expression* parsePrimaryExpression(TokenView& tokens) {
     switch (tokens.peek().type) {
     case TokenType::INT_LITERAL:
       type = LiteralExpression::INT;
+      break;
+    case TokenType::UINT_LITERAL:
+      type = LiteralExpression::UINT;
       break;
     case TokenType::FLOAT_LITERAL:
       type = LiteralExpression::FLOAT;
@@ -179,7 +185,7 @@ Expression* parsePrimaryExpression(TokenView& tokens) {
       throw ParsingError("Impossible error in parsePrimaryExpression function in secondparse", tokens.peek());
     }
 
-    return new Expression(std::in_place_type<LiteralExpression>, tokens.take().value, type, ln);
+    return new Expression(std::in_place_type<LiteralExpression>, std::move(tokens.take().value), type, ln);
   }
 
   if (tokens.pop_if(TokenType::LPAREN)) {
@@ -446,8 +452,8 @@ Expression* parseExpression(TokenView& tokens) {
 
 
 
-Statement *parseStatement(TokenView& tokens);
-Statement *parseScoped(TokenView& tokens);
+Statement *parseStatement(TokenView& tokens, SymbolTable& table);
+Statement *parseScoped(TokenView& tokens, SymbolTable& table);
 
 Statement *parseExpressionStatement(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
@@ -459,9 +465,9 @@ Statement *parseExpressionStatement(TokenView& tokens) {
   return new Statement{std::in_place_type<ExpressionStatement>, ln, parseExpression(until_semi)};
 }
 
-Statement *parseVarDecl(TokenView& tokens) {
+Statement *parseVarDecl(TokenView& tokens, SymbolTable& table) {
   const unsigned ln = tokens.peek().line_number;
-  Type type = parseType(tokens);
+  InstantiatedType variable_type = parseType(tokens, table);
   std::string ident = parseIdentifier(tokens);
   tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.", LOMError::Stage::ParsingError);
 
@@ -470,14 +476,13 @@ Statement *parseVarDecl(TokenView& tokens) {
       throw ParsingError("Variable may not be initialized using itself.", tokens.peek());
   }
 
-
   if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
-    if (!type.details.is_mutable)
-      throw ParsingError("Non-mutable variables may not be junk initialized.", type, ln);
+    if (!variable_type.details.is_mutable)
+      throw ParsingError("Non-mutable variables may not be junk initialized.", variable_type.toString(), ln);
 
     tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon ending variable declaration.", LOMError::Stage::ParsingError);
     return new Statement{
-      std::in_place_type<VarDeclaration>, std::move(type), std::move(ident), ln
+      std::in_place_type<VarDeclaration>, variable_type, std::move(ident), ln
     };
   }
 
@@ -489,12 +494,12 @@ Statement *parseVarDecl(TokenView& tokens) {
 
   Expression * const expr = parseExpression(expression_tokens);
 
-  return new Statement{std::in_place_type<VarDeclaration>, std::move(type), std::move(ident), ln, expr};
+  return new Statement{std::in_place_type<VarDeclaration>, variable_type, std::move(ident), ln, expr};
 }
 
 // for the statements below starting with a keyword,
 // that keyword has already been eaten
-Statement *parseIf(TokenView& tokens) {
+Statement *parseIf(TokenView& tokens, SymbolTable& table) {
   const unsigned ln = tokens.peek().line_number;
   tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in if statement condition.", LOMError::Stage::ParsingError);
 
@@ -504,16 +509,16 @@ Statement *parseIf(TokenView& tokens) {
 
   Expression* const condition = parseExpression(condition_tokens);
 
-  Statement *const true_branch = parseScoped(tokens);
+  Statement *const true_branch = parseScoped(tokens, table);
   Statement *false_branch = nullptr;
 
   if (tokens.pop_if(TokenType::KEYWORD_ELSE))
-    false_branch = parseScoped(tokens);
+    false_branch = parseScoped(tokens, table);
 
   return new Statement{std::in_place_type<IfStatement>, condition, true_branch, ln, false_branch};
 }
 
-Statement *parseFor(TokenView& tokens) {
+Statement *parseFor(TokenView& tokens, SymbolTable& table) {
   tokens.expect_then_pop(TokenType::LPAREN, "Expected opening patenthesis in for loop statement.", LOMError::Stage::ParsingError);
 
   const unsigned ln = tokens.peek().line_number;
@@ -527,7 +532,7 @@ Statement *parseFor(TokenView& tokens) {
       first.isPrimitive() ||
     (betweenParen.peek_is(TokenType::IDENTIFIER) && betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER))
     )
-    declOrAssignment = parseVarDecl(betweenParen);
+    declOrAssignment = parseVarDecl(betweenParen, table);
   else if (first.is(TokenType::SEMI_COLON)) {betweenParen.pop();}
   else
     declOrAssignment = parseExpressionStatement(betweenParen);
@@ -537,12 +542,12 @@ Statement *parseFor(TokenView& tokens) {
   betweenParen.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon after condition in for loop header.", LOMError::Stage::ParsingError);
 
   Expression* const iteration = parseExpression(betweenParen);
-  Statement *const loop_body = parseScoped(tokens);
+  Statement *const loop_body = parseScoped(tokens, table);
 
   return new Statement{std::in_place_type<ForLoop>, declOrAssignment, condition, iteration, loop_body, ln};
 }
 
-Statement *parseWhile(TokenView& tokens) {
+Statement *parseWhile(TokenView& tokens, SymbolTable& table) {
   tokens.expect_then_pop(TokenType::LPAREN,"Expected open parenthesis in while loop condition", LOMError::Stage::ParsingError);
 
   const unsigned ln = tokens.peek().line_number;
@@ -551,7 +556,7 @@ Statement *parseWhile(TokenView& tokens) {
     throw ParsingError("Expected condition between parenthesis in while loop", "(...)", ln);
   Expression* const condition = parseExpression(condition_tokens);
 
-  Statement *const loop_body = parseScoped(tokens);
+  Statement *const loop_body = parseScoped(tokens, table);
 
   return new Statement{std::in_place_type<WhileLoop>, condition, loop_body, ln};
 }
@@ -560,20 +565,20 @@ Statement *parseWhile(TokenView& tokens) {
 Statement *parseDoWhile(TokenView&) { assert(false && "dowhile currently unsupported"); }
 
 // scoped may be {...} or one statement ;
-Statement *parseScoped(TokenView& tokens) {
+Statement *parseScoped(TokenView& tokens, SymbolTable& table) {
   std::vector<Statement*> statements;
 
   const unsigned ln = tokens.peek().line_number;
   if (tokens.pop_if(TokenType::LBRACE)) {
     TokenView scopedTokens = tokens.getTokensBetweenBraces();
     while (!scopedTokens.empty()) {
-      statements.emplace_back(parseStatement(scopedTokens));
+      statements.emplace_back(parseStatement(scopedTokens, table));
     }
 
     return new Statement{std::in_place_type<ScopedStatement>, std::move(statements), ln};
   }
 
-  statements.push_back(parseStatement(tokens));
+  statements.push_back(parseStatement(tokens, table));
   return new Statement{std::in_place_type<ScopedStatement>, std::move(statements), ln};
 }
 
@@ -590,21 +595,21 @@ Statement *parseReturn(TokenView& tokens) {
 //unsupported currently
 Statement *parseSwitch(TokenView& ) { assert(false && "switch currently unsupported"); }
 
-Statement *parseStatement(TokenView& tokens) {
+Statement *parseStatement(TokenView& tokens, SymbolTable& table) {
   const Token &first = tokens.peek();
   if (first.isPrimitive())
-    return parseVarDecl(tokens);
+    return parseVarDecl(tokens, table);
 
   switch (first.type) {
   case TokenType::KEYWORD_IF:
     tokens.pop();
-    return parseIf(tokens);
+    return parseIf(tokens, table);
   case TokenType::KEYWORD_FOR:
     tokens.pop();
-    return parseFor(tokens);
+    return parseFor(tokens, table);
   case TokenType::KEYWORD_WHILE:
     tokens.pop();
-    return parseWhile(tokens);
+    return parseWhile(tokens, table);
   case TokenType::KEYWORD_DO:
     tokens.pop();
     return parseDoWhile(tokens);
@@ -616,130 +621,126 @@ Statement *parseStatement(TokenView& tokens) {
     return parseSwitch(tokens);
 
   case TokenType::LBRACE:
-    return parseScoped(tokens);
+    return parseScoped(tokens, table);
 
   case TokenType::KEYWORD_MUT:
   case TokenType::LESS:
-    return parseVarDecl(tokens);
+    return parseVarDecl(tokens, table);
 
   case TokenType::IDENTIFIER: //this is problematic as FUCK
     if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER))
-      return parseVarDecl(tokens);
+      return parseVarDecl(tokens, table);
     [[fallthrough]];
   default:
     return parseExpressionStatement(tokens);
   }
 }
 
-std::vector<Statement *> parseStatements(TokenView& body_tokens) {
+std::vector<Statement *> parseStatements(TokenView& body_tokens, SymbolTable& table) {
   std::vector<Statement *> body_statements;
 
   while (!body_tokens.empty())
-    body_statements.push_back(parseStatement(body_tokens));
+    body_statements.push_back(parseStatement(body_tokens, table));
 
   return body_statements;
 }
 
 
 struct UnparsedFunction {
-  Type return_type;
+  const Type* return_type;
   std::string name;
   std::vector<VarDeclaration> parameter_list;
   TokenView body_tokens;
 
-  UnparsedFunction(Type &&_return_type, std::string &&_name, std::vector<VarDeclaration> &&_parameter_list, const TokenView _body_tokens)
-  : return_type(std::move(_return_type)), name(std::move(_name)), parameter_list(std::move(_parameter_list)), body_tokens(_body_tokens) {}
+  UnparsedFunction(const Type* _return_type, std::string &&_name, std::vector<VarDeclaration> &&_parameter_list, const TokenView _body_tokens)
+  : return_type(_return_type), name(std::move(_name)), parameter_list(std::move(_parameter_list)), body_tokens(_body_tokens) {}
 };
 
 struct UnparsedTU {
   std::vector<VarDeclaration> globals;
   std::vector<UnparsedFunction> functions;
 
-  void registerFunction(Type&& _return_type, std::string _name, std::vector<VarDeclaration> _decl, TokenView _body) {
-    functions.emplace_back(std::move(_return_type), std::move(_name), std::move(_decl), _body);
+  void registerFunction(const Type* _return_type, std::string _name, std::vector<VarDeclaration> _decl, TokenView _body) {
+    functions.emplace_back(_return_type, std::move(_name), std::move(_decl), _body);
   }
 };
 
 
-ParsedFunction parseFunction(UnparsedFunction &func) {
+ParsedFunction parseFunction(UnparsedFunction &func, SymbolTable& table) {
   return {
-    std::move(func.return_type), std::move(func.name),
-    std::move(func.parameter_list), parseStatements(func.body_tokens)
+    func.return_type, std::move(func.name),
+    std::move(func.parameter_list), parseStatements(func.body_tokens, table)
   };
 }
 
-ParsedTU secondPassParsing(UnparsedTU &&unparsedtu) {
-
+ParsedTU secondPassParsing(UnparsedTU &&unparsedtu, SymbolTable&& table) {
   std::vector<ParsedFunction> parsed_funcs;
   for (auto &f : unparsedtu.functions)
-    parsed_funcs.emplace_back(parseFunction(f));
+    parsed_funcs.emplace_back(parseFunction(f, table));
 
-  ParsedTU ptu{std::move(unparsedtu.globals), std::move(parsed_funcs)};
-
-
-  return ptu;
+  return {std::move(table), std::move(unparsedtu.globals), std::move(parsed_funcs)};
 }
 
-std::vector<VarDeclaration> parseParameterDecl(TokenView&& tokens) {
-  if (tokens.empty())
+std::vector<VarDeclaration> parseParameterDecl(TokenView decl_tokens, SymbolTable& table) {
+  if (decl_tokens.empty())
     return {};
 
   std::vector<VarDeclaration> parameter_list;
 
   while (true) {
-    const unsigned ln = tokens.peek().line_number;
-    Type type = parseType(tokens);
-    std::string ident = parseIdentifier(tokens);
+    const unsigned ln = decl_tokens.peek().line_number;
+    InstantiatedType type = parseType(decl_tokens, table);
+    std::string ident = parseIdentifier(decl_tokens);
 
     parameter_list.emplace_back(std::move(type), std::move(ident), ln);
 
-    if (tokens.empty())
+    if (decl_tokens.empty())
       return parameter_list;
 
-    tokens.expect_then_pop(TokenType::COMMA, "Expected ending parenthesis or comma in parameter list.", LOMError::Stage::ParsingError);
+    decl_tokens.expect_then_pop(TokenType::COMMA, "Expected ending parenthesis or comma in parameter list.", LOMError::Stage::ParsingError);
   }
 }
 
 // returns false when we're done
-bool parseGlobals(UnparsedTU &tu, TokenView& tokens) {
+bool parseGlobals(UnparsedTU &tu, TokenView& tokens, SymbolTable& table) {
   if (tokens.peek_is(TokenType::KEYWORD_FN))
     return false;
 
   tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.", LOMError::Stage::ParsingError);
 
-  Statement* v = parseVarDecl(tokens);
+  Statement* v = parseVarDecl(tokens, table);
 
   tu.globals.emplace_back(std::get<VarDeclaration>(std::move(*v)));
   delete v;
   return true;
 }
 
-void parseGlobalFunctions(UnparsedTU &tu, TokenView& tokens) {
+void parseGlobalFunctions(UnparsedTU &tu, TokenView& tokens, SymbolTable& table) {
   tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function.", LOMError::Stage::ParsingError);
 
   std::string ident = parseIdentifier(tokens);
   tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in function declaration.", LOMError::Stage::ParsingError);
 
-  std::vector<VarDeclaration> parameter_list = parseParameterDecl(tokens.getTokensBetweenParenthesis());
+  std::vector<VarDeclaration> parameter_list = parseParameterDecl(tokens.getTokensBetweenParenthesis(), table);
 
-  Type return_type{devoid_type};
+  const Type* return_type = devoid_type;
   if (tokens.pop_if(TokenType::ARROW))
-    return_type = parseType(tokens);
+    return_type = parseType(tokens, table).type;
 
   tokens.expect_then_pop(TokenType::LBRACE, "Expected lbrace in function declaration", LOMError::Stage::ParsingError);
 
-  tu.registerFunction(std::move(return_type), std::move(ident),
+  tu.registerFunction(return_type, std::move(ident),
                       std::move(parameter_list),
                       tokens.getTokensBetweenBraces());
 }
 
-UnparsedTU firstPassParsing(TokenView tokens) {
+UnparsedTU firstPassParsing(TokenView tokens, SymbolTable& table) {
   UnparsedTU pass_one_tu;
 
-  while (parseGlobals(pass_one_tu, tokens)) {}
+  while (parseGlobals(pass_one_tu, tokens, table)) {}
 
   while (!tokens.empty())
-    parseGlobalFunctions(pass_one_tu, tokens);
+    parseGlobalFunctions(pass_one_tu, tokens, table);
 
   return pass_one_tu;
 }
@@ -747,8 +748,8 @@ UnparsedTU firstPassParsing(TokenView tokens) {
 
 static void printTU(const ParsedTU& tu);
 ParsedTU Parser::parseTokens(std::vector<Token> &&tokens) {
-
-  ParsedTU ptu = secondPassParsing( firstPassParsing({tokens.begin(), tokens.end()}));
+  SymbolTable table;
+  ParsedTU ptu = secondPassParsing( firstPassParsing({tokens.begin(), tokens.end()}, table), std::move(table));
 
   if (Settings::doOutputParser()) {
     std::cout << "\n--- Parser Output ---\n";
@@ -759,7 +760,6 @@ ParsedTU Parser::parseTokens(std::vector<Token> &&tokens) {
 
   return ptu;
 }
-
 
 static void printFunction(const ParsedFunction& func) {
   std::cout << "\nfn " << func.name << "(";
@@ -772,9 +772,9 @@ static void printFunction(const ParsedFunction& func) {
     std::cout << "\b\b";
 
   std::cout << ")";
-  if (!func.return_type.isDevoid()) {
+  if (!func.return_type->isDevoid()) {
     std::cout << " -> ";
-    std::cout << func.return_type.toString();
+    std::cout << func.return_type->toString();
   }
   std::cout << " {\n";
 

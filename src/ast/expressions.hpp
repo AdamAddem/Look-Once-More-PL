@@ -1,4 +1,5 @@
 #pragma once
+#include "ast/types.hpp"
 #include "utilities/owned_ptr.hpp"
 #include <cassert>
 #include <cstdint>
@@ -149,14 +150,58 @@ struct IdentifierExpression {
 
 struct LiteralExpression {
   using LiteralValue = std::variant<std::uint64_t, std::float32_t, std::float64_t, std::string>;
-  enum LiteralType { INT, UINT, FLOAT, DOUBLE, BOOL, CHAR, STRING };
+  enum LiteralType : uint8_t { INT, UINT, FLOAT, DOUBLE, BOOL, CHAR, STRING };
 
   LiteralValue value;
   LiteralType type;
+  uint8_t bit_width;
   unsigned line_number;
 
-  explicit LiteralExpression(LiteralValue &&_v, const LiteralType _t, const unsigned line_num)
-  : value(std::move(_v)), type(_t), line_number(line_num) {}
+  constexpr explicit LiteralExpression(LiteralValue&& value, const LiteralType type, const unsigned line_number)
+  : value(std::move(value)), type(type), line_number(line_number) {
+
+    switch (type) {
+    case INT: { //int literals are always negative
+      const auto int_val = getInt();
+      if (int_val > std::numeric_limits<int8_t>::min())
+        bit_width = 8;
+      else if (int_val > std::numeric_limits<int16_t>::min())
+        bit_width = 16;
+      else if (int_val > std::numeric_limits<int32_t>::min())
+        bit_width = 32;
+      else
+        bit_width = 64;
+    }
+      break;
+    case UINT: {
+      const auto uint_val = getUint();
+      if (uint_val < std::numeric_limits<uint8_t>::max())
+        bit_width = 8;
+      else if (uint_val < std::numeric_limits<uint16_t>::max())
+        bit_width = 16;
+      else if (uint_val < std::numeric_limits<uint32_t>::max())
+        bit_width = 32;
+      else
+        bit_width = 64;
+    }
+      break;
+    case FLOAT:
+      bit_width = 32;
+      break;
+    case DOUBLE:
+      bit_width = 64;
+      break;
+    case BOOL:
+    case CHAR:
+      bit_width = 8;
+      break;
+    case STRING:
+      bit_width = 255; // change this pls
+      break;
+    default:
+      assert(false);
+    }
+  }
 
   [[nodiscard]] std::int64_t getInt() const { return std::bit_cast<std::int64_t>(std::get<uint64_t>(value)); }
   [[nodiscard]] std::uint64_t getUint() const { return std::get<uint64_t>(value); }

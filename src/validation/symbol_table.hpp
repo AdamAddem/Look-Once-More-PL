@@ -1,78 +1,91 @@
 #pragma once
-#include "../ast/types.hpp"
-
+#include "ast/types.hpp"
+#include <expected>
 #include <stdexcept>
 #include <unordered_map>
-#include <unordered_set>
 #include <variant>
 #include <vector>
 
-struct SymbolTable {
+class SymbolTable final {
+public:
+    enum class CallError : bool {NO_SUITABLE_FUNCTION, AMBIGUOUS_OVERLOAD};
+private:
   struct FunctionSignature {
-    std::vector<AST::Type> function_types;
+    std::vector<const AST::Function*> function_types;
+    constexpr explicit FunctionSignature() = default;
 
-    constexpr explicit FunctionSignature(AST::Types&& initial_parameter_types, AST::Type&& initial_return_type);
-
-    void addFunction(AST::Types &&parameter_types, AST::Type&& return_type);
-
-    [[nodiscard]] const AST::Type& returnTypeOfCall(const AST::Types &provided_param) const;
-  };
-
-  struct TypeInstance {
-    AST::Type type;
-    bool is_mutable{false};
-    bool is_stolen{false};
+    [[nodiscard]] std::expected<const AST::Type*, CallError>
+    returnTypeOfCall(const std::vector<AST::InstantiatedType> &parameters) const;
   };
 
   struct LocalScope {
-    explicit LocalScope(AST::Type ret_type)
-        : expected_return_type(std::move(ret_type)) {}
+    constexpr explicit LocalScope(const AST::Type* scope_return_type)
+    : expected_return_type(scope_return_type) {}
 
-    std::unordered_map<std::string, TypeInstance> variables;
-    AST::Type expected_return_type;
+    std::unordered_map<std::string, AST::InstantiatedType> variables;
+    const AST::Type* expected_return_type;
   };
 
-  using Symbol = std::variant<TypeInstance, FunctionSignature>;
+  using Symbol = std::variant<AST::InstantiatedType, FunctionSignature>;
   std::unordered_map<std::string, Symbol> globals;
   std::vector<LocalScope> locals;
-  std::unordered_set<std::string> type_registry;
 
-  SymbolTable();
-  SymbolTable(SymbolTable&& other) noexcept :
-  globals(std::move(other.globals)), locals(std::move(other.locals)), type_registry(std::move(other.type_registry)) {}
+  std::vector<AST::Pointer*> pointers;
+  std::vector<AST::Variant*> variants;
+  std::vector<AST::Function*> functions;
+  //std::unordered_map<std::string, AST::Custom> custom_typeregistry;
 
-  bool containsVariable(const std::string &name) const;
-  void addGlobalVariable(std::string name, AST::Type type);
-  void addLocalVariable(std::string name, AST::Type type);
-  const TypeInstance& closestVariable(const std::string &name) const;
-  const AST::Type& closestVariableType(const std::string &name) const;
-  bool isVarMutable(const std::string &var_name) const;
+  const AST::Type* addPointer(AST::Pointer::Pointers ptr_type, const AST::Type* pointed_type, bool is_pointed_mutable) noexcept;
+public:
 
-  bool containsFunction(const std::string &name) const;
-  void addFunction(const std::string &name, AST::Type return_type, std::vector<AST::Type> &&parameter_types);
-  const AST::Type& returnTypeOfCall(const std::string &name, const std::vector<AST::Type> &provided_params) const;
+  SymbolTable() = default;
+  ~SymbolTable();
 
-  bool containsSymbol(const std::string &name) const {return containsVariable(name) || containsFunction(name);}
-  AST::Type closestSymbolType(const std::string &name) const {
+  void addFunction(const std::string &name, const std::vector<const AST::Type*> &parameters, const AST::Type* return_type);
+
+  const AST::Type* addRawPointer(const AST::Type* subtype, const bool is_subtype_mutable) noexcept
+  {return addPointer(AST::Pointer::Pointers::RAW, subtype, is_subtype_mutable);}
+  const AST::Type* addUniquePointer(const AST::Type* subtype, const bool is_subtype_mutable) noexcept
+  {return addPointer(AST::Pointer::Pointers::UNIQUE, subtype, is_subtype_mutable);}
+
+  const AST::Type* addVariant(std::vector<const AST::Type*> subtypes, bool nullable) noexcept;
+
+  void addGlobalVariable(std::string name, AST::InstantiatedType type);
+  void addLocalVariable(std::string name, AST::InstantiatedType type);
+  [[nodiscard]]bool containsVariable(const std::string &name) const;
+  [[nodiscard]] AST::InstantiatedType closestVariable(const std::string &name) const;
+  [[nodiscard]] bool isVarMutable(const std::string &var_name) const;
+
+  [[nodiscard]] bool containsFunction(const std::string &name) const noexcept;
+  [[nodiscard]] std::expected<const AST::Type*, CallError>
+  returnTypeOfCall(const std::string &name, const std::vector<AST::InstantiatedType> &provided_params) const;
+
+  [[nodiscard]] bool containsSymbol(const std::string &name) const {return containsVariable(name) || containsFunction(name);}
+  [[nodiscard]] bool isClosestSymbolAVariable(const std::string &name) const {
     if (containsVariable(name))
-      return closestVariableType(name);
+      return true;
 
     if (containsFunction(name))
-      return AST::Type(AST::Type::normal, name, {});
+      return false;
+
+    throw std::runtime_error("Symbol not found");
+  }
+  [[nodiscard]] AST::InstantiatedType closestSymbol(const std::string &name) const {
+    if (containsVariable(name))
+      return closestVariable(name);
+
+    if (containsFunction(name))
+      return {nullptr, {}};
 
     throw std::runtime_error("Symbol not found");
   }
 
-  void enterScope(AST::Type expected_return_type);
-  void leaveScope();
-  const AST::Type& returnTypeOfCurrentScope() const;
-  bool isSymbolInCurrentScope(const std::string &name) const;
-  void clearLocalTable();
-
-
-
-  [[nodiscard]] bool isRegisteredType(const std::string& type_name) const noexcept {return type_registry.contains(type_name);}
-  [[nodiscard]] bool isRegisteredType(const AST::Type& t) const noexcept;
-
-
+  void enterScope(const AST::Type* expected_return_type) noexcept {locals.emplace_back(expected_return_type);}
+  void leaveScope() noexcept {locals.pop_back();}
+  [[nodiscard]] const AST::Type* returnTypeOfCurrentScope() const noexcept {
+    assert(!locals.empty());
+    return locals.back().expected_return_type;
+  }
+  [[nodiscard]] bool isSymbolInCurrentScope(const std::string &name) const noexcept;
+  void clearLocalTable() noexcept {locals.clear();}
 };

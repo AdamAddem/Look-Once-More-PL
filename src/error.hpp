@@ -25,15 +25,11 @@ struct LexingError final : LOMError {
   LexingError(const std::string& what, const Lexer::Token& token);
 };
 
-namespace AST {
-  struct Type;
-}
 
 struct ParsingError final : LOMError {
   ParsingError(const std::string& what, const std::string& err_context, const unsigned line_num) :
   LOMError(Stage::ParsingError, what, err_context, line_num) {}
 
-  ParsingError(const std::string& what, const AST::Type& type, unsigned line_num);
   ParsingError(const std::string& what, const Lexer::Token& token);
 };
 

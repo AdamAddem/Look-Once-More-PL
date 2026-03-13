@@ -40,9 +40,6 @@ LOMError::LOMError(const Stage err_stage,
 LexingError::LexingError(const std::string& what, const Lexer::Token& token) :
 LOMError(Stage::LexingError, what, token.toString(), token.line_number) {}
 
-ParsingError::ParsingError(const std::string& what, const AST::Type& type, const unsigned line_num) :
-LOMError(Stage::ParsingError, what, type.toString(), line_num)  {}
-
 
 ParsingError::ParsingError(const std::string& what, const Lexer::Token& token) :
 LOMError(Stage::ParsingError, what, token.toString(), token.line_number) {}

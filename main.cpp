@@ -19,11 +19,12 @@ using namespace Validation;
 
 
 static std::unique_ptr<Backend> processLOMFile( const std::filesystem::path& filename )
-try { return Backend::codegen(
-  validateTU(
-    parseTokens(
-      tokenizeFile(filename)
-      )),filename.stem()); }
+try {
+  return Backend::codegen(
+                  validateTU(
+                  parseTokens(
+                  tokenizeFile(filename)
+                  )),filename.stem()); }
 catch (LOMError& e) { std::cout << e.error_message << std::endl; assert(false); }
 
 

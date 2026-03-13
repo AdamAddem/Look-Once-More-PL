@@ -25,7 +25,7 @@ try {
                   parseTokens(
                   tokenizeFile(filename)
                   )),filename.stem()); }
-catch (LOMError& e) { std::cout << e.error_message << std::endl; assert(false); }
+catch (LOMError& e) { std::cout << e.error_message << std::endl; std::quick_exit(1); }
 
 
 int main(const int argc, const char* argv[]) {

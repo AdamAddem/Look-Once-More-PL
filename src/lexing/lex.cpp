@@ -2,6 +2,8 @@
 
 #include "error.hpp"
 #include "settings.hpp"
+
+#include <cassert>
 #include <cctype>
 #include <fstream>
 #include <iostream>
@@ -11,21 +13,22 @@
 using namespace Lexer;
 
 
+namespace {
 
 struct FileInAnalysis {
   std::ifstream stream;
   uint32_t needs_closing_paren{0};
   uint32_t line_number{1};
   std::vector<Token> token_list;
-  bool skip_whitespace{false};
 };
 
-/* Lexer Functions */
+void grabNumber(FileInAnalysis& file);
 
-static void grabNumber(FileInAnalysis& file);
+[[nodiscard]] bool
+is_num(const int c) { return c >= '0' && c <= '9'; }
 
-static bool is_num(const int c) { return c >= '0' && c <= '9'; }
-static int charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
+[[nodiscard]] int
+charToEscapeSequenceEquivalent(const FileInAnalysis& file, const int c) {
   switch (c) {
   case 'n':
     return '\n';
@@ -53,7 +56,7 @@ static int charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
 }
 
 // called when opening quotes already consumed
-static void grabStringLiteral(FileInAnalysis &file) {
+void grabStringLiteral(FileInAnalysis &file) {
   std::string literal;
   int c = file.stream.get();
   while (c != EOF) {
@@ -81,7 +84,7 @@ ending_quote_found: // don't crucify me for this pls
 }
 
 // called when opening single-quote already consumed
-static void grabCharLiteral(FileInAnalysis &file) {
+void grabCharLiteral(FileInAnalysis &file) {
   int c1 = file.stream.get();
   const int c2 = file.stream.get();
 
@@ -95,7 +98,7 @@ static void grabCharLiteral(FileInAnalysis &file) {
   file.token_list.emplace_back(TokenType::CHAR_LITERAL, static_cast<uint64_t>(c1), file.line_number);
 }
 
-static void grabSymbol(FileInAnalysis &file) {
+void grabSymbol(FileInAnalysis &file) {
   TokenType type;
   const int c = file.stream.get();
   if (c == '-' && is_num(file.stream.peek())) {
@@ -199,12 +202,11 @@ static void grabSymbol(FileInAnalysis &file) {
   file.token_list.emplace_back(type, file.line_number);
 }
 
-static void grabNumber(FileInAnalysis &file) {
-  auto type = TokenType::UINT_LITERAL;
+void grabNumber(FileInAnalysis &file) {
+  auto type = TokenType::INT_LITERAL;
   Token::TokenValue value;
   int c = file.stream.get();
-  if (c == '-')
-    type = TokenType::INT_LITERAL;
+  const bool is_negative = c == '-';
   std::string num_stringrep(1, static_cast<char>(c));
   while ((c = file.stream.get()) != EOF) {
     // i hate file handling so much, replace
@@ -213,10 +215,16 @@ static void grabNumber(FileInAnalysis &file) {
       type = TokenType::FLOAT_LITERAL;
       break;
     }
+    if (c == 'u') {
+      type = TokenType::UINT_LITERAL;
+      if (is_negative)
+        throw LexingError("Negative unsigned literal.", num_stringrep, file.line_number);
+      break;
+    }
 
     if (c == '.') {
       type = TokenType::DOUBLE_LITERAL;
-      num_stringrep += '.';
+      num_stringrep.push_back('.');
       continue;
     }
 
@@ -225,7 +233,7 @@ static void grabNumber(FileInAnalysis &file) {
       break;
     }
 
-    num_stringrep += static_cast<char>(c);
+    num_stringrep.push_back(static_cast<char>(c));
   }
 
   switch (type) {
@@ -238,23 +246,23 @@ static void grabNumber(FileInAnalysis &file) {
     value = static_cast<std::uint64_t>(std::stoull(num_stringrep));
     break;
   case TokenType::FLOAT_LITERAL:
-    static_assert((sizeof(float) == 4) && "The following line of code may cause problems if floats are not 32 bits in width");
-    value = static_cast<std::float32_t>(std::stof(num_stringrep));
+    static_assert((sizeof(float) == 4) && "You get the idea by now");
+    value = static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(std::stof(num_stringrep)));
     break;
   case TokenType::DOUBLE_LITERAL:
-    static_assert((sizeof(double) == 8) && "The following line of code may cause problems if doubles are not 64 bits in width");
-    value = std::stod(num_stringrep);
+    static_assert(sizeof(double) == 8);
+    value = std::bit_cast<std::uint64_t>(std::stod(num_stringrep));
     break;
 
   default:
-    throw LexingError("Invalid numeric literal type found in grabNumber, this shouldn't happen.", num_stringrep, file.line_number);
+    assert(false);
   }
 
   file.token_list.emplace_back(type, std::move(value), file.line_number);
 }
 
 // first letter in front of file
-static void grabIdentOrKeyword(FileInAnalysis &file) {
+void grabIdentOrKeyword(FileInAnalysis &file) {
   int c = file.stream.get();
   std::string word;
   while (c != EOF) {
@@ -287,7 +295,7 @@ static void grabIdentOrKeyword(FileInAnalysis &file) {
   file.token_list.emplace_back(TokenType::IDENTIFIER, Token::TokenValue(std::move(word)), file.line_number);
 }
 
-static void skipWS(FileInAnalysis& file) {
+void skipWS(FileInAnalysis& file) {
   while (std::isspace(file.stream.peek())) {
     const int c = file.stream.get();
      if (c == '\n')
@@ -298,7 +306,7 @@ static void skipWS(FileInAnalysis& file) {
   }
 }
 
-static bool skipComments(FileInAnalysis& file) {
+[[nodiscard]] bool skipComments(FileInAnalysis& file) {
   constexpr static auto stream_max = std::numeric_limits<std::streamsize>::max();
   file.stream.get();
   if (file.stream.peek() == '/') {
@@ -312,8 +320,9 @@ static bool skipComments(FileInAnalysis& file) {
   return false;
 }
 
-static bool canStartIdentifier(const int c) {
+[[nodiscard]] bool canStartIdentifier(const int c) {
   return std::isalpha(c) || c == '_';
+}
 }
 
 std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
@@ -350,5 +359,3 @@ std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
 
   return std::move(file.token_list);
 }
-
-/* Lexer Functions */

@@ -11,84 +11,12 @@ BinaryExpression::~BinaryExpression() { expr_left.destroy(); expr_right.destroy(
 CallingExpression::~CallingExpression() { func.destroy(); for (const auto e : parameters) delete e;}
 SubscriptExpression::~SubscriptExpression() { arr.destroy(); inside.destroy(); }
 
-void PrintExpressionVisitor::operator()(const UnaryExpression &unary) const noexcept {
-  if (isCategoryPREFIX_OPS(unary.opr)) {
-    std::cout << operatorToString(unary.opr);
-    if (unary.opr == Operator::NOT || unary.opr == Operator::BITNOT)
-      std::cout << ' ';
-    std::visit(PrintExpressionVisitor{}, *unary.expr);
-  } else {
-    std::visit(PrintExpressionVisitor{}, *unary.expr);
-    std::cout << operatorToString(unary.opr);
-  }
-}
-
-void PrintExpressionVisitor::operator()(const BinaryExpression &binary) const noexcept {
-  std::cout << "(";
-  std::visit(PrintExpressionVisitor{}, *binary.expr_left);
-  std::cout << ' ' << operatorToString(binary.opr) << ' ';
-
-  std::visit(PrintExpressionVisitor{}, *binary.expr_right);
-  std::cout << ")";
-}
-
-void PrintExpressionVisitor::operator()(const CallingExpression &calling) const noexcept {
-  std::visit(PrintExpressionVisitor{}, *calling.func);
-  std::cout << "(";
-  for (const auto p : calling.parameters) {
-    std::visit(PrintExpressionVisitor{}, *p);
-    std::cout << ", ";
-  }
-  if (!calling.parameters.empty())
-    std::cout << "\b\b";
-
-  std::cout << ")";
-}
-
-void PrintExpressionVisitor::operator()(const SubscriptExpression &subscript) const noexcept {
-  std::visit(PrintExpressionVisitor{}, *subscript.arr);
-  std::cout << "[";
-  std::visit(PrintExpressionVisitor{}, *subscript.inside);
-  std::cout << "]";
-}
-
-void PrintExpressionVisitor::operator()(const IdentifierExpression &identifier) const noexcept {
-  std::cout << identifier.ident;
-}
-
-void PrintExpressionVisitor::operator()(const LiteralExpression &literal) const noexcept {
-  switch (literal.type) {
-  case LiteralExpression::INT:
-    std::cout << literal.getInt();
-    return;
-  case LiteralExpression::UINT:
-    std::cout << literal.getUint();
-    return;
-  case LiteralExpression::FLOAT:
-    std::cout << literal.getFloat();
-    return;
-  case LiteralExpression::DOUBLE:
-    std::cout << literal.getDouble();
-    return;
-
-  case LiteralExpression::BOOL:
-    if (literal.getBool())
-      std::cout << "true";
-
-    std::cout << "false";
-    return;
-  case LiteralExpression::CHAR:
-    std::cout << '\'' << literal.getChar() << '\'';
-    return;
-
-  case LiteralExpression::STRING:
-    std::cout << '"' << literal.getString() << '"';
-    return;
-
-  default:
-    assert(false && "invalid literalexpression type");
-  }
-}
+void PrintExpressionVisitor::operator()(const UnaryExpression &unary) const noexcept { std::cout << ExpressionToStringVisitor{}(unary); }
+void PrintExpressionVisitor::operator()(const BinaryExpression &binary) const noexcept { std::cout << ExpressionToStringVisitor{}(binary); }
+void PrintExpressionVisitor::operator()(const CallingExpression &calling) const noexcept { std::cout << ExpressionToStringVisitor{}(calling); }
+void PrintExpressionVisitor::operator()(const SubscriptExpression &subscript) const noexcept { std::cout << ExpressionToStringVisitor{}(subscript); }
+void PrintExpressionVisitor::operator()(const IdentifierExpression &identifier) const noexcept { std::cout << ExpressionToStringVisitor{}(identifier); }
+void PrintExpressionVisitor::operator()(const LiteralExpression &literal) const noexcept { std::cout << ExpressionToStringVisitor{}(literal); }
 
 std::string ExpressionToStringVisitor::operator()(const UnaryExpression &unary) const noexcept {
   std::string retval;
@@ -149,27 +77,30 @@ std::string ExpressionToStringVisitor::operator()(const IdentifierExpression &id
 }
 
 std::string ExpressionToStringVisitor::operator()(const LiteralExpression &literal) const noexcept {
-  switch (literal.type) {
-  case LiteralExpression::INT:
+
+  if (literal.type->isIntegral()) {
+    if (literal.type->isUnsignedIntegral())
+      return std::to_string(literal.getUint());
+
     return std::to_string(literal.getInt());
-  case LiteralExpression::UINT:
-    return std::to_string(literal.getUint());
-  case LiteralExpression::FLOAT:
-    return std::to_string(static_cast<float>(literal.getFloat()));
-  case LiteralExpression::DOUBLE:
-    return std::to_string(static_cast<double>(literal.getDouble()));
-  case LiteralExpression::BOOL:
-    if (literal.getBool())
-      return "true";
-
-    return "false";
-  case LiteralExpression::CHAR:
-    return std::string(1, literal.getChar());
-
-  case LiteralExpression::STRING:
-    return literal.getString();
-
-  default:
-    assert(false && "invalid literalexpression type");
   }
+
+  if (literal.type->isFloating()) {
+    if (literal.type == &f64_type)
+      return std::to_string(literal.getDouble());
+    assert(false);
+  }
+
+  if (literal.type == &bool_type)
+    return literal.getBool() ?  "true" : "false";
+
+
+  if (literal.type == &char_type)
+    return std::string("\'") + literal.getChar() + "\'";
+
+
+  if (literal.type == &string_type)
+    return std::string("\"") + literal.getString() + "\"";
+
+  assert(false);
 }

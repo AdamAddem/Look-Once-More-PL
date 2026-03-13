@@ -1,0 +1,2 @@
+global mut i32 mutable_global = junk;
+global i32 immutable_global = 5;

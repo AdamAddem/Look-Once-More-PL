@@ -3,7 +3,6 @@
 #include "utilities/owned_ptr.hpp"
 #include <cassert>
 #include <cstdint>
-#include <stdfloat>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -149,67 +148,23 @@ struct IdentifierExpression {
 };
 
 struct LiteralExpression {
-  using LiteralValue = std::variant<std::uint64_t, std::float32_t, std::float64_t, std::string>;
-  enum LiteralType : uint8_t { INT, UINT, FLOAT, DOUBLE, BOOL, CHAR, STRING };
+  using LiteralValue = std::variant<std::uint64_t, std::string>;
 
   LiteralValue value;
-  LiteralType type;
-  uint8_t bit_width;
+  const Primitive* type;
   unsigned line_number;
 
-  constexpr explicit LiteralExpression(LiteralValue&& value, const LiteralType type, const unsigned line_number)
-  : value(std::move(value)), type(type), line_number(line_number) {
+  constexpr explicit LiteralExpression(LiteralValue&& value, const Primitive* type, const unsigned line_number)
+  : value(std::move(value)), type(type), line_number(line_number) {}
 
-    switch (type) {
-    case INT: { //int literals are always negative
-      const auto int_val = getInt();
-      if (int_val > std::numeric_limits<int8_t>::min())
-        bit_width = 8;
-      else if (int_val > std::numeric_limits<int16_t>::min())
-        bit_width = 16;
-      else if (int_val > std::numeric_limits<int32_t>::min())
-        bit_width = 32;
-      else
-        bit_width = 64;
-    }
-      break;
-    case UINT: {
-      const auto uint_val = getUint();
-      if (uint_val < std::numeric_limits<uint8_t>::max())
-        bit_width = 8;
-      else if (uint_val < std::numeric_limits<uint16_t>::max())
-        bit_width = 16;
-      else if (uint_val < std::numeric_limits<uint32_t>::max())
-        bit_width = 32;
-      else
-        bit_width = 64;
-    }
-      break;
-    case FLOAT:
-      bit_width = 32;
-      break;
-    case DOUBLE:
-      bit_width = 64;
-      break;
-    case BOOL:
-    case CHAR:
-      bit_width = 8;
-      break;
-    case STRING:
-      bit_width = 255; // change this pls
-      break;
-    default:
-      assert(false);
-    }
-  }
-
-  [[nodiscard]] std::int64_t getInt() const { return std::bit_cast<std::int64_t>(std::get<uint64_t>(value)); }
-  [[nodiscard]] std::uint64_t getUint() const { return std::get<uint64_t>(value); }
-  [[nodiscard]] float getFloat() const { return std::get<std::float32_t>(value); }
-  [[nodiscard]] double getDouble() const { return std::get<std::float64_t>(value); }
-  [[nodiscard]] bool getBool() const { return std::get<uint64_t>(value); }
-  [[nodiscard]] char getChar() const { return static_cast<char>(std::get<uint64_t>(value)); }
-  [[nodiscard]] std::string getString() const { return std::get<std::string>(value); }
+  [[nodiscard]] std::int64_t getInt() const                     { return std::bit_cast<std::int64_t>(std::get<std::uint64_t>(value)); }
+  [[nodiscard]] std::uint64_t getUint() const                   { return std::get<std::uint64_t>(value); }
+  [[nodiscard]] float getFloat() const                          { return std::bit_cast<float>(static_cast<std::uint32_t>(std::get<std::uint64_t>(value))); }
+  [[nodiscard]] double getDouble() const                        { return std::bit_cast<double>(std::get<std::uint64_t>(value)); }
+  [[nodiscard]] bool getBool() const                            { return std::get<uint64_t>(value); }
+  [[nodiscard]] char getChar() const                            { return static_cast<char>(std::get<uint64_t>(value)); }
+  [[nodiscard]] std::string getString() const                   { return std::get<std::string>(value); }
+  [[nodiscard]] std::string takeString()                        { return std::get<std::string>(std::move(value)); }
 };
 
 

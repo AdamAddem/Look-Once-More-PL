@@ -37,17 +37,20 @@ public:
     return &devoid;
   };
 
-  [[nodiscard]] constexpr bool isDevoid()  const noexcept {return derived_type == DEVOID;}
-  [[nodiscard]] constexpr bool isPrimitive()  const noexcept {return derived_type == PRIMITIVE;}
-  [[nodiscard]] constexpr bool isPointer()    const noexcept {return derived_type == POINTER;}
-  [[nodiscard]] constexpr bool isVariant()    const noexcept {return derived_type == VARIANT;}
-  [[nodiscard]] constexpr bool isFunction()   const noexcept {return derived_type == FUNCTION;}
-  [[nodiscard]] constexpr bool isCustom()     const noexcept {return derived_type == CUSTOM;}
+  [[nodiscard]] constexpr bool isDevoid()     const noexcept  {return derived_type == DEVOID;}
+  [[nodiscard]] constexpr bool isPrimitive()  const noexcept  {return derived_type == PRIMITIVE;}
+  [[nodiscard]] constexpr bool isPointer()    const noexcept  {return derived_type == POINTER;}
+  [[nodiscard]] constexpr bool isVariant()    const noexcept  {return derived_type == VARIANT;}
+  [[nodiscard]] constexpr bool isFunction()   const noexcept  {return derived_type == FUNCTION;}
+  [[nodiscard]] constexpr bool isCustom()     const noexcept  {return derived_type == CUSTOM;}
 
-  [[nodiscard]] constexpr bool isArithmetic() const noexcept {return flags & is_arithmetic_mask;}
-  [[nodiscard]] constexpr bool isCallable()   const noexcept {return flags & is_callable_mask;}
-  [[nodiscard]] constexpr bool isArray()      const noexcept {return flags & is_array_mask;}
-  [[nodiscard]] constexpr bool isBool()  const noexcept;
+  [[nodiscard]] constexpr bool isArithmetic() const noexcept  {return flags & is_arithmetic_mask;}
+  [[nodiscard]] constexpr bool isCallable()   const noexcept  {return flags & is_callable_mask;}
+  [[nodiscard]] constexpr bool isArray()      const noexcept  {return flags & is_array_mask;}
+
+  [[nodiscard]] constexpr bool isBool()       const noexcept;
+  [[nodiscard]] constexpr bool isIntegral()   const noexcept;
+  [[nodiscard]] constexpr bool isFloating()   const noexcept;
 
   [[nodiscard]] constexpr Primitive* castToPrimitive() noexcept; [[nodiscard]] constexpr const Primitive* castToPrimitive() const noexcept;
   [[nodiscard]] constexpr Pointer* castToPointer() noexcept; [[nodiscard]] constexpr const Pointer* castToPointer() const noexcept;
@@ -71,7 +74,7 @@ struct InstantiatedType {
   struct InstanceDetails {
     bool is_mutable : 1 = false;
 
-    constexpr InstanceDetails() {}
+    constexpr InstanceDetails() = default;
     constexpr explicit InstanceDetails(const bool is_mutable) : is_mutable(is_mutable) {}
   }details;
 
@@ -114,7 +117,8 @@ public:
   }
   explicit Primitive(const Lexer::Token& primitive_token);
 
-  [[nodiscard]] constexpr bool isIntegral() const noexcept {
+  [[nodiscard]] constexpr bool
+  isIntegral() const noexcept {
     using enum Primitives;
     switch (primitive_type) {
     case I8:
@@ -130,7 +134,28 @@ public:
       return false;
     }
   }
-  [[nodiscard]] constexpr bool isFloating() const noexcept {
+
+  [[nodiscard]] constexpr bool
+  isUnsignedIntegral() const noexcept {
+    using enum Primitives;
+    switch (primitive_type) {
+    case I8:
+    case I16:
+    case I32:
+    case I64:
+      return false;
+    case U8:
+    case U16:
+    case U32:
+    case U64:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  [[nodiscard]] constexpr bool
+  isFloating() const noexcept {
     using enum Primitives;
     switch (primitive_type) {
     case F32:
@@ -140,14 +165,72 @@ public:
       return false;
     }
   }
-  [[nodiscard]] constexpr bool isBool() const noexcept {return primitive_type == Primitives::BOOL;}
+
+  [[nodiscard]] constexpr bool
+  isBool() const noexcept { return primitive_type == Primitives::BOOL; }
+
+  [[nodiscard]] constexpr std::uint64_t
+  maxIntegralValueRepresentable() const noexcept {
+    switch (primitive_type) {
+    case Primitives::I8:
+      return std::numeric_limits<std::int8_t>::max();
+    case Primitives::I16:
+      return std::numeric_limits<std::int16_t>::max();
+    case Primitives::I32:
+      return std::numeric_limits<std::int32_t>::max();
+    case Primitives::I64:
+      return std::numeric_limits<std::int64_t>::max();
+    case Primitives::U8:
+      return std::numeric_limits<std::uint8_t>::max();
+    case Primitives::U16:
+      return std::numeric_limits<std::uint16_t>::max();
+    case Primitives::U32:
+      return std::numeric_limits<std::uint32_t>::max();
+    case Primitives::U64:
+      return std::numeric_limits<std::uint64_t>::max();
+
+    default:
+      assert(false && "called w/ non integral type");
+    }
+  }
+
+  [[nodiscard]] constexpr std::int64_t
+  minIntegralValueRepresentable() const noexcept {
+    switch (primitive_type) {
+    case Primitives::I8:
+      return std::numeric_limits<std::int8_t>::min();
+    case Primitives::I16:
+      return std::numeric_limits<std::int16_t>::min();
+    case Primitives::I32:
+      return std::numeric_limits<std::int32_t>::min();
+    case Primitives::I64:
+      return std::numeric_limits<std::int64_t>::min();
+    case Primitives::U8:
+    case Primitives::U16:
+    case Primitives::U32:
+    case Primitives::U64:
+      return 0;
+
+    default:
+      assert(false && "called w/ non integral type");
+    }
+  }
 
   [[nodiscard]] bool convertibleTo(const Primitive* other) const noexcept;
   [[nodiscard]] std::string toString() const noexcept;
+
+  [[nodiscard]] bool canValueBeRepresented(const std::uint64_t value) const noexcept { return isIntegral() && value < maxIntegralValueRepresentable(); }
+  [[nodiscard]] bool canValueBeRepresented(const std::int64_t value) const noexcept
+  { return isIntegral() && value < static_cast<std::int64_t>(maxIntegralValueRepresentable()) && value > minIntegralValueRepresentable(); }
+
+  [[nodiscard]] bool canValueBeRepresented(float) const noexcept { return primitive_type == Primitives::F32 || primitive_type == Primitives::F64; }
+  [[nodiscard]] bool canValueBeRepresented(double) const noexcept { return primitive_type == Primitives::F64; }
 protected:
   Primitives primitive_type;
 };
-constexpr bool Type::isBool()  const noexcept {return derived_type == PRIMITIVE && static_cast<const Primitive*>(this)->isBool();}
+constexpr bool Type::isBool()       const noexcept {return derived_type == PRIMITIVE && static_cast<const Primitive*>(this)->isBool();}
+constexpr bool Type::isIntegral()   const noexcept {return derived_type == PRIMITIVE && static_cast<const Primitive*>(this)->isIntegral();}
+constexpr bool Type::isFloating()   const noexcept {return derived_type == PRIMITIVE && static_cast<const Primitive*>(this)->isFloating();}
 
 class Pointer final : public Type {
 public:
@@ -221,7 +304,7 @@ public:
 };
 
 class Custom final : public Type {
-
+public:
   Custom() = delete;
 };
 

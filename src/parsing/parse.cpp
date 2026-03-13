@@ -157,35 +157,56 @@ std::vector<Expression*> parseParameters(TokenView& between_parenthesis) {
 Expression* parsePrimaryExpression(TokenView& tokens) {
   const unsigned ln = tokens.peek().line_number;
   if (tokens.peek().isLiteral()) {
-    LiteralExpression::LiteralType type;
+    const Primitive* literal_type;
     switch (tokens.peek().type) {
     case TokenType::INT_LITERAL:
-      type = LiteralExpression::INT;
+    {
+      auto positive_int_val = tokens.peek().getInt();
+      positive_int_val = positive_int_val < 0 ? (positive_int_val * -1) - 1 : positive_int_val;
+      if (positive_int_val <= std::numeric_limits<int8_t>::max())
+        literal_type = &i8_type;
+      else if (positive_int_val <= std::numeric_limits<int16_t>::max())
+        literal_type = &i16_type;
+      else if (positive_int_val <= std::numeric_limits<int32_t>::max())
+        literal_type = &i32_type;
+      else
+        literal_type = &i64_type;
+    }
       break;
     case TokenType::UINT_LITERAL:
-      type = LiteralExpression::UINT;
+    {
+      const auto uint_val = tokens.peek().getUint();
+      if (uint_val <= std::numeric_limits<uint8_t>::max())
+        literal_type = &u8_type;
+      else if (uint_val <= std::numeric_limits<uint16_t>::max())
+        literal_type = &u16_type;
+      else if (uint_val <= std::numeric_limits<uint32_t>::max())
+        literal_type = &u32_type;
+      else
+        literal_type = &u64_type;
+    }
       break;
     case TokenType::FLOAT_LITERAL:
-      type = LiteralExpression::FLOAT;
+      literal_type = &f32_type;
       break;
     case TokenType::DOUBLE_LITERAL:
-      type = LiteralExpression::DOUBLE;
+      literal_type = &f64_type;
       break;
     case TokenType::BOOL_LITERAL:
-      type = LiteralExpression::BOOL;
+      literal_type = &bool_type;
       break;
     case TokenType::CHAR_LITERAL:
-      type = LiteralExpression::CHAR;
+      literal_type = &char_type;
       break;
     case TokenType::STRING_LITERAL:
-      type = LiteralExpression::STRING;
+      literal_type = &string_type;
       break;
 
     default:
-      throw ParsingError("Impossible error in parsePrimaryExpression function in secondparse", tokens.peek());
+      assert(false);
     }
 
-    return new Expression(std::in_place_type<LiteralExpression>, std::move(tokens.take().value), type, ln);
+    return new Expression(std::in_place_type<LiteralExpression>, std::move(tokens.take().value), literal_type, ln);
   }
 
   if (tokens.pop_if(TokenType::LPAREN)) {
@@ -689,10 +710,10 @@ std::vector<VarDeclaration> parseParameterDecl(TokenView decl_tokens, SymbolTabl
 
   while (true) {
     const unsigned ln = decl_tokens.peek().line_number;
-    InstantiatedType type = parseType(decl_tokens, table);
+    InstantiatedType instance = parseType(decl_tokens, table);
     std::string ident = parseIdentifier(decl_tokens);
 
-    parameter_list.emplace_back(std::move(type), std::move(ident), ln);
+    parameter_list.emplace_back(instance, std::move(ident), ln);
 
     if (decl_tokens.empty())
       return parameter_list;
@@ -703,7 +724,7 @@ std::vector<VarDeclaration> parseParameterDecl(TokenView decl_tokens, SymbolTabl
 
 // returns false when we're done
 bool parseGlobals(UnparsedTU &tu, TokenView& tokens, SymbolTable& table) {
-  if (tokens.peek_is(TokenType::KEYWORD_FN))
+  if (tokens.peek_is(TokenType::KEYWORD_FN) || tokens.empty())
     return false;
 
   tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.", LOMError::Stage::ParsingError);

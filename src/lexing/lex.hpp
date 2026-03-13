@@ -3,7 +3,6 @@
 #include "../error.hpp"
 
 #include <filesystem>
-#include <stdfloat>
 #include <string>
 #include <variant>
 #include <vector>
@@ -12,7 +11,7 @@ namespace Lexer {
 
 
 struct Token {
-  using TokenValue = std::variant<std::uint64_t, std::float32_t, std::float64_t, std::string>;
+  using TokenValue = std::variant<std::uint64_t, std::string>;
   TokenType type;
   TokenValue value;
   unsigned line_number{};
@@ -27,22 +26,22 @@ struct Token {
   void throw_if(TokenType unwanted_type, const char* err_msg, LOMError::Stage error_stage) const;
   void throw_if_not(TokenType expected_type, const char* err_msg, LOMError::Stage error_stage) const;
 
-  [[nodiscard]] constexpr bool is(const TokenType _type) const { return type == _type; }
-  [[nodiscard]] constexpr bool isPrimitive() const { return isCategoryPRIMITIVES(type); }
-  [[nodiscard]] constexpr bool isLiteral() const { return isCategoryLITERALS(type); }
-  [[nodiscard]] constexpr bool isPointer() const { return isCategoryPOINTERS(type); }
-  [[nodiscard]] constexpr bool isTypeModifier() const { return isCategoryTYPE_MODIFIERS(type); }
+  [[nodiscard]] constexpr bool is(const TokenType _type) const  { return type == _type; }
+  [[nodiscard]] constexpr bool isPrimitive() const              { return isCategoryPRIMITIVES(type); }
+  [[nodiscard]] constexpr bool isLiteral() const                { return isCategoryLITERALS(type); }
+  [[nodiscard]] constexpr bool isPointer() const                { return isCategoryPOINTERS(type); }
+  [[nodiscard]] constexpr bool isTypeModifier() const           { return isCategoryTYPE_MODIFIERS(type); }
 
   [[nodiscard]] std::string toString() const;
   [[nodiscard]] std::string toDebugString() const;
 
-  [[nodiscard]] std::int64_t getInt() const { return std::bit_cast<std::int64_t>(std::get<uint64_t>(value)); }
-  [[nodiscard]] std::uint64_t getUint() const { return std::get<uint64_t>(value); }
-  [[nodiscard]] float getFloat() const { return std::get<std::float32_t>(value); }
-  [[nodiscard]] double getDouble() const { return std::get<std::float64_t>(value); }
-  [[nodiscard]] bool getBool() const { return std::get<uint64_t>(value); }
-  [[nodiscard]] char getChar() const { return static_cast<char>(std::get<uint64_t>(value)); }
-  [[nodiscard]] std::string takeString() { return std::get<std::string>(std::move(value)); }
+  [[nodiscard]] std::int64_t getInt() const                     { return std::bit_cast<std::int64_t>(std::get<std::uint64_t>(value)); }
+  [[nodiscard]] std::uint64_t getUint() const                   { return std::get<std::uint64_t>(value); }
+  [[nodiscard]] float getFloat() const                          { return std::bit_cast<float>(static_cast<std::uint32_t>(std::get<std::uint64_t>(value))); }
+  [[nodiscard]] double getDouble() const                        { return std::bit_cast<double>(std::get<std::uint64_t>(value)); }
+  [[nodiscard]] bool getBool() const                            { return std::get<uint64_t>(value); }
+  [[nodiscard]] char getChar() const                            { return static_cast<char>(std::get<uint64_t>(value)); }
+  [[nodiscard]] std::string takeString()                        { return std::get<std::string>(std::move(value)); }
 };
 
 class TokenView {

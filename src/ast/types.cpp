@@ -4,27 +4,6 @@ using namespace AST;
 
 
 
-
-
-[[nodiscard]] static constexpr bool
-isUnsignedIntegral(const Primitive::Primitives type) noexcept {
-  using enum Primitive::Primitives;
-  switch (type) {
-  case I8:
-  case I16:
-  case I32:
-  case I64:
-    return false;
-  case U8:
-  case U16:
-  case U32:
-  case U64:
-    return true;
-  default:
-    return false;
-  }
-}
-
 bool Type::convertibleTo(const Type* other) const noexcept {
   assert(derived_type != CUSTOM  && other->derived_type != CUSTOM );
   if (other == this)
@@ -63,9 +42,9 @@ std::string Type::toString() const noexcept {
   case PRIMITIVE:
     return static_cast<const Primitive*>(this)->toString();
   case POINTER:
-    return static_cast<const Primitive*>(this)->toString();
+    return static_cast<const Pointer*>(this)->toString();
   case VARIANT:
-    return static_cast<const Primitive*>(this)->toString();
+    return static_cast<const Variant*>(this)->toString();
 
   case FUNCTION:
   case CUSTOM:
@@ -83,22 +62,24 @@ bool Primitive::convertibleTo(const Primitive* other) const noexcept {
   case I8:
   case I16:
   case I32:
-  case I64:
-    static_assert(std::to_underlying(I8) == 0);
-    static_assert(std::to_underlying(I64) == 3);
+  case I64: //convert if other type is a greater size signed integer
+    static_assert(std::to_underlying(I8) < std::to_underlying(I16));
+    static_assert(std::to_underlying(I16) < std::to_underlying(I32));
+    static_assert(std::to_underlying(I32) < std::to_underlying(I64));
     return std::to_underlying(other_type) > std::to_underlying(primitive_type) &&
            std::to_underlying(other_type) <= std::to_underlying(I64);
   case U8:
   case U16:
   case U32:
-  case U64:
-    static_assert(std::to_underlying(U8) == 4);
-    static_assert(std::to_underlying(U64) == 7);
+  case U64: //convert if other type is a greater size signed/unsigned integer
+    static_assert(std::to_underlying(U8) < std::to_underlying(U16));
+    static_assert(std::to_underlying(U16) < std::to_underlying(U32));
+    static_assert(std::to_underlying(U32) < std::to_underlying(U64));
     static_assert(std::to_underlying(U8) - 4 == std::to_underlying(I8));
-    if (isUnsignedIntegral(other_type) && std::to_underlying(primitive_type) > std::to_underlying(other_type))
+    static_assert(std::to_underlying(U64) - 4 == std::to_underlying(I64));
+    if (other->isUnsignedIntegral() && std::to_underlying(other_type) > std::to_underlying(primitive_type))
       return true;
 
-    //this is so dumb
     return std::to_underlying(other_type) > (std::to_underlying(primitive_type) - 4) &&
        std::to_underlying(other_type) <= std::to_underlying(I64);
 

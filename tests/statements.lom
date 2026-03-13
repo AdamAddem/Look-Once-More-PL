@@ -1,0 +1,35 @@
+fn if_statements() {
+    mut bool condition = true;
+    if(condition) ;
+    if(true) {}
+    if(false) {}
+    if(condition) { condition = false; }
+    else if(condition) { condition = true; }
+    elif(true) { condition = false; }
+    else mut i32 scoped = junk;
+    return;
+}
+
+fn while_statements() {
+    mut bool condition = true;
+    while(condition) ;
+    while(true) {}
+    while(false) {}
+    while(condition eq false) {}
+    while(condition not_eq true) { mut i32 scoped = junk; }
+}
+
+fn for_statements(bool condition) {
+    for( ; ; ) {}
+
+    for(mut i32 i = 0; condition; ++i) {}
+    for(mut i32 i = 0; condition; ) {}
+    for(mut i32 i = 0; ; ++i) {}
+    for(mut i32 i = 0; ; ) {}
+
+    mut i32 i = 0;
+    for(; condition; ++i) {}
+    for(; condition; ) {}
+
+    for(; ; ++i) {}
+}

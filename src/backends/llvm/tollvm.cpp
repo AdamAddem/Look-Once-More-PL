@@ -54,6 +54,10 @@ struct FunctionBuilder {
 
 };
 
+
+//Our scientists have been hard at work crafting the largest class possible
+//Shes a beauty
+//You ever seen a class thats expensive to copy AND move?
 class TU final : public Backend {
   LLVMContext context;
   Module module;
@@ -338,39 +342,22 @@ public:
     return f.builder.CreateLoad(t, v);
   }
   Value* genLiteral(const AST::LiteralExpression& literal) noexcept {
+    if (literal.type->isIntegral())
+      return ConstantInt::get(getType(literal.type), literal.getUint(), not literal.type->isUnsignedIntegral());
 
-    switch (literal.type) {
-    case AST::LiteralExpression::INT:
-    case AST::LiteralExpression::UINT:
-      IntegerType* p;
-      switch (literal.bit_width) {
-      case 8:
-        p = i8;
-        break;
-      case 16:
-        p = i16;
-        break;
-      case 32:
-        p = i32;
-        break;
-      default:
-        p = i64;
-        break;
-      }
-      return ConstantInt::get(p, literal.getUint(), literal.type == AST::LiteralExpression::INT);
-    case AST::LiteralExpression::FLOAT:
-      return ConstantFP::get(f32, literal.getFloat());
-    case AST::LiteralExpression::DOUBLE:
-      return ConstantFP::get(f64, literal.getDouble());
-
-    case AST::LiteralExpression::BOOL:
-    case AST::LiteralExpression::CHAR:
-      return ConstantInt::get(i8, literal.getUint());
-    case AST::LiteralExpression::STRING:
-      return ConstantDataArray::getString(context, literal.getString());
-    default:
-      assert(false && "Invalid literal expression in codegen");
+    if (literal.type->isFloating()) {
+      return ConstantFP::get(
+        getType(literal.type),
+        literal.type == &AST::f64_type ? literal.getDouble() : literal.getFloat()); //ConstantFP::get only accepts double for some reason, so I have to do this weird hackery
     }
+
+    if (literal.type == &AST::bool_type || literal.type == &AST::char_type)
+      return ConstantInt::get(i8, literal.getUint());
+
+    if (literal.type == &AST::string_type)
+      return ConstantDataArray::getString(context, literal.getString());
+
+    assert(false && "Invalid / Unimplemented literal expression in codegen");
   }
   Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) noexcept {
     return utils_match(expr,
@@ -397,7 +384,7 @@ public:
     IRBuilder<> func_entry(&f.func->getEntryBlock());
     AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type.type), nullptr);
     f.locals.emplace(declaration.ident, i);
-    f.builder.CreateStore( genExpression(*declaration.expr, f), i);
+    f.builder.CreateStore(genExpression(*declaration.expr, f), i);
     return false;
   }
   bool genIfStatement(const AST::IfStatement& ifstmt, FunctionBuilder& f) {
@@ -506,10 +493,9 @@ public:
 
   virtual std::filesystem::path createASMFile (const std::filesystem::path &file) override {
     static const std::filesystem::path asm_folder = Settings::getBuildLocation() + "asm/";
-    std::filesystem::create_directories(asm_folder);
     std::filesystem::path asm_path = asm_folder;
     asm_path.append(file.string());
-
+    std::filesystem::create_directories(asm_path.parent_path());
 #ifdef _WIN32
     asm_path.replace_extension(".asm");
 #else
@@ -522,10 +508,9 @@ public:
 
   virtual std::filesystem::path createIRFile (const std::filesystem::path &file) override {
     static const std::filesystem::path ir_path = Settings::getBuildLocation() + "llvm_ir/";
-    std::filesystem::create_directories(ir_path);
-
     std::filesystem::path file_path = ir_path;
     file_path.append(file.string());
+    std::filesystem::create_directories(file_path.parent_path());
     file_path.replace_extension(".ll");
 
     std::error_code EC;
@@ -541,10 +526,9 @@ public:
 
   virtual std::filesystem::path createObjectFile(const std::filesystem::path &file) override {
     static const std::filesystem::path object_folder = Settings::getBuildLocation() + "obj/";
-    std::filesystem::create_directories(object_folder);
-
     std::filesystem::path obj_path = object_folder;
     obj_path.append(file.string());
+    std::filesystem::create_directories(obj_path.parent_path());
 #ifdef _WIN32
     obj_path.replace_extension(".obj");
 #else

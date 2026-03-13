@@ -1,0 +1,12 @@
+fn empty_function() {}
+fn parameter_function(i32 normal, <i32, f32> variant, mut i32 mut_normal, mut <i32, f32> mut_variant) {}
+fn return_type_function() -> bool { return true; }
+
+fn return_within_scope() -> bool {
+    if(true)
+        return true;
+    else
+        return false;
+
+    return false;
+}

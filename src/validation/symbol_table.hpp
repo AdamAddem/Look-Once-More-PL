@@ -39,6 +39,7 @@ private:
 public:
 
   SymbolTable() = default;
+  SymbolTable(SymbolTable&& other) noexcept = default;
   ~SymbolTable();
 
   void addFunction(const std::string &name, const std::vector<const AST::Type*> &parameters, const AST::Type* return_type);

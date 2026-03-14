@@ -18,7 +18,8 @@ using namespace Validation;
 
 
 
-static std::unique_ptr<Backend> processLOMFile( const std::filesystem::path& filename )
+[[maybe_unused]] static std::unique_ptr<Backend>
+processLOMFile( const std::filesystem::path& filename )
 try {
   return Backend::codegen(
                   validateTU(

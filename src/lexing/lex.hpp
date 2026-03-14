@@ -13,12 +13,12 @@ namespace Lexer {
 struct Token {
   using TokenValue = std::variant<std::uint64_t, std::string>;
   TokenType type;
-  TokenValue value;
   unsigned line_number{};
+  TokenValue value;
 
   Token(const TokenType _type, const unsigned line_num) : type(_type), line_number(line_num) {}
-  Token(const TokenType _type, TokenValue &&_value, const unsigned line_num) : type(_type), value(std::move(_value)), line_number(line_num) {}
-  Token(Token &&other) noexcept : type(other.type), value(std::move(other.value)), line_number(other.line_number) { other.type = TokenType::INVALID_TOKEN; }
+  Token(const TokenType _type, TokenValue &&_value, const unsigned line_num) : type(_type), line_number(line_num), value(std::move(_value)) {}
+  Token(Token &&other) noexcept : type(other.type), line_number(other.line_number), value(std::move(other.value)) { other.type = TokenType::INVALID_TOKEN; }
   Token &operator=(Token &&other) noexcept { type = other.type; other.type = TokenType::INVALID_TOKEN; value = std::move(other.value); line_number = other.line_number; return *this; }
   Token(const Token &) = default;
   Token &operator=(const Token &) = default;

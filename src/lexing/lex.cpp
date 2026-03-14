@@ -328,6 +328,8 @@ void skipWS(FileInAnalysis& file) {
 std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
   FileInAnalysis file;
   file.stream.open(file_path);
+  const auto sz = std::filesystem::file_size(file_path);
+  file.token_list.reserve(sz / 4);
   if (!file.stream)
     throw LexingError("File not found.", file_path, 0);
 
@@ -347,7 +349,6 @@ std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
     else
       grabSymbol(file);
   }
-
   file.stream.close();
 
   if (Settings::doOutputLexer()) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "settings.hpp"
+#include <span>
 #include <cassert>
 #include <cstdint>
 #include <vector>

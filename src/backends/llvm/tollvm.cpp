@@ -472,9 +472,9 @@ public:
     module.setDataLayout(target_machine->createDataLayout());
 
     std::error_code EC;
-    raw_fd_ostream dest(obj_path.c_str(), EC, sys::fs::OF_None);
+    raw_fd_ostream dest(obj_path.string(), EC, sys::fs::OF_None);
     if (EC) {
-      errs() << "Could not open file: " << obj_path << " | " << EC.message() << '\n';
+      errs() << "Could not open file: " << obj_path.string() << " | " << EC.message() << '\n';
       assert(false);
     }
 
@@ -543,7 +543,7 @@ public:
 
 
 std::unique_ptr<Backend> ToLLVM::codegen(const Validation::ValidatedTU& vtu, const std::filesystem::path &file) {
-  std::unique_ptr<TU> ptr(new TU(file));
+  std::unique_ptr<TU> ptr(new TU(file.string()));
   ptr->lowerToLLVM(vtu);
   return ptr;
 }

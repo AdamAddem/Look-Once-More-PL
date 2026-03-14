@@ -28,7 +28,7 @@ void Backend::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
 
   for (const auto& file : obj_paths) {
     compiler.push_back(' ');
-    compiler.append(file);
+    compiler.append(file.string());
   }
 
   const std::string executable = Settings::getBuildLocation() + Settings::getExecutableName();

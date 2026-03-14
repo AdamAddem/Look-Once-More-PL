@@ -514,9 +514,9 @@ public:
     file_path.replace_extension(".ll");
 
     std::error_code EC;
-    raw_fd_ostream dest(file_path.c_str(), EC, sys::fs::OF_None);
+    raw_fd_ostream dest(file_path.string(), EC, sys::fs::OF_None);
     if (EC) {
-      errs() << "Could not open file: " << file_path << " | " << EC.message() << '\n';
+      errs() << "Could not open file: " << file_path.string() << " | " << EC.message() << '\n';
       std::quick_exit(1);
     }
 

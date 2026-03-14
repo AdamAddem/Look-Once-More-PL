@@ -331,7 +331,7 @@ std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
   const auto sz = std::filesystem::file_size(file_path);
   file.token_list.reserve(sz / 4);
   if (!file.stream)
-    throw LexingError("File not found.", file_path, 0);
+    throw LexingError("File not found.", file_path.string(), 0);
 
   while (true) {
     skipWS(file);

@@ -1,20 +1,21 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "ast/expressions.hpp"
+#include "ast/ast.hpp"
 #include "backends/codegen.hpp"
 #include "error.hpp"
 #include "lexing/lex.hpp"
 #include "parsing/parse.hpp"
+#include "peep_mir/peep_mir.hpp"
 #include "settings.hpp"
-#include "validation/ast_validation.hpp"
 
 #include <cassert>
 #include <filesystem>
 
-using namespace Parser;
-using namespace Lexer;
-using namespace Validation;
+using namespace LOM::Lexer;
+using namespace LOM::Parser;
+using namespace LOM::PeepMIR;
+using namespace LOM;
 
 
 
@@ -22,7 +23,7 @@ using namespace Validation;
 processLOMFile( const std::filesystem::path& filename )
 try {
   return Backend::codegen(
-                  validateTU(
+                  lowerToPeep(
                   parseTokens(
                   tokenizeFile(filename)
                   )),filename.stem()); }

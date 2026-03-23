@@ -1,32 +1,32 @@
 #pragma once
 #include "tokentype.hpp"
-#include "../error.hpp"
+#include "utilities/typedefs.hpp"
 
 #include <filesystem>
 #include <string>
 #include <variant>
 #include <vector>
 
-namespace Lexer {
+namespace LOM::Lexer {
 
 
 struct Token {
   using TokenValue = std::variant<std::uint64_t, std::string>;
   TokenType type;
-  unsigned line_number{};
   TokenValue value;
+  u64_t line_number;
 
-  Token(const TokenType _type, const unsigned line_num) : type(_type), line_number(line_num) {}
-  Token(const TokenType _type, TokenValue &&_value, const unsigned line_num) : type(_type), line_number(line_num), value(std::move(_value)) {}
-  Token(Token &&other) noexcept : type(other.type), line_number(other.line_number), value(std::move(other.value)) { other.type = TokenType::INVALID_TOKEN; }
+  Token(TokenType _type, u64_t line_num) : type(_type), line_number(line_num) {}
+  Token(TokenType _type, TokenValue &&_value, u64_t line_num) : type(_type), value(std::move(_value)), line_number(line_num) {}
+  Token(Token &&other) noexcept : type(other.type), value(std::move(other.value)), line_number(other.line_number) { other.type = TokenType::INVALID_TOKEN; }
   Token &operator=(Token &&other) noexcept { type = other.type; other.type = TokenType::INVALID_TOKEN; value = std::move(other.value); line_number = other.line_number; return *this; }
   Token(const Token &) = default;
   Token &operator=(const Token &) = default;
 
-  void throw_if(TokenType unwanted_type, const char* err_msg, LOMError::Stage error_stage) const;
-  void throw_if_not(TokenType expected_type, const char* err_msg, LOMError::Stage error_stage) const;
+  void throw_if(TokenType unwanted_type, const char* err_msg) const;
+  void throw_if_not(TokenType expected_type, const char* err_msg) const;
 
-  [[nodiscard]] constexpr bool is(const TokenType _type) const  { return type == _type; }
+  [[nodiscard]] constexpr bool is(TokenType _type) const  { return type == _type; }
   [[nodiscard]] constexpr bool isPrimitive() const              { return isCategoryPRIMITIVES(type); }
   [[nodiscard]] constexpr bool isLiteral() const                { return isCategoryLITERALS(type); }
   [[nodiscard]] constexpr bool isPointer() const                { return isCategoryPOINTERS(type); }
@@ -50,19 +50,29 @@ class TokenView {
   TokenIter end;
 
 public:
-  TokenView(const TokenIter _begin, const TokenIter _end) : begin(_begin), end(_end) {}
+  explicit TokenView(std::vector<Token>& tokens) : begin(tokens.begin()) {
+    if (tokens.back().type not_eq TokenType::INVALID_TOKEN)
+      tokens.emplace_back(TokenType::INVALID_TOKEN, 0);
 
-  [[nodiscard]] const Token &peek() const noexcept                            { return *begin; }
+    end = tokens.end() - 1;
+  }
+  TokenView(TokenIter begin, TokenIter end) : begin(begin), end(end) {}
+
+  [[nodiscard]] const Token& peek() const noexcept                            { return *begin; }
   [[nodiscard]] bool peek_is(const TokenType type) const noexcept             { return begin->type == type; }
-  [[nodiscard]] const Token &peek_ahead(const long distance) const noexcept   { return *(begin + distance); }
+  [[nodiscard]] const Token& peek_ahead(const long distance) const noexcept   { return *(begin + distance); }
   [[nodiscard]] Token take() noexcept                                         { return std::move(*begin++); }
   [[nodiscard]] bool empty() const noexcept                                   { return begin == end; }
-  [[nodiscard]] unsigned size() const noexcept                                { return (begin - end); }
-  void pop() noexcept                                                         { ++begin; }
-  bool pop_if(const TokenType type) noexcept                                  { if (begin == end || begin->type != type) return false; ++begin; return true; }
+  [[nodiscard]] unsigned size() const noexcept                                { return begin - end; }
+  [[nodiscard]] const Token& previousToken() const noexcept                   { return *(begin - 1); }
+  [[nodiscard]] u64_t current_line_number() const noexcept                    { return empty() ? (begin - 1)->line_number : begin->line_number; }
+  void pop() noexcept                                                         { if (not empty()) ++begin; }
+  bool pop_if(const TokenType type) noexcept                                  { if (empty() || begin->type != type) return false; ++begin; return true; }
 
-  void reject_then_pop(TokenType unwanted_type, const char* err_msg, LOMError::Stage error_stage);
-  void expect_then_pop(TokenType expected_type, const char* err_msg, LOMError::Stage error_stage);
+  void expect_then_pop(TokenType expected_type, const char* err_msg);
+  void expect(TokenType expected_type, const char* err_msg) const;
+  void reject_then_pop(TokenType unwanted_type, const char* err_msg);
+  void reject(TokenType unwanted_type, const char* err_msg) const;
   void print(unsigned initial_indent = 0) const;
 
 
@@ -76,7 +86,8 @@ public:
   [[nodiscard]] TokenView getTokensBetweenAngleBrackets() { return getTokensBetween(TokenType::LESS, TokenType::GTR); }
 
   //Does not return the type specified, but will keep it
-  [[nodiscard]] TokenView getAllTokensUntilFirstOf(TokenType _type);
+  [[nodiscard]] TokenView getAllTokensUntilFirstOf(TokenType type);
+  [[nodiscard]] u64_t distanceFromFirstOf(TokenType type) const;
 };
 
 [[nodiscard]] std::vector<Token> tokenizeFile(const std::filesystem::path &file_path);

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace Settings {
+namespace LOM::Settings {
 
 enum class Backend {
   LLVM,

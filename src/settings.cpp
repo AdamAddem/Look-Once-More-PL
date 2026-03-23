@@ -27,6 +27,8 @@ inline const std::unordered_map<std::string, Args> stringToArgs{
             {"-O3", Args::O3},
 };
 
+using namespace LOM;
+
 
 static bool output_lexer{false};
 static bool output_parser{false};

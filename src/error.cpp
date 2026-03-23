@@ -1,7 +1,6 @@
 #include "error.hpp"
-
-#include "ast/types.hpp"
 #include "lexing/lex.hpp"
+using namespace LOM;
 
 LOMError::LOMError(const Stage err_stage,
            const std::string& what, const std::string& err_context,

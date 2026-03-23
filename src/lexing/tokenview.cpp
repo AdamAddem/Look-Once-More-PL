@@ -5,24 +5,18 @@
 #include <stdexcept>
 #include <utility>
 
-using namespace Lexer;
+using namespace LOM::Lexer;
 
-void Token::throw_if(const TokenType unwanted_type, const char* err_msg, const LOMError::Stage error_stage) const {
+void Token::throw_if(const TokenType unwanted_type, const char* err_msg) const {
   if (type == unwanted_type) {
-   if (error_stage == LOMError::Stage::LexingError)
-     throw LexingError(err_msg, *this);
-
    throw ParsingError(err_msg, *this);
   }
 }
 
-void Token::throw_if_not(const TokenType expected_type, const char* err_msg, const LOMError::Stage error_stage) const {
-  if (type != expected_type) {
-    if (error_stage == LOMError::Stage::LexingError)
-      throw LexingError(err_msg, *this);
-
+void Token::throw_if_not(const TokenType expected_type, const char* err_msg) const {
+  if (type != expected_type)
     throw ParsingError(err_msg, *this);
-  }
+
 }
 
 std::string Token::toString() const {
@@ -80,7 +74,6 @@ std::string Token::toDebugString() const {
     default:
       throw std::runtime_error("Error in toDebugString method");
     }
-    throw std::runtime_error("Error in toDebugString method");
   }
 
   if (type == TokenType::KEYWORD_DEVOID) [[unlikely]]
@@ -93,7 +86,8 @@ std::string Token::toDebugString() const {
 
 /* TokenHandler Methods */
 
-void TokenView::print(const unsigned initial_indent) const {
+void
+TokenView::print(const unsigned initial_indent) const {
   auto curr_print = begin;
 
   auto indent{initial_indent};
@@ -124,30 +118,35 @@ void TokenView::print(const unsigned initial_indent) const {
 
 
 
-void TokenView::reject_then_pop(const TokenType unwanted_type,
-                                const char *err_msg,
-                                const LOMError::Stage error_stage) {
-  begin->throw_if(unwanted_type, err_msg, error_stage);
-  ++begin;
+
+
+void
+TokenView::expect_then_pop(const TokenType expected_type, const char *err_msg) {
+  begin->throw_if_not(expected_type, err_msg);
+  pop();
 }
 
-void TokenView::expect_then_pop(const TokenType expected_type,
-                                const char *err_msg,
-                                const LOMError::Stage error_stage) {
-  begin->throw_if_not(expected_type, err_msg, error_stage);
-  ++begin;
+void
+TokenView::expect(const TokenType expected_type, const char *err_msg) const { begin->throw_if_not(expected_type, err_msg); }
+
+void
+TokenView::reject_then_pop(const TokenType unwanted_type, const char *err_msg) {
+  begin->throw_if(unwanted_type, err_msg);
+  pop();
 }
 
+void
+TokenView::reject(const TokenType unwanted_type, const char *err_msg) const { begin->throw_if(unwanted_type, err_msg); }
 
-TokenView TokenView::getTokensBetween(const TokenType opening_token,
-                                      const TokenType closing_token) {
-  const TokenIter new_begin = begin;
+TokenView
+TokenView::getTokensBetween(const TokenType opening_token, const TokenType closing_token) {
+  const auto new_begin = begin;
   int open = 1;
   while (open) {
-    if (begin == end) {
+    if (empty()) {
       std::string errmsg = "Expected closing ";
       errmsg.append(tokenTypeToString(opening_token));
-      throw LexingError(errmsg, *(begin - 1));
+      throw ParsingError(errmsg, *(begin - 1));
     }
 
     if (begin->type == opening_token)
@@ -155,7 +154,7 @@ TokenView TokenView::getTokensBetween(const TokenType opening_token,
     else if (begin->type == closing_token)
       --open;
 
-    ++begin;
+    pop();
   }
 
 
@@ -163,17 +162,33 @@ TokenView TokenView::getTokensBetween(const TokenType opening_token,
 }
 
 
-TokenView TokenView::getAllTokensUntilFirstOf(const TokenType _type) {
+TokenView
+TokenView::getAllTokensUntilFirstOf(const TokenType type) {
   const TokenIter new_begin = begin;
-  while (!begin->is(_type)) {
-    ++begin;
-    if (begin == end) {
+  while (not begin->is(type)) {
+    pop();
+    if (empty()) {
       std::string errmsg = "Expected ";
-      errmsg.append(tokenTypeToString(_type));
-      throw LexingError(errmsg, *(begin - 1));
+      errmsg.append(tokenTypeToString(type));
+      throw ParsingError(errmsg, *(begin - 1));
     }
 
   }
 
   return {new_begin, begin};
+}
+
+u64_t
+TokenView::distanceFromFirstOf(const TokenType type) const {
+  auto curr = begin;
+  while (not curr->is(type)) {
+    ++curr;
+    if (curr == end) {
+      std::string errmsg = "Expected ";
+      errmsg.append(tokenTypeToString(type));
+      throw ParsingError(errmsg, *(curr - 1));
+    }
+  }
+
+  return curr - begin;
 }

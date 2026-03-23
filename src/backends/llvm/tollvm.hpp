@@ -1,15 +1,16 @@
 #pragma once
 #include "backends/codegen.hpp"
-#include <filesystem>
-#include <string>
 
-namespace Validation {
-  struct ValidatedTU;
-  struct ValidatedFunction;
+#include <cassert>
+#include <filesystem>
+
+namespace LOM::PeepMIR {
+  struct PeepTU;
+  struct Function;
 }
 
-namespace ToLLVM {
+namespace LOM::ToLLVM {
 
-std::unique_ptr<Backend> codegen(const Validation::ValidatedTU&, const std::filesystem::path &file);
+inline std::unique_ptr<Backend> codegen(const PeepMIR::PeepTU&, const std::filesystem::path &) {assert(false);}
 
 }

@@ -11,6 +11,7 @@ fn if_statements() {
     else if(condition) { condition = true; }
     elif(true) { condition = false; }
     else mut i32 scoped = junk;
+
     return;
 }
 

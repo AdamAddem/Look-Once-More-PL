@@ -3,7 +3,7 @@
 #include <string>
 #include <utility>
 
-namespace Lexer {
+namespace LOM::Lexer {
 enum class TokenType : unsigned {
   INVALID_TOKEN,
   IDENTIFIER,

@@ -1,6 +1,11 @@
 #pragma once
 #include <string>
 
+namespace LOM::Lexer {
+struct Token;
+}
+
+namespace LOM {
 struct LOMError {
   enum class Stage {LexingError, ParsingError, ValidationError, BackendError} error_stage;
 
@@ -14,17 +19,12 @@ struct LOMError {
   std::string error_message;
 };
 
-
-namespace Lexer {
-  struct Token;
-}
 struct LexingError final : LOMError {
   LexingError(const std::string& what, const std::string& err_context, const unsigned line_num) :
   LOMError(Stage::LexingError, what, err_context, line_num) {}
 
   LexingError(const std::string& what, const Lexer::Token& token);
 };
-
 
 struct ParsingError final : LOMError {
   ParsingError(const std::string& what, const std::string& err_context, const unsigned line_num) :
@@ -42,3 +42,4 @@ struct BackendError final : LOMError {
   BackendError(const std::string& what, const std::string& err_context, const unsigned line_num) :
   LOMError(Stage::BackendError, what, err_context, line_num) {}
 };
+}

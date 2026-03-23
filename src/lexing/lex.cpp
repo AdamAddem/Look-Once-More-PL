@@ -10,25 +10,26 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace Lexer;
 
 
 namespace {
+using namespace LOM;
+using namespace LOM::Lexer;
 
 struct FileInAnalysis {
   std::ifstream stream;
-  uint32_t needs_closing_paren{0};
-  uint32_t line_number{1};
+  u32_t needs_closing_paren{0};
+  u32_t line_number{1};
   std::vector<Token> token_list;
 };
 
 void grabNumber(FileInAnalysis& file);
 
 [[nodiscard]] bool
-is_num(const int c) { return c >= '0' && c <= '9'; }
+is_num(int c) { return c >= '0' && c <= '9'; }
 
 [[nodiscard]] int
-charToEscapeSequenceEquivalent(const FileInAnalysis& file, const int c) {
+charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
   switch (c) {
   case 'n':
     return '\n';
@@ -320,7 +321,7 @@ void skipWS(FileInAnalysis& file) {
   return false;
 }
 
-[[nodiscard]] bool canStartIdentifier(const int c) {
+[[nodiscard]] bool canStartIdentifier(int c) {
   return std::isalpha(c) || c == '_';
 }
 }

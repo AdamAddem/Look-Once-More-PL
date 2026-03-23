@@ -1,5 +1,8 @@
 #include "parse.hpp"
-#include "ast/statements.hpp"
+
+#include "ast/ast.hpp"
+#include "error.hpp"
+#include "semantic_analysis/symbol_table.hpp"
 
 #include <iostream>
 #include <unordered_set>
@@ -8,13 +11,13 @@
 #include "lexing/lex.hpp"
 #include "settings.hpp"
 
-using namespace Lexer;
-using namespace Parser;
-using namespace AST;
+using namespace LOM;
+using namespace LOM::Lexer;
+using namespace LOM::Parser;
+using namespace LOM::AST;
 
 
 namespace {
-/* Type and Identifier */
 InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
   Token token = tokens.take();
   bool is_mutable{false};
@@ -32,7 +35,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
       return devoid_instance;
 
     if (token.isPointer()) { //add reference support eventually
-      tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.", LOMError::Stage::ParsingError);
+      tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.");
 
       const InstantiatedType subtype_instance = parseType(tokens, table);
       switch (token.type) {
@@ -88,7 +91,6 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
   if (token.is(TokenType::LESS)) {
     TokenView variant_types_tokens = tokens.getTokensBetweenAngleBrackets();
 
-
     bool nullable{false};
     std::vector<const Type*> subtypes;
     std::unordered_set<const Type* > typenames; //prevent duplicate types
@@ -96,7 +98,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
     const unsigned variant_ln = variant_types_tokens.peek().line_number;
     do {
       const unsigned subtype_ln = variant_types_tokens.peek().line_number;
-      const InstantiatedType subtype = parseType(variant_types_tokens, table);
+      const InstantiatedType subtype = parseType(tokens, table);
       if (subtype.type->isVariant())
         throw ParsingError("Nested variant types not allowed.", subtype.toString(), subtype_ln);
 
@@ -134,643 +136,648 @@ std::string parseIdentifier(TokenView& tokens) {
 
   throw ParsingError("Expected identifier.", token);
 }
-/* Type and Identifier */
 
-/* Expressions */
-Expression* parseExpression(TokenView& tokens);
 
-std::vector<Expression*> parseParameters(TokenView& between_parenthesis) {
-  if (between_parenthesis.empty())
-    return {};
+struct Body {
+  std::vector<ASTNode> tree;
+  TokenView tokens;
+  SymbolTable& table;
 
-  std::vector<Expression*> retval;
+  struct Expression {
+    ASTNode::Type type;
+    u16_t left_idx;
+    u16_t right_idx; //unary expressions do not contain right_idx
+    u64_t value;
+  };
 
-  while (true) {
-    retval.push_back(parseExpression(between_parenthesis));
-    if (between_parenthesis.empty())
-      return retval;
+  struct ExpressionTree {
+    static constexpr u64_t max_expressiontree_size{200};
+    static_assert(max_expressiontree_size < std::numeric_limits<u16_t>::max());
+    std::array<Expression, max_expressiontree_size> data;
+    u64_t begin{1};
 
-    between_parenthesis.expect_then_pop(TokenType::COMMA, "Expected comma between function parameters in calling expression.", LOMError::Stage::ParsingError);
+    u16_t create(ASTNode::Type type, u64_t value, u16_t left_idx = 0, u16_t right_idx = 0) {
+      auto& expr = data[begin];
+      expr.type = type;
+      expr.value = value;
+      expr.left_idx = left_idx;
+      expr.right_idx = right_idx;
+      return begin++;
+    }
+
+    void reset() {
+      begin = 1;
+    }
+  };
+
+  ExpressionTree& expression_tree;
+
+  u16_t generateParameters() {
+    const auto parameter = generateAssignmentExpression();
+    if (tokens.pop_if(TokenType::RPAREN))
+      return expression_tree.create(ASTNode::EMPTY, 0, parameter, 0);
+
+    tokens.expect_then_pop(TokenType::COMMA, "Expected comma in call expression.");
+    return expression_tree.create(ASTNode::EMPTY, 0, parameter, generateParameters());
   }
-}
 
-Expression* parsePrimaryExpression(TokenView& tokens) {
-  const unsigned ln = tokens.peek().line_number;
-  if (tokens.peek().isLiteral()) {
-    const Primitive* literal_type;
+  u16_t generateSubscript() {
+    const auto res = generateAssignmentExpression();
+    tokens.expect_then_pop(TokenType::RBRACKET, "Expected closing bracket in subscript expression.");
+    return res;
+  }
+
+  u16_t generatePrimaryExpression() {
+    if (tokens.empty())
+      return 0;
+
+    if (tokens.peek().isLiteral()) {
+      auto token = tokens.take();
+      auto literal_type = ASTNode::EMPTY;
+      u64_t literal_value;
+
+      switch (token.type) {
+      case TokenType::INT_LITERAL:
+        literal_type = ASTNode::INT_LITERAL;
+        literal_value = std::bit_cast<u64_t>(token.getInt());
+        break;
+      case TokenType::UINT_LITERAL:
+        literal_type = ASTNode::UINT_LITERAL;
+        literal_value = token.getUint();
+        break;
+      case TokenType::FLOAT_LITERAL:
+        literal_type = ASTNode::FLOAT_LITERAL;
+        literal_value = token.getUint();
+        break;
+      case TokenType::DOUBLE_LITERAL:
+        literal_type = ASTNode::DOUBLE_LITERAL;
+        literal_value = token.getUint();
+        break;
+      case TokenType::BOOL_LITERAL:
+        literal_type = ASTNode::BOOL_LITERAL;
+        literal_value = token.getUint();
+        break;
+      case TokenType::CHAR_LITERAL:
+        literal_type = ASTNode::CHAR_LITERAL;
+        literal_value = token.getUint();
+        break;
+      case TokenType::STRING_LITERAL:
+        literal_type = ASTNode::STRING_LITERAL;
+        literal_value = std::bit_cast<u64_t>(
+          new std::string(token.takeString()));
+        break;
+      default:
+        assert(false);
+      }
+
+      return expression_tree.create(literal_type, literal_value);
+    }
+
+    if (tokens.pop_if(TokenType::LPAREN)) {
+      const auto res = generateExpressionUntil(TokenType::LPAREN);
+      return res;
+    }
+
+    std::string identifier = tokens.take().takeString();
+    const auto identifier_value = std::bit_cast<u64_t>(new std::string(std::move(identifier)));
+    return expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
+  }
+
+  u16_t generatePostfixExpression() {
+    auto left = generatePrimaryExpression();
+    while (true) {
+      u64_t value;
+      switch (tokens.peek().type) {
+      case TokenType::PLUSPLUS:
+        value = static_cast<u64_t>(Operator::POST_INCREMENT);
+        break;
+      case TokenType::MINUSMINUS:
+        value = static_cast<u64_t>(Operator::POST_DECREMENT);
+        break;
+
+      case TokenType::LPAREN: {
+        tokens.pop();
+        const u16_t parameters = tokens.pop_if(TokenType::RPAREN) ? 0 : generateParameters();
+        left = expression_tree.create(
+          ASTNode::CALLING, 0,
+          left, parameters);
+        continue;
+      }
+      case TokenType::LBRACKET:
+        tokens.pop();
+        tokens.reject(TokenType::RBRACKET, "Expected expression within brackets.");
+        left = expression_tree.create(
+          ASTNode::SUBSCRIPT, 0,
+          left, generateSubscript());
+        continue;
+      default:
+        return left;
+      }
+
+      tokens.pop();
+      left = expression_tree.create(
+        ASTNode::UNARY, value,
+        generatePrimaryExpression(), 0);
+    }
+  }
+
+  u16_t generatePrefixExpression() {
+    u64_t value;
     switch (tokens.peek().type) {
-    case TokenType::INT_LITERAL:
-    {
-      auto positive_int_val = tokens.peek().getInt();
-      positive_int_val = positive_int_val < 0 ? (positive_int_val * -1) - 1 : positive_int_val;
-      if (positive_int_val <= std::numeric_limits<int8_t>::max())
-        literal_type = &i8_type;
-      else if (positive_int_val <= std::numeric_limits<int16_t>::max())
-        literal_type = &i16_type;
-      else if (positive_int_val <= std::numeric_limits<int32_t>::max())
-        literal_type = &i32_type;
-      else
-        literal_type = &i64_type;
+    case TokenType::PLUSPLUS:
+      value = static_cast<u64_t>(Operator::PRE_INCREMENT);
+      break;
+    case TokenType::MINUSMINUS:
+      value = static_cast<u64_t>(Operator::PRE_DECREMENT);
+      break;
+    case TokenType::MINUS:
+      value = static_cast<u64_t>(Operator::UNARY_MINUS);
+      break;
+    case TokenType::ADDR:
+      value = static_cast<u64_t>(Operator::ADDRESS_OF);
+      break;
+    case TokenType::KEYWORD_NOT:
+      value = static_cast<u64_t>(Operator::NOT);
+      break;
+    case TokenType::KEYWORD_BITNOT:
+      value = static_cast<u64_t>(Operator::BITNOT);
+      break;
+    default:
+      return generatePostfixExpression();
     }
-      break;
-    case TokenType::UINT_LITERAL:
-    {
-      const auto uint_val = tokens.peek().getUint();
-      if (uint_val <= std::numeric_limits<uint8_t>::max())
-        literal_type = &u8_type;
-      else if (uint_val <= std::numeric_limits<uint16_t>::max())
-        literal_type = &u16_type;
-      else if (uint_val <= std::numeric_limits<uint32_t>::max())
-        literal_type = &u32_type;
-      else
-        literal_type = &u64_type;
+    tokens.pop();
+    return expression_tree.create(
+      ASTNode::UNARY, value,
+      generatePrefixExpression(), 0);
+  }
+
+  u16_t generateExponentExpression() {
+    auto left = generatePrefixExpression();
+    while (tokens.pop_if(TokenType::POW)) {
+      left = expression_tree.create(
+        ASTNode::BINARY, static_cast<u64_t>(Operator::POWER),
+        left, generatePrefixExpression());
     }
-      break;
-    case TokenType::FLOAT_LITERAL:
-      literal_type = &f32_type;
-      break;
-    case TokenType::DOUBLE_LITERAL:
-      literal_type = &f64_type;
-      break;
-    case TokenType::BOOL_LITERAL:
-      literal_type = &bool_type;
-      break;
-    case TokenType::CHAR_LITERAL:
-      literal_type = &char_type;
-      break;
-    case TokenType::STRING_LITERAL:
-      literal_type = &string_type;
-      break;
+
+    return left;
+  }
+
+  u16_t generateFactorExpression() {
+    auto left = generateExponentExpression();
+    while (true) {
+      u64_t value;
+      switch (tokens.peek().type) {
+      case TokenType::STAR:
+        value = static_cast<u64_t>(Operator::MULTIPLY);
+        break;
+      case TokenType::SLASH:
+        value = static_cast<u64_t>(Operator::DIVIDE);
+        break;
+      case TokenType::MOD:
+        value = static_cast<u64_t>(Operator::MODULUS);
+        break;
+      default:
+        return left;
+      }
+      tokens.pop();
+      left = expression_tree.create(
+        ASTNode::BINARY, value,
+        left, generateExponentExpression());
+    }
+  }
+
+  u16_t generateTermExpression() {
+    auto left = generateFactorExpression();
+    while (true) {
+      u64_t value;
+      switch (tokens.peek().type) {
+      case TokenType::PLUS:
+        value = static_cast<u64_t>(Operator::ADD);
+        break;
+      case TokenType::MINUS:
+        value = static_cast<u64_t>(Operator::SUBTRACT);
+        break;
+      default:
+        return left;
+      }
+      tokens.pop();
+      left = expression_tree.create(
+    ASTNode::BINARY, value,
+         left, generateFactorExpression());
+    }
+  }
+
+  u16_t generateRelationalExpression() {
+    auto left= generateTermExpression();
+    while (true) {
+      u64_t value;
+      switch (tokens.peek().type) {
+      case TokenType::KEYWORD_EQUALS:
+        value = static_cast<u64_t>(Operator::EQUAL);
+        break;
+      case TokenType::KEYWORD_NOT_EQUAL:
+        value = static_cast<u64_t>(Operator::NOT_EQUAL);
+        break;
+      case TokenType::LESS:
+        value = static_cast<u64_t>(Operator::LESS);
+        break;
+      case TokenType::GTR:
+        value = static_cast<u64_t>(Operator::GREATER);
+        break;
+      case TokenType::LESSEQ:
+        value = static_cast<u64_t>(Operator::LESS_EQUAL);
+        break;
+      case TokenType::GTREQ:
+        value = static_cast<u64_t>(Operator::GREATER_EQUAL);
+        break;
+      default:
+        return left;
+      }
+      tokens.pop();
+      left = expression_tree.create(
+        ASTNode::BINARY, value,
+        left, generateTermExpression());
+    }
+
+  }
+
+  u16_t generateBitwiseExpression() {
+    auto left = generateRelationalExpression();
+    while (true) {
+      u64_t value;
+      switch (tokens.peek().type) {
+      case TokenType::KEYWORD_BITAND:
+        value = static_cast<u64_t>(Operator::BITAND);
+        break;
+      case TokenType::KEYWORD_BITOR:
+        value = static_cast<u64_t>(Operator::BITOR);
+        break;
+      case TokenType::KEYWORD_BITXOR:
+        value = static_cast<u64_t>(Operator::BITXOR);
+        break;
+      default:
+        return left;
+      }
+      tokens.pop();
+      left = expression_tree.create(
+        ASTNode::BINARY, value,
+        left, generateRelationalExpression());
+    }
+  }
+
+  u16_t generateLogicalExpression() {
+    auto left = generateBitwiseExpression();
+    while (true) {
+      u64_t value;
+      switch (tokens.peek().type) {
+      case TokenType::KEYWORD_AND:
+        value = static_cast<u64_t>(Operator::AND);
+        break;
+      case TokenType::KEYWORD_OR:
+        value = static_cast<u64_t>(Operator::OR);
+        break;
+      case TokenType::KEYWORD_XOR:
+        value = static_cast<u64_t>(Operator::XOR);
+        break;
+      default:
+        return left;
+      }
+
+      tokens.pop();
+      left = expression_tree.create(
+        ASTNode::BINARY, value,
+        left, generateBitwiseExpression());
+    }
+  }
+
+  u16_t generateAssignmentExpression() {
+    const auto left = generateLogicalExpression();
+    if (tokens.pop_if(TokenType::ASSIGN)) {
+      return expression_tree.create(
+        ASTNode::BINARY, static_cast<u64_t>(Operator::ASSIGN),
+        left, generateAssignmentExpression());
+    }
+
+    return left;
+  }
+
+  u16_t generateExpressionUntil(TokenType ending_token) {
+    const TokenView until_ending = tokens.getAllTokensUntilFirstOf(ending_token); tokens.pop();
+    const TokenView after_ending = tokens;
+    tokens = until_ending;
+    const auto res = generateAssignmentExpression();
+    tokens = after_ending;
+    return res;
+  }
+
+
+  void translateExpression(u16_t idx) {
+    if (idx == 0)
+      return;
+
+    using enum ASTNode::Type;
+    auto expression = expression_tree.data[idx];
+    switch (expression.type) {
+    case EMPTY:
+    case DECLARATION:
+    case IF:
+    case FOR:
+    case WHILE:
+    case SCOPED:
+    case RETURN:
+      assert(false);
+
+    case UNARY:
+      tree.emplace_back(UNARY, expression.value);
+      return translateExpression(expression.left_idx);
+    case BINARY:
+      tree.emplace_back(BINARY, expression.value);
+      translateExpression(expression.left_idx);
+      translateExpression(expression.right_idx);
+      return;
+    case CALLING: {
+      tree.emplace_back(CALLING, 0);
+      const auto calling_idx = tree.size() - 1;
+      u16_t left_idx = expression.left_idx;
+      u16_t right_idx = expression.right_idx;
+      u64_t num_parameters{};
+      while (true) {
+        translateExpression(left_idx);
+        left_idx = expression_tree.data[right_idx].left_idx;
+        right_idx = expression_tree.data[right_idx].right_idx;
+        if (right_idx == 0)
+          break;
+        ++num_parameters;
+      }
+
+      tree[calling_idx].value = num_parameters - 1;
+      return;
+    }
+      assert(false);
+    case SUBSCRIPT:
+      tree.emplace_back(SUBSCRIPT, expression.value);
+      translateExpression(expression.left_idx);
+      translateExpression(expression.right_idx);
+      return;
+
+    case IDENTIFIER:
+    case INT_LITERAL:
+    case UINT_LITERAL:
+    case FLOAT_LITERAL:
+    case DOUBLE_LITERAL:
+    case BOOL_LITERAL:
+    case CHAR_LITERAL:
+    case STRING_LITERAL:
+      tree.emplace_back(expression.type, expression.value);
+      return;
 
     default:
       assert(false);
     }
-
-    return new Expression(std::in_place_type<LiteralExpression>, std::move(tokens.take().value), literal_type, ln);
   }
-
-  if (tokens.pop_if(TokenType::LPAREN)) {
-    TokenView t = tokens.getTokensBetweenParenthesis();
-    return parseExpression(t);
-  }
-
-
-  std::string ident = parseIdentifier(tokens);
-  return new Expression(std::in_place_type<IdentifierExpression>, std::move(ident), ln);
-}
-
-Expression* parsePostfixExpression(TokenView& tokens) {
-  Expression* left = parsePrimaryExpression(tokens);
-  if (tokens.empty())
-    return left;
-
-
-
-  const unsigned ln = tokens.peek().line_number;
-  while (true) {
-    if (tokens.pop_if(TokenType::PLUSPLUS))
-      left = new Expression(std::in_place_type<UnaryExpression>, left, Operator::POST_INCREMENT, ln);
-
-    else if (tokens.pop_if(TokenType::MINUSMINUS))
-      left = new Expression(std::in_place_type<UnaryExpression>, left, Operator::POST_DECREMENT, ln);
-
-    else if (tokens.pop_if(TokenType::LPAREN)) {
-      TokenView t = tokens.getTokensBetweenParenthesis();
-      left = new Expression(std::in_place_type<CallingExpression>, left,  parseParameters(t), ln);
-    } else if (tokens.pop_if(TokenType::LBRACKET)) {
-      TokenView t = tokens.getTokensBetweenBrackets();
-      left = new Expression(std::in_place_type<SubscriptExpression>, left, parseExpression(t), ln);
-    } else
-      break;
-  };
-
-  return left;
-}
-
-Expression* parsePrefixExpression(TokenView& tokens) {
-  const unsigned ln = tokens.peek().line_number;
-  if (tokens.pop_if(TokenType::PLUSPLUS))
-    return new Expression{
-      std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::PRE_INCREMENT, ln
-    };
-
-  if (tokens.pop_if(TokenType::MINUSMINUS))
-    return new Expression{
-      std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::PRE_DECREMENT, ln
-    };
-
-  if (tokens.pop_if(TokenType::MINUS))
-    return new Expression{
-      std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::UNARY_MINUS, ln
-    };
-
-  if (tokens.pop_if(TokenType::ADDR))
-    return new Expression{
-        std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::ADDRESS_OF, ln
-    };
-
-  if (tokens.pop_if(TokenType::KEYWORD_NOT))
-    return new Expression{
-        std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::NOT, ln
-    };
-
-  if (tokens.pop_if(TokenType::KEYWORD_BITNOT))
-    return new Expression{
-      std::in_place_type<UnaryExpression>, parsePrefixExpression(tokens), Operator::BITNOT, ln
-  };
-
-
-  return parsePostfixExpression(tokens);
-}
-
-Expression* parseExponentExpression(TokenView& tokens) {
-  Expression* left = parsePrefixExpression(tokens);
-  if (tokens.empty())
-    return left;
-
-  const unsigned ln = tokens.peek().line_number;
-  while (true) {
-    if (tokens.pop_if(TokenType::POW))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>,left, parsePrefixExpression(tokens), Operator::POWER, ln
-      };
-    else
-      break;
-  }
-
-  return left;
-}
-
-Expression* parseFactorExpression(TokenView& tokens) {
-  Expression* left = parseExponentExpression(tokens);
-  if (tokens.empty())
-    return left;
-
-
-  const unsigned ln = tokens.peek().line_number;
-  while (true) {
-    if (tokens.pop_if(TokenType::STAR))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::MULTIPLY, ln
-      };
-
-    else if (tokens.pop_if(TokenType::SLASH))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::DIVIDE, ln
-      };
-
-    else if (tokens.pop_if(TokenType::MOD))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::MODULUS, ln
-      };
-
-    else
-      break;
-  }
-
-  return left;
-}
-
-Expression* parseTermExpression(TokenView& tokens) {
-  Expression* left = parseFactorExpression(tokens);
-  if (tokens.empty())
-    return left;
-
-  const unsigned ln = tokens.peek().line_number;
-  while (true) {
-    if (tokens.pop_if(TokenType::PLUS))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseFactorExpression(tokens), Operator::ADD, ln
-      };
-
-    else if (tokens.pop_if(TokenType::MINUS))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>,left, parseFactorExpression(tokens), Operator::SUBTRACT, ln
-      };
-
-    else
-      break;
-  }
-  return left;
-}
-
-Expression* parseRelationalExpression(TokenView& tokens) {
-  Expression* left = parseTermExpression(tokens);
-  if (tokens.empty())
-    return left;
-
-  const unsigned ln = tokens.peek().line_number;
-  while (true) {
-    if (tokens.pop_if(TokenType::KEYWORD_EQUALS))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::EQUAL, ln
-      };
-    else if (tokens.pop_if(TokenType::KEYWORD_NOT_EQUAL))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>,left, parseTermExpression(tokens), Operator::NOT_EQUAL, ln
-      };
-    else if (tokens.pop_if(TokenType::LESS))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::LESS, ln
-      };
-    else if (tokens.pop_if(TokenType::GTR))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::GREATER, ln
-      };
-    else if (tokens.pop_if(TokenType::LESSEQ))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::LESS_EQUAL, ln
-      };
-    else if (tokens.pop_if(TokenType::GTREQ))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseTermExpression(tokens), Operator::GREATER_EQUAL, ln
-      };
-    else
-      break;
-  }
-
-  return left;
-}
-
-Expression* parseBitwiseExpression(TokenView& tokens) {
-  Expression* left = parseRelationalExpression(tokens);
-  if (tokens.empty())
-    return left;
-
-  const unsigned ln = tokens.peek().line_number;
-  while (true) {
-    if (tokens.pop_if(TokenType::KEYWORD_BITAND))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITAND, ln
-      };
-
-    else if (tokens.pop_if(TokenType::KEYWORD_BITOR))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseRelationalExpression(tokens), Operator::BITOR, ln
-      };
-
-    else if (tokens.pop_if(TokenType::KEYWORD_BITXOR))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>,left, parseRelationalExpression(tokens), Operator::BITXOR, ln
-      };
-
-
-    else
-      break;
-  }
-
-  return left;
-}
-
-Expression* parseLogicalExpression(TokenView& tokens) {
-  Expression* left = parseBitwiseExpression(tokens);
-  if (tokens.empty())
-    return left;
-
-  const unsigned ln = tokens.peek().line_number;
-  while (true) {
-    if (tokens.pop_if(TokenType::KEYWORD_AND))
-      left = new Expression{
-        std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::AND, ln
-      };
-    else if (tokens.pop_if(TokenType::KEYWORD_OR))
-      left = new Expression{
-          std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::OR, ln
-      };
-    else if (tokens.pop_if(TokenType::KEYWORD_XOR))
-      left = new Expression{
-          std::in_place_type<BinaryExpression>, left, parseBitwiseExpression(tokens), Operator::XOR, ln
-      };
-    else
-      break;
-  }
-
-  return left;
-}
-
-Expression* parseAssignmentExpression(TokenView& tokens) {
-  Expression* const left = parseLogicalExpression(tokens);
-  if (tokens.empty())
-    return left;
-
-  const unsigned ln = tokens.peek().line_number;
-  if (tokens.pop_if(TokenType::ASSIGN))
-    return new Expression{
-      std::in_place_type<BinaryExpression>, left, parseAssignmentExpression(tokens), Operator::ASSIGN, ln
-    };
-
-  return left;
-}
-
-// assumes tokens holds only the tokens relevant to the expression
-Expression* parseExpression(TokenView& tokens) {
-  if (tokens.empty())
-    return nullptr;
-
-  return parseAssignmentExpression(tokens);
-}
-/* Expressions */
-
-
-
-Statement *parseStatement(TokenView& tokens, SymbolTable& table);
-Statement *parseScoped(TokenView& tokens, SymbolTable& table);
-
-Statement *parseExpressionStatement(TokenView& tokens) {
-  const unsigned ln = tokens.peek().line_number;
-  if (tokens.pop_if(TokenType::SEMI_COLON))
-    return new Statement{std::in_place_type<ExpressionStatement>, ln};
-
-  TokenView until_semi = tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
-  tokens.pop();
-  return new Statement{std::in_place_type<ExpressionStatement>, ln, parseExpression(until_semi)};
-}
-
-Statement *parseVarDecl(TokenView& tokens, SymbolTable& table) {
-  const unsigned ln = tokens.peek().line_number;
-  InstantiatedType variable_type = parseType(tokens, table);
-  std::string ident = parseIdentifier(tokens);
-  tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.", LOMError::Stage::ParsingError);
-
-  if (tokens.peek_is(TokenType::IDENTIFIER)) {
-    if (tokens.peek().toString() == ident)
-      throw ParsingError("Variable may not be initialized using itself.", tokens.peek());
-  }
-
-  if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
-    if (!variable_type.details.is_mutable)
-      throw ParsingError("Non-mutable variables may not be junk initialized.", variable_type.toString(), ln);
-
-    tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon ending variable declaration.", LOMError::Stage::ParsingError);
-    return new Statement{
-      std::in_place_type<VarDeclaration>, variable_type, std::move(ident), ln
-    };
-  }
-
-
-  TokenView expression_tokens = tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
-  tokens.pop();
-  if (expression_tokens.empty())
-    throw ParsingError("Expected initializing expression in variable declaration.", ";", ln);
-
-  Expression * const expr = parseExpression(expression_tokens);
-
-  return new Statement{std::in_place_type<VarDeclaration>, variable_type, std::move(ident), ln, expr};
-}
-
-// for the statements below starting with a keyword,
-// that keyword has already been eaten
-Statement *parseIf(TokenView& tokens, SymbolTable& table) {
-  const unsigned ln = tokens.peek().line_number;
-  tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in if statement condition.", LOMError::Stage::ParsingError);
-
-  TokenView condition_tokens = tokens.getTokensBetweenParenthesis();
-  if (condition_tokens.empty())
-    throw ParsingError("Expected condition in if statement.", "(...)", ln);
-
-  Expression* const condition = parseExpression(condition_tokens);
-
-  Statement *const true_branch = parseScoped(tokens, table);
-  Statement *false_branch = nullptr;
-
-  if (tokens.pop_if(TokenType::KEYWORD_ELSE))
-    false_branch = parseScoped(tokens, table);
-
-  return new Statement{std::in_place_type<IfStatement>, condition, true_branch, ln, false_branch};
-}
-
-Statement *parseFor(TokenView& tokens, SymbolTable& table) {
-  tokens.expect_then_pop(TokenType::LPAREN, "Expected opening patenthesis in for loop statement.", LOMError::Stage::ParsingError);
-
-  const unsigned ln = tokens.peek().line_number;
-  TokenView betweenParen = tokens.getTokensBetweenParenthesis();
-  if (betweenParen.empty())
-    throw ParsingError("Expected for loop header.", "(...)", ln);
-
-  auto& first = betweenParen.peek();
-  Statement *declOrAssignment{nullptr};
-  if (first.isTypeModifier() ||
-      first.isPrimitive() ||
-    (betweenParen.peek_is(TokenType::IDENTIFIER) && betweenParen.peek_ahead(1).is(TokenType::IDENTIFIER))
-    )
-    declOrAssignment = parseVarDecl(betweenParen, table);
-  else if (first.is(TokenType::SEMI_COLON)) {betweenParen.pop();}
-  else
-    declOrAssignment = parseExpressionStatement(betweenParen);
-
-
-  Expression* const condition = betweenParen.peek_is(TokenType::SEMI_COLON) ? nullptr : parseExpression(betweenParen);
-  betweenParen.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon after condition in for loop header.", LOMError::Stage::ParsingError);
-
-  Expression* const iteration = parseExpression(betweenParen);
-  Statement *const loop_body = parseScoped(tokens, table);
-
-  return new Statement{std::in_place_type<ForLoop>, declOrAssignment, condition, iteration, loop_body, ln};
-}
-
-Statement *parseWhile(TokenView& tokens, SymbolTable& table) {
-  tokens.expect_then_pop(TokenType::LPAREN,"Expected open parenthesis in while loop condition", LOMError::Stage::ParsingError);
-
-  const unsigned ln = tokens.peek().line_number;
-  TokenView condition_tokens = tokens.getTokensBetweenParenthesis();
-  if (condition_tokens.empty())
-    throw ParsingError("Expected condition between parenthesis in while loop", "(...)", ln);
-  Expression* const condition = parseExpression(condition_tokens);
-
-  Statement *const loop_body = parseScoped(tokens, table);
-
-  return new Statement{std::in_place_type<WhileLoop>, condition, loop_body, ln};
-}
-
-//unsupported currently
-Statement *parseDoWhile(TokenView&) { assert(false && "dowhile currently unsupported"); }
-
-// scoped may be {...} or one statement ;
-Statement *parseScoped(TokenView& tokens, SymbolTable& table) {
-  std::vector<Statement*> statements;
-
-  const unsigned ln = tokens.peek().line_number;
-  if (tokens.pop_if(TokenType::LBRACE)) {
-    TokenView scopedTokens = tokens.getTokensBetweenBraces();
-    while (!scopedTokens.empty()) {
-      statements.emplace_back(parseStatement(scopedTokens, table));
+  void parseExpressionUntil(TokenType ending_token) {
+    expression_tree.reset();
+    if (tokens.pop_if(ending_token)) {
+      tree.emplace_back(ASTNode::Type::EMPTY);
+      return;
     }
 
-    return new Statement{std::in_place_type<ScopedStatement>, std::move(statements), ln};
+    const auto idx = generateExpressionUntil(ending_token);
+    translateExpression(idx);
   }
 
-  statements.push_back(parseStatement(tokens, table));
-  return new Statement{std::in_place_type<ScopedStatement>, std::move(statements), ln};
-}
-
-Statement *parseReturn(TokenView& tokens) {
-  const unsigned ln = tokens.peek().line_number;
-  if (tokens.pop_if(TokenType::SEMI_COLON))
-    return new Statement{std::in_place_type<ReturnStatement>, ln};
-
-  TokenView retval = tokens.getAllTokensUntilFirstOf(TokenType::SEMI_COLON);
-  tokens.pop();
-  return new Statement{std::in_place_type<ReturnStatement>, ln, parseExpression(retval)};
-}
-
-//unsupported currently
-Statement *parseSwitch(TokenView& ) { assert(false && "switch currently unsupported"); }
-
-Statement *parseStatement(TokenView& tokens, SymbolTable& table) {
-  const Token &first = tokens.peek();
-  if (first.isPrimitive())
-    return parseVarDecl(tokens, table);
-
-  switch (first.type) {
-  case TokenType::KEYWORD_IF:
-    tokens.pop();
-    return parseIf(tokens, table);
-  case TokenType::KEYWORD_FOR:
-    tokens.pop();
-    return parseFor(tokens, table);
-  case TokenType::KEYWORD_WHILE:
-    tokens.pop();
-    return parseWhile(tokens, table);
-  case TokenType::KEYWORD_DO:
-    tokens.pop();
-    return parseDoWhile(tokens);
-  case TokenType::KEYWORD_RETURN:
-    tokens.pop();
-    return parseReturn(tokens);
-  case TokenType::KEYWORD_SWITCH:
-    tokens.pop();
-    return parseSwitch(tokens);
-
-  case TokenType::LBRACE:
-    return parseScoped(tokens, table);
-
-  case TokenType::KEYWORD_MUT:
-  case TokenType::LESS:
-    return parseVarDecl(tokens, table);
-
-  case TokenType::IDENTIFIER: //this is problematic as FUCK
-    if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER))
-      return parseVarDecl(tokens, table);
-    [[fallthrough]];
-  default:
-    return parseExpressionStatement(tokens);
+  void parseExpressionStatement() {
+    parseExpressionUntil(TokenType::SEMI_COLON);
   }
-}
 
-std::vector<Statement *> parseStatements(TokenView& body_tokens, SymbolTable& table) {
-  std::vector<Statement *> body_statements;
+  void parseVarDecl(bool is_global = false) {
+    tree.emplace_back(ASTNode::DECLARATION, tokens.current_line_number());
+    InstantiatedType variable_type = parseType(tokens, table);
+    std::string ident = parseIdentifier(tokens);
+    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(new std::string(ident)));
+    tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.");
 
-  while (!body_tokens.empty())
-    body_statements.push_back(parseStatement(body_tokens, table));
+    if (tokens.peek_is(TokenType::IDENTIFIER)) {
+      if (tokens.peek().toString() == ident)
+        throw ParsingError("Variable may not be initialized using itself.", tokens.peek());
 
-  return body_statements;
-}
+      assert(false && "custom types unimplemented");
+    }
 
+    if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
+      tree.emplace_back(ASTNode::EMPTY);
+      tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon ending junk variable declaration.");
+    }
+    else {
+      tokens.reject(TokenType::SEMI_COLON, "Expected initializing expression in variable declaration.");
+      parseExpressionUntil(TokenType::SEMI_COLON);
+    }
 
-struct UnparsedFunction {
-  const Type* return_type;
-  std::string name;
-  std::vector<VarDeclaration> parameter_list;
-  TokenView body_tokens;
+    if (is_global)
+      table.addGlobalVariable(std::move(ident), variable_type);
+    else
+      table.addLocalVariable(std::move(ident), variable_type);
+  }
 
-  UnparsedFunction(const Type* _return_type, std::string &&_name, std::vector<VarDeclaration> &&_parameter_list, const TokenView _body_tokens)
-  : return_type(_return_type), name(std::move(_name)), parameter_list(std::move(_parameter_list)), body_tokens(_body_tokens) {}
+  void parseIf() {
+    tree.emplace_back(ASTNode::IF, tokens.current_line_number());
+    tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in if statement condition.");
+    tokens.reject(TokenType::RPAREN, "Expected condition in if statement.");
+    parseExpressionUntil(TokenType::RPAREN);
+    parseScoped();
+    if (tokens.pop_if(TokenType::KEYWORD_ELSE))
+      parseStatement();
+    else
+      tree.emplace_back(ASTNode::EMPTY);
+  }
+
+  void parseFor() {
+    tree.emplace_back(ASTNode::FOR, tokens.current_line_number());
+    tokens.expect_then_pop(TokenType::LPAREN, "Expected opening patenthesis in for loop statement.");
+    tokens.reject(TokenType::RPAREN, "Expected for loop header.");
+
+    parseVarDecl();
+    parseExpressionUntil(TokenType::SEMI_COLON);
+    parseExpressionUntil(TokenType::RPAREN);
+    parseScoped();
+  }
+
+  void parseWhile() {
+    tree.emplace_back(ASTNode::WHILE, tokens.current_line_number());
+    tokens.expect_then_pop(TokenType::LPAREN,"Expected open parenthesis in while loop condition.");
+    tokens.reject(TokenType::RPAREN, "Expected while loop condition.");
+
+    parseExpressionUntil(TokenType::RPAREN);
+    parseScoped();
+  }
+
+  void parseScoped() {
+    tree.emplace_back(ASTNode::SCOPED, 1);
+    if (tokens.pop_if(TokenType::LBRACE)) {
+      u64_t num_statements = 0;
+      const auto scoped_idx = tree.size() - 1;
+      while (not tokens.pop_if(TokenType::RBRACE)) {
+        parseStatement();
+        ++num_statements;
+        if (tokens.empty())
+          throw ParsingError("Expected ending rbrace to scoped statement.", tokens.previousToken());
+      }
+      tree[scoped_idx].value = num_statements;
+    }
+    else
+      parseStatement();
+  }
+
+  void parseReturn() {
+    tree.emplace_back(ASTNode::RETURN, tokens.current_line_number());
+    parseExpressionUntil(TokenType::SEMI_COLON);
+  }
+
+  void parseStatement() {
+    const Token &first = tokens.peek();
+    if (first.isPrimitive() or first.isTypeModifier())
+      return parseVarDecl();
+
+    switch (first.type) {
+    case TokenType::KEYWORD_IF:
+      tokens.pop();
+      return parseIf();
+    case TokenType::KEYWORD_FOR:
+      tokens.pop();
+      return parseFor();
+    case TokenType::KEYWORD_WHILE:
+      tokens.pop();
+      return parseWhile();
+    case TokenType::KEYWORD_DO:
+      assert(false);
+    case TokenType::KEYWORD_RETURN:
+      tokens.pop();
+      return parseReturn();
+    case TokenType::KEYWORD_SWITCH:
+      assert(false);
+    case TokenType::LBRACE:
+      return parseScoped();
+    case TokenType::LESS:
+      return parseVarDecl();
+
+    case TokenType::IDENTIFIER: //this is problematic as FUCK
+      if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER))
+        return parseVarDecl();
+      [[fallthrough]];
+    default:
+      return parseExpressionStatement();
+    }
+  }
+
+  void parseStatementsUntilEmpty() {
+    while (not tokens.empty())
+      parseStatement();
+  }
 };
 
-struct UnparsedTU {
-  std::vector<VarDeclaration> globals;
-  std::vector<UnparsedFunction> functions;
-
-  void registerFunction(const Type* _return_type, std::string _name, std::vector<VarDeclaration> _decl, TokenView _body) {
-    functions.emplace_back(_return_type, std::move(_name), std::move(_decl), _body);
-  }
-};
-
-
-ParsedFunction parseFunction(UnparsedFunction &func, SymbolTable& table) {
-  return {
-    func.return_type, std::move(func.name),
-    std::move(func.parameter_list), parseStatements(func.body_tokens, table)
-  };
-}
-
-ParsedTU secondPassParsing(UnparsedTU &&unparsedtu, SymbolTable&& table) {
-  std::vector<ParsedFunction> parsed_funcs;
-  for (auto &f : unparsedtu.functions)
-    parsed_funcs.emplace_back(parseFunction(f, table));
-
-  return {std::move(table), std::move(unparsedtu.globals), std::move(parsed_funcs)};
-}
-
-std::vector<VarDeclaration> parseParameterDecl(TokenView decl_tokens, SymbolTable& table) {
-  if (decl_tokens.empty())
-    return {};
-
-  std::vector<VarDeclaration> parameter_list;
-
-  while (true) {
-    const unsigned ln = decl_tokens.peek().line_number;
-    InstantiatedType instance = parseType(decl_tokens, table);
-    std::string ident = parseIdentifier(decl_tokens);
-
-    parameter_list.emplace_back(instance, std::move(ident), ln);
-
-    if (decl_tokens.empty())
-      return parameter_list;
-
-    decl_tokens.expect_then_pop(TokenType::COMMA, "Expected ending parenthesis or comma in parameter list.", LOMError::Stage::ParsingError);
-  }
-}
-
-// returns false when we're done
-bool parseGlobals(UnparsedTU &tu, TokenView& tokens, SymbolTable& table) {
+bool parseGlobal(Body& global_body) {
+  TokenView& tokens = global_body.tokens;
   if (tokens.peek_is(TokenType::KEYWORD_FN) || tokens.empty())
     return false;
 
-  tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.", LOMError::Stage::ParsingError);
-
-  Statement* v = parseVarDecl(tokens, table);
-
-  tu.globals.emplace_back(std::get<VarDeclaration>(std::move(*v)));
-  delete v;
+  tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.");
+  global_body.parseVarDecl(true);
   return true;
 }
 
-void parseGlobalFunctions(UnparsedTU &tu, TokenView& tokens, SymbolTable& table) {
-  tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function.", LOMError::Stage::ParsingError);
+void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
+  TokenView& tokens = global_body.tokens;
+  SymbolTable& table = global_body.table;
+  std::vector<TokenView> function_tokens;
 
-  std::string ident = parseIdentifier(tokens);
-  tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in function declaration.", LOMError::Stage::ParsingError);
+  //just parses the declarations to load into symbol table
+  while (not tokens.empty()) {
+    ParsedFunction& function = functions.emplace_back();
+    tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function declaration.");
+    function.name = parseIdentifier(tokens);
+    tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
 
-  std::vector<VarDeclaration> parameter_list = parseParameterDecl(tokens.getTokensBetweenParenthesis(), table);
+    SymbolTable::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
+    u64_t num_parameters{};
+    if (not tokens.pop_if(TokenType::RPAREN))
+      while (true) {
+        parameters[num_parameters].type = parseType(tokens, table);
+        parameters[num_parameters].name = parseIdentifier(tokens);
+        ++num_parameters;
+        if (not tokens.pop_if(TokenType::COMMA)) {
+          tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
+          break;
+        }
+      }
 
-  const Type* return_type = devoid_type;
-  if (tokens.pop_if(TokenType::ARROW))
-    return_type = parseType(tokens, table).type;
+    const Type* return_type = &devoid_type;
+    if (tokens.pop_if(TokenType::ARROW)) {
+      InstantiatedType type = parseType(tokens, table);
+      if (not type.isPlain())
+        throw ParsingError("Return type may not have type qualifiers.", type.toString(), tokens.current_line_number());
+      return_type = type.type;
+    }
 
-  tokens.expect_then_pop(TokenType::LBRACE, "Expected lbrace in function declaration", LOMError::Stage::ParsingError);
+    tokens.expect_then_pop(TokenType::LBRACE, "Expected function definition.");
+    function_tokens.emplace_back(tokens.getTokensBetweenBraces());
+    table.addFunction(function.name, std::span(parameters, num_parameters), return_type);
+  }
 
-  tu.registerFunction(return_type, std::move(ident),
-                      std::move(parameter_list),
-                      tokens.getTokensBetweenBraces());
+  //actually parse the function bodies
+  const auto sz = functions.size();
+  assert(sz == function_tokens.size());
+  for (auto i{0uz}; i<sz; ++i) {
+    Body function_body
+    {{}, function_tokens[i], table, global_body.expression_tree};
+
+    table.enterFunctionScope(functions[i].name);
+    function_body.parseStatementsUntilEmpty();
+    functions[i].function_body.nodes = std::move(function_body.tree);
+  }
 }
 
-UnparsedTU firstPassParsing(TokenView tokens, SymbolTable& table) {
-  UnparsedTU pass_one_tu;
+void printFunction(const ParsedFunction& func, SymbolTable& table) {
+  std::cout << "\nfn " << func.name << "(";
+  const auto parameters = table.parametersOfFunction(func.name);
+  const auto return_type = table.returnTypeOfFunction(func.name);
 
-  while (parseGlobals(pass_one_tu, tokens, table)) {}
+  for (auto &parameter : parameters) {
+    std::cout << parameter.type.toString();
+    std::cout << " " << parameter.name << ", ";
+  }
 
-  while (!tokens.empty())
-    parseGlobalFunctions(pass_one_tu, tokens, table);
+  if (not parameters.empty())
+    std::cout << "\b\b";
 
-  return pass_one_tu;
+  std::cout << ")";
+  if (not return_type->isDevoid()) {
+    std::cout << " -> ";
+    std::cout << return_type->toString();
+  }
+  std::cout << " {\n";
+  func.function_body.print();
+  std::cout << "\n}";
 }
+
+void printTU(ParsedTU& ptu) {
+  ptu.global_tree.print();
+  for (const auto &f : ptu.functions) {
+    printFunction(f, ptu.table);
+    std::cout << "\n";
+  }
+
 }
 
-static void printTU(const ParsedTU& tu);
-ParsedTU Parser::parseTokens(std::vector<Token> &&tokens) {
-  SymbolTable table;
-  ParsedTU ptu = secondPassParsing( firstPassParsing({tokens.begin(), tokens.end()}, table), std::move(table));
+}
+ParsedTU Parser::parseTokens(std::vector<Token> &&token_list) {
+  Body::ExpressionTree expression_tree;
+  ParsedTU ptu;
+  Body global_body{{}, TokenView{token_list}, ptu.table,
+    expression_tree};
+
+
+  while (parseGlobal(global_body)) {}
+  parseFunctions(global_body, ptu.functions);
 
   if (Settings::doOutputParser()) {
     std::cout << "\n--- Parser Output ---\n";
@@ -782,48 +789,8 @@ ParsedTU Parser::parseTokens(std::vector<Token> &&tokens) {
   return ptu;
 }
 
-static void printFunction(const ParsedFunction& func) {
-  std::cout << "\nfn " << func.name << "(";
-  for (auto &decl : func.parameter_list) {
-    std::cout << decl.type.toString();
-    std::cout << " " << decl.ident << ", ";
-  }
 
-  if (!func.parameter_list.empty())
-    std::cout << "\b\b";
 
-  std::cout << ")";
-  if (!func.return_type->isDevoid()) {
-    std::cout << " -> ";
-    std::cout << func.return_type->toString();
-  }
-  std::cout << " {\n";
-
-  for (const auto s : func.function_body) {
-    std::visit(PrintStatementVisitor{1}, *s);
-    std::cout << "\n";
-  }
-
-  std::cout << "}";
-}
-
-static void printTU(const ParsedTU& tu) {
-  if (tu.globals.empty())
-    goto noglobals;
-
-  for (const auto &decl : tu.globals) {
-    PrintStatementVisitor{}(decl);
-    std::cout << "\n";
-  }
-
-  noglobals:
-
-  for (const auto &f : tu.functions) {
-    printFunction(f);
-    std::cout << "\n";
-  }
-
-}
 
 
 

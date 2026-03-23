@@ -5,7 +5,10 @@
 #include <cassert>
 #include <iostream>
 
-std::unique_ptr<Backend> Backend::codegen(const Validation::ValidatedTU& vtu, const std::filesystem::path& file) {
+using namespace LOM;
+
+std::unique_ptr<Backend> Backend::codegen(const PeepMIR::PeepTU& vtu, const std::filesystem::path& file) {
+  assert(false);
   switch (Settings::chosenBackend()) {
   case Settings::Backend::LLVM:
     return ToLLVM::codegen(vtu, file);
@@ -18,6 +21,7 @@ std::unique_ptr<Backend> Backend::codegen(const Validation::ValidatedTU& vtu, co
 
 //i mean.... it works?
 void Backend::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
+  assert(false);
 #ifdef __clang__
   std::string compiler{"clang"};
 #elif defined(__GNUC__)

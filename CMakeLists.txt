@@ -12,38 +12,39 @@ find_package(LLVM 20.1.8 REQUIRED CONFIG)
 include_directories(${PROJECT_SOURCE_DIR}/src)
 add_executable(LookOnceMore
         main.cpp
-        src/error.cpp
         src/error.hpp
-        src/settings.cpp
+        src/error.cpp
         src/settings.hpp
+        src/settings.cpp
 
-        src/lexing/lex.cpp
         src/lexing/lex.hpp
-        src/lexing/tokenview.cpp
+        src/lexing/lex.cpp
         src/lexing/tokentype.hpp
+        src/lexing/tokenview.cpp
 
-        src/parsing/parse.cpp
         src/parsing/parse.hpp
+        src/parsing/parse.cpp
 
-        src/ast/statements.cpp
-        src/ast/statements.hpp
-        src/ast/expressions.cpp
-        src/ast/expressions.hpp
-        src/ast/types.cpp
-        src/ast/types.hpp
+        src/ast/ast.hpp
 
-        src/validation/symbol_table.cpp
-        src/validation/symbol_table.hpp
-        src/validation/ast_validation.cpp
-        src/validation/ast_validation.hpp
+        src/semantic_analysis/types.hpp
+        src/semantic_analysis/types.cpp
+        src/semantic_analysis/symbol_table.hpp
+        src/semantic_analysis/symbol_table.cpp
 
-        src/backends/codegen.cpp
+        src/peep_mir/peep_mir.hpp
+        src/peep_mir/peep_mir.cpp
+
         src/backends/codegen.hpp
-        src/backends/llvm/tollvm.cpp
+        src/backends/codegen.cpp
         src/backends/llvm/tollvm.hpp
+        src/backends/llvm/tollvm.cpp
 
         src/utilities/variant_overload.hpp
         src/utilities/owned_ptr.hpp
+        src/utilities/arena.hpp
+        src/utilities/typedefs.hpp
+        src/ast/ast.cpp
 )
 
 

@@ -1,7 +1,5 @@
-
-
 fn main() -> i32 {
-    i8 num = 8;
+    i32 num = 5;
 
     return num;
 }

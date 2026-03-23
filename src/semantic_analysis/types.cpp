@@ -1,8 +1,7 @@
 #include "types.hpp"
 #include "lexing/lex.hpp"
-using namespace AST;
 
-
+using namespace LOM;
 
 bool Type::convertibleTo(const Type* other) const noexcept {
   assert(derived_type != CUSTOM  && other->derived_type != CUSTOM );
@@ -40,11 +39,11 @@ std::string Type::toString() const noexcept {
   case DEVOID:
     return "devoid";
   case PRIMITIVE:
-    return static_cast<const Primitive*>(this)->toString();
+    return static_cast<const PrimitiveType*>(this)->toString();
   case POINTER:
-    return static_cast<const Pointer*>(this)->toString();
+    return static_cast<const PointerType*>(this)->toString();
   case VARIANT:
-    return static_cast<const Variant*>(this)->toString();
+    return static_cast<const VariantType*>(this)->toString();
 
   case FUNCTION:
   case CUSTOM:
@@ -53,7 +52,7 @@ std::string Type::toString() const noexcept {
   }
 }
 
-bool Primitive::convertibleTo(const Primitive* other) const noexcept {
+bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
   const auto other_type = other->primitive_type;
   if (other_type == primitive_type) return true;
 
@@ -98,7 +97,7 @@ bool Primitive::convertibleTo(const Primitive* other) const noexcept {
   }
 }
 
-std::string Primitive::toString() const noexcept {
+std::string PrimitiveType::toString() const noexcept {
   using enum Primitives;
   switch (primitive_type) {
   case I8:
@@ -134,7 +133,7 @@ std::string Primitive::toString() const noexcept {
 
 //each pointer type can only convert to its own
 //immutable to mutable subtype not allowed
-bool Pointer::convertibleTo(const Pointer* other) const noexcept {
+bool PointerType::convertibleTo(const PointerType* other) const noexcept {
   using enum Pointers;
   const auto other_type = other->pointer_type;
   if (pointer_type == VAGUE)
@@ -145,7 +144,7 @@ bool Pointer::convertibleTo(const Pointer* other) const noexcept {
            (is_pointed_mutable || !other->is_pointed_mutable);
 }
 
-std::string Pointer::toString() const noexcept {
+std::string PointerType::toString() const noexcept {
   switch (pointer_type) {
   case Pointers::RAW:
     return "raw -> " + pointed_type->toString();
@@ -159,14 +158,14 @@ std::string Pointer::toString() const noexcept {
 }
 
 
-bool Pointer::sameAs(const Pointers ptr_type, const Type* pointed_type_,
+bool PointerType::sameAs(const Pointers ptr_type, const Type* pointed_type_,
                      const bool is_pointed_mutable_) const noexcept {
   return (ptr_type == pointer_type) &&
   (pointed_type_ == pointed_type) &&
     (is_pointed_mutable_ == is_pointed_mutable);
 }
 
-bool Variant::contains(const Type* type) const noexcept {
+bool VariantType::contains(const Type* type) const noexcept {
   for (const auto t : subtypes)
     if (type == t)
       return true;
@@ -174,7 +173,7 @@ bool Variant::contains(const Type* type) const noexcept {
   return false;
 }
 
-std::string Variant::toString() const noexcept {
+std::string VariantType::toString() const noexcept {
   std::string retval = is_nullable ? "<devoid, " : "<";
   for (const auto subtype : subtypes) {
     retval.append(subtype->toString());
@@ -189,7 +188,7 @@ std::string Variant::toString() const noexcept {
   return retval;
 }
 
-bool Variant::sameAs(const std::vector<const Type*>& subtypes_, const bool nullable) const noexcept {
+bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, const bool nullable) const noexcept {
   const auto sz = subtypes.size();
   if (nullable != is_nullable || subtypes_.size() != sz)
     return false;
@@ -202,8 +201,8 @@ bool Variant::sameAs(const std::vector<const Type*>& subtypes_, const bool nulla
   return true;
 }
 
-Primitive::Primitive(const Lexer::Token &primitive_token)
-: Primitive([&] { //I hate this language so much
+PrimitiveType::PrimitiveType(const Lexer::Token &primitive_token)
+: PrimitiveType([&] { //I hate this language so much
     using enum Lexer::TokenType;
     using enum Primitives;
     assert(Lexer::isCategoryPRIMITIVES(primitive_token.type));
@@ -242,8 +241,8 @@ Primitive::Primitive(const Lexer::Token &primitive_token)
     }
     }()) {}
 
-Pointer::Pointer(const Lexer::Token& pointer_token, const Type* pointed_type, const bool is_pointed_mutable)
-  : Pointer([&] {
+PointerType::PointerType(const Lexer::Token& pointer_token, const Type* pointed_type, const bool is_pointed_mutable)
+  : PointerType([&] {
     using enum Lexer::TokenType;
     using enum Pointers;
     assert(Lexer::isCategoryPOINTERS(pointer_token.type));
@@ -261,7 +260,7 @@ Pointer::Pointer(const Lexer::Token& pointer_token, const Type* pointed_type, co
 
   }(), pointed_type, is_pointed_mutable){}
 
-bool Function::isValidCall(const std::vector<InstantiatedType>& parameters) const noexcept {
+bool FunctionType::isValidCall(const std::vector<InstantiatedType>& parameters) const noexcept {
   assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
   const auto num_params = parameters.size();
   for (auto i{0uz}; i<num_params; ++i) {
@@ -273,7 +272,20 @@ bool Function::isValidCall(const std::vector<InstantiatedType>& parameters) cons
   return true;
 }
 
-bool Function::sameAs(const std::vector<const Type *> &parameters, const Type *ret_type) const noexcept {
+
+//code duplication go brr
+bool FunctionType::sameAs(const std::vector<InstantiatedType> &parameters, const Type *ret_type) const noexcept {
+  if (ret_type != return_type || parameters.size() != num_parameters)
+    return false;
+
+  for (auto i{0uz}; i<num_parameters; ++i) {
+    if (parameters[i].type != parameter_types[i])
+      return false;
+  }
+
+  return true;
+}
+bool FunctionType::sameAs(const std::vector<const Type *> &parameters, const Type *ret_type) const noexcept {
   if (ret_type != return_type || parameters.size() != num_parameters)
     return false;
 

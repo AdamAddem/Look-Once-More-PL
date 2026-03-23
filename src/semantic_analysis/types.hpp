@@ -4,19 +4,21 @@
 #include <span>
 #include <cassert>
 #include <cstdint>
+#include <concepts>
 #include <vector>
 
-namespace Lexer {
+
+namespace LOM::Lexer {
 struct Token;
 }
 
+namespace LOM {
 
-namespace AST {
 
-class Primitive;
-class Pointer;
-class Variant;
-class Function;
+class PrimitiveType;
+class PointerType;
+class VariantType;
+class FunctionType;
 
 class Type {
 protected:
@@ -34,7 +36,7 @@ protected:
   Type() = default;
 public:
   [[nodiscard]] static constexpr const Type* getDevoid() {
-    static Type devoid{};
+    static constexpr Type devoid{};
     return &devoid;
   };
 
@@ -53,10 +55,10 @@ public:
   [[nodiscard]] constexpr bool isIntegral()   const noexcept;
   [[nodiscard]] constexpr bool isFloating()   const noexcept;
 
-  [[nodiscard]] constexpr Primitive* castToPrimitive() noexcept; [[nodiscard]] constexpr const Primitive* castToPrimitive() const noexcept;
-  [[nodiscard]] constexpr Pointer* castToPointer() noexcept; [[nodiscard]] constexpr const Pointer* castToPointer() const noexcept;
-  [[nodiscard]] constexpr Variant* castToVariant() noexcept; [[nodiscard]] constexpr const Variant* castToVariant() const noexcept;
-  [[nodiscard]] constexpr Function* castToFunction() noexcept; [[nodiscard]] constexpr const Function* castToFunction() const noexcept;
+  [[nodiscard]] constexpr PrimitiveType* castToPrimitive() noexcept; [[nodiscard]] constexpr const PrimitiveType* castToPrimitive() const noexcept;
+  [[nodiscard]] constexpr PointerType* castToPointer() noexcept; [[nodiscard]] constexpr const PointerType* castToPointer() const noexcept;
+  [[nodiscard]] constexpr VariantType* castToVariant() noexcept; [[nodiscard]] constexpr const VariantType* castToVariant() const noexcept;
+  [[nodiscard]] constexpr FunctionType* castToFunction() noexcept; [[nodiscard]] constexpr const FunctionType* castToFunction() const noexcept;
 
 
   [[nodiscard]] bool convertibleTo(const Type* other) const noexcept;
@@ -77,18 +79,24 @@ struct InstantiatedType {
 
     constexpr InstanceDetails() = default;
     constexpr explicit InstanceDetails(const bool is_mutable) : is_mutable(is_mutable) {}
+
+    bool operator==(const InstanceDetails &) const = default;
   }details;
 
+  constexpr InstantiatedType() = default;
   constexpr InstantiatedType(const Type* type, const InstanceDetails instance_details)
   : type(type), details(instance_details) {assert(type != nullptr);}
 
   constexpr InstantiatedType(const Type* type, const bool is_mutable)
 : type(type), details(is_mutable) {assert(type != nullptr);}
 
-  [[nodiscard]] constexpr std::string toString() const noexcept { return (details.is_mutable ? "mut " : "") + type->toString(); }
+  [[nodiscard]] constexpr bool
+  isPlain() const noexcept { return details == InstanceDetails{}; }
+  [[nodiscard]] constexpr std::string
+  toString() const noexcept { return (details.is_mutable ? "mut " : "") + type->toString(); }
 };
 
-class Primitive final : public Type {
+class PrimitiveType final : public Type {
 public:
   enum class Primitives : std::uint8_t {
     I8, I16, I32, I64,
@@ -97,7 +105,7 @@ public:
     BOOL, CHAR, STRING
   };
 
-  constexpr explicit Primitive(const Primitives type) noexcept : primitive_type(type) {
+  constexpr explicit PrimitiveType(const Primitives type) noexcept : primitive_type(type) {
     derived_type = PRIMITIVE;
     switch (primitive_type) {
     case Primitives::I8:
@@ -116,7 +124,7 @@ public:
       break;
     }
   }
-  explicit Primitive(const Lexer::Token& primitive_token);
+  explicit PrimitiveType(const Lexer::Token& primitive_token);
 
   [[nodiscard]] constexpr bool
   isIntegral() const noexcept {
@@ -217,7 +225,7 @@ public:
     }
   }
 
-  [[nodiscard]] bool convertibleTo(const Primitive* other) const noexcept;
+  [[nodiscard]] bool convertibleTo(const PrimitiveType* other) const noexcept;
   [[nodiscard]] std::string toString() const noexcept;
 
   [[nodiscard]] bool canValueBeRepresented(const std::uint64_t value) const noexcept { return isIntegral() && value < maxIntegralValueRepresentable(); }
@@ -229,26 +237,26 @@ public:
 protected:
   Primitives primitive_type;
 };
-constexpr bool Type::isBool()       const noexcept {return derived_type == PRIMITIVE && static_cast<const Primitive*>(this)->isBool();}
-constexpr bool Type::isIntegral()   const noexcept {return derived_type == PRIMITIVE && static_cast<const Primitive*>(this)->isIntegral();}
-constexpr bool Type::isFloating()   const noexcept {return derived_type == PRIMITIVE && static_cast<const Primitive*>(this)->isFloating();}
+constexpr bool Type::isBool()       const noexcept {return derived_type == PRIMITIVE && static_cast<const PrimitiveType*>(this)->isBool();    }
+constexpr bool Type::isIntegral()   const noexcept {return derived_type == PRIMITIVE && static_cast<const PrimitiveType*>(this)->isIntegral();}
+constexpr bool Type::isFloating()   const noexcept {return derived_type == PRIMITIVE && static_cast<const PrimitiveType*>(this)->isFloating();}
 
-class Pointer final : public Type {
+class PointerType final : public Type {
 public:
   enum class Pointers : std::uint8_t {
     RAW, UNIQUE, VAGUE
   };
-  constexpr explicit Pointer() noexcept : pointer_type(Pointers::VAGUE), is_pointed_mutable(false), pointed_type(nullptr) {derived_type = POINTER;}
-  constexpr explicit Pointer(const Pointers pointer_type, const Type* pointed_type, const bool is_pointed_mutable) noexcept
+  constexpr explicit PointerType() noexcept : pointer_type(Pointers::VAGUE), is_pointed_mutable(false), pointed_type(nullptr) {derived_type = POINTER;}
+  constexpr explicit PointerType(const Pointers pointer_type, const Type* pointed_type, const bool is_pointed_mutable) noexcept
   : pointer_type(pointer_type), is_pointed_mutable(is_pointed_mutable), pointed_type(pointed_type)  {
     assert(pointed_type!= this);
     derived_type = POINTER;
     if (pointed_type == nullptr)
-      assert(pointer_type == Pointer::Pointers::VAGUE);
+      assert(pointer_type == PointerType::Pointers::VAGUE);
   }
-  explicit Pointer(const Lexer::Token& pointer_token, const Type* pointed_type, bool is_pointed_mutable);
+  explicit PointerType(const Lexer::Token& pointer_token, const Type* pointed_type, bool is_pointed_mutable);
 
-  [[nodiscard]] bool convertibleTo(const Pointer* other) const noexcept;
+  [[nodiscard]] bool convertibleTo(const PointerType* other) const noexcept;
   [[nodiscard]] std::string toString() const noexcept;
   [[nodiscard]] bool sameAs(Pointers ptr_type, const Type* pointed_type, bool is_pointed_mutable) const noexcept;
 protected:
@@ -256,14 +264,14 @@ protected:
   bool is_pointed_mutable;
   const Type* pointed_type;
 };
-inline constexpr Pointer vague_pointer{}; static constexpr InstantiatedType vague_pointer_instance(&vague_pointer, {});
+inline constexpr PointerType vague_pointer{}; static constexpr InstantiatedType vague_pointer_instance(&vague_pointer, {});
 
-class Variant final : public Type {
+class VariantType final : public Type {
 protected:
   const bool is_nullable;
   const std::vector<const Type*> subtypes;
 public:
-  constexpr explicit Variant(std::vector<const Type*> subtypes, const bool nullable)
+  constexpr explicit VariantType(std::vector<const Type*> subtypes, const bool nullable)
   : is_nullable(nullable), subtypes(std::move(subtypes)) {
     derived_type = VARIANT;
     for (const auto subtype : this->subtypes) {
@@ -277,14 +285,24 @@ public:
   [[nodiscard]] bool sameAs(const std::vector<const Type*>& subtypes, bool nullable) const noexcept;
 };
 
-class Function final : public Type {
+class FunctionType final : public Type {
 protected:
   std::uint8_t num_parameters;
   const Type* parameter_types[Settings::MAX_FUNCTION_PARAMETERS]{nullptr};
   const Type* return_type;
 
 public:
-  constexpr Function(const std::vector<const Type*>& parameters, const Type* ret_type)
+  constexpr FunctionType(const std::vector<InstantiatedType>& parameters, const Type* ret_type)
+    : num_parameters(parameters.size()), return_type(ret_type) {
+    assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
+    assert(num_parameters > 0 || ret_type);
+    derived_type = FUNCTION;
+    setCallable();
+    for (auto i{0uz}; i<num_parameters; ++i)
+      parameter_types[i] = parameters[i].type;
+
+  }
+  constexpr FunctionType(const std::vector<const Type*>& parameters, const Type* ret_type)
   : num_parameters(parameters.size()), return_type(ret_type) {
     assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
     assert(num_parameters > 0 || ret_type);
@@ -298,68 +316,69 @@ public:
   [[nodiscard]] constexpr std::uint8_t numParameters() const noexcept {return num_parameters;}
   [[nodiscard]] constexpr std::span<const Type* const> parameterTypes() const noexcept {return std::span(parameter_types, num_parameters);}
   [[nodiscard]] constexpr const Type* returnType() const noexcept {return return_type;}
+
+  [[nodiscard]] bool sameAs(const std::vector<InstantiatedType>& parameters, const Type* ret_type) const noexcept;
   [[nodiscard]] bool sameAs(const std::vector<const Type*>& parameters, const Type* ret_type) const noexcept;
 
   [[nodiscard]] bool isValidCall(const std::vector<InstantiatedType>& parameters) const noexcept;
 
 };
 
-class Custom final : public Type {
+class CustomType final : public Type {
 public:
-  Custom() = delete;
+  CustomType() = delete;
 };
 
-
-constexpr Primitive* Type::castToPrimitive() noexcept {
+constexpr PrimitiveType* Type::castToPrimitive() noexcept {
   assert(derived_type == PRIMITIVE);
-  return static_cast<Primitive*>(this);
+  return static_cast<PrimitiveType*>(this);
 }
-constexpr const Primitive* Type::castToPrimitive() const noexcept {
+constexpr const PrimitiveType* Type::castToPrimitive() const noexcept {
   assert(derived_type == PRIMITIVE);
-  return static_cast<const Primitive*>(this);
+  return static_cast<const PrimitiveType*>(this);
 }
 
-constexpr Pointer* Type::castToPointer() noexcept {
+constexpr PointerType* Type::castToPointer() noexcept {
   assert(derived_type == POINTER);
-  return static_cast<Pointer*>(this);
+  return static_cast<PointerType*>(this);
 }
-constexpr const Pointer* Type::castToPointer() const noexcept {
+constexpr const PointerType* Type::castToPointer() const noexcept {
   assert(derived_type == POINTER);
-  return static_cast<const Pointer*>(this);
+  return static_cast<const PointerType*>(this);
 }
 
-constexpr Variant* Type::castToVariant() noexcept {
+constexpr VariantType* Type::castToVariant() noexcept {
   assert(derived_type == VARIANT);
-  return static_cast<Variant*>(this);
+  return static_cast<VariantType*>(this);
 }
-constexpr const Variant* Type::castToVariant() const noexcept {
+constexpr const VariantType* Type::castToVariant() const noexcept {
   assert(derived_type == VARIANT);
-  return static_cast<const Variant*>(this);
+  return static_cast<const VariantType*>(this);
 }
 
-constexpr Function* Type::castToFunction() noexcept {
+constexpr FunctionType* Type::castToFunction() noexcept {
   assert(derived_type == FUNCTION);
-  return static_cast<Function*>(this);
+  return static_cast<FunctionType*>(this);
 }
-constexpr const Function* Type::castToFunction() const noexcept {
+constexpr const FunctionType* Type::castToFunction() const noexcept {
   assert(derived_type == FUNCTION);
-  return static_cast<const Function*>(this);
+  return static_cast<const FunctionType*>(this);
 }
 
 
-inline constexpr Primitive i8_type(Primitive::Primitives::I8);      static constexpr InstantiatedType i8_instance(&i8_type, {});
-inline constexpr Primitive i16_type(Primitive::Primitives::I16);    static constexpr InstantiatedType i16_instance(&i16_type, {});
-inline constexpr Primitive i32_type(Primitive::Primitives::I32);    static constexpr InstantiatedType i32_instance(&i32_type, {});
-inline constexpr Primitive i64_type(Primitive::Primitives::I64);    static constexpr InstantiatedType i64_instance(&i64_type, {});
-inline constexpr Primitive u8_type(Primitive::Primitives::U8);      static constexpr InstantiatedType u8_instance(&u8_type, {});
-inline constexpr Primitive u16_type(Primitive::Primitives::U16);    static constexpr InstantiatedType u16_instance(&u16_type, {});
-inline constexpr Primitive u32_type(Primitive::Primitives::U32);    static constexpr InstantiatedType u32_instance(&u32_type, {});
-inline constexpr Primitive u64_type(Primitive::Primitives::U64);    static constexpr InstantiatedType u64_instance(&u64_type, {});
-inline constexpr Primitive f32_type(Primitive::Primitives::F32);    static constexpr InstantiatedType f32_instance(&f32_type, {});
-inline constexpr Primitive f64_type(Primitive::Primitives::F64);    static constexpr InstantiatedType f64_instance(&f64_type, {});
-inline constexpr Primitive bool_type(Primitive::Primitives::BOOL);  static constexpr InstantiatedType bool_instance(&bool_type, {});
-inline constexpr Primitive char_type(Primitive::Primitives::CHAR);  static constexpr InstantiatedType char_instance(&char_type, {});
-inline constexpr Primitive string_type(Primitive::Primitives::STRING); static constexpr InstantiatedType string_instance(&string_type, {});
-static const InstantiatedType devoid_instance(Type::getDevoid(), {}); //this can't be constexpr for some reason :(
-inline const Type* devoid_type = devoid_instance.type; //this neither :(
+inline constexpr PrimitiveType i8_type(PrimitiveType::Primitives::I8);      static constexpr InstantiatedType i8_instance(&i8_type, {});
+inline constexpr PrimitiveType i16_type(PrimitiveType::Primitives::I16);    static constexpr InstantiatedType i16_instance(&i16_type, {});
+inline constexpr PrimitiveType i32_type(PrimitiveType::Primitives::I32);    static constexpr InstantiatedType i32_instance(&i32_type, {});
+inline constexpr PrimitiveType i64_type(PrimitiveType::Primitives::I64);    static constexpr InstantiatedType i64_instance(&i64_type, {});
+inline constexpr PrimitiveType u8_type(PrimitiveType::Primitives::U8);      static constexpr InstantiatedType u8_instance(&u8_type, {});
+inline constexpr PrimitiveType u16_type(PrimitiveType::Primitives::U16);    static constexpr InstantiatedType u16_instance(&u16_type, {});
+inline constexpr PrimitiveType u32_type(PrimitiveType::Primitives::U32);    static constexpr InstantiatedType u32_instance(&u32_type, {});
+inline constexpr PrimitiveType u64_type(PrimitiveType::Primitives::U64);    static constexpr InstantiatedType u64_instance(&u64_type, {});
+inline constexpr PrimitiveType f32_type(PrimitiveType::Primitives::F32);    static constexpr InstantiatedType f32_instance(&f32_type, {});
+inline constexpr PrimitiveType f64_type(PrimitiveType::Primitives::F64);    static constexpr InstantiatedType f64_instance(&f64_type, {});
+inline constexpr PrimitiveType bool_type(PrimitiveType::Primitives::BOOL);  static constexpr InstantiatedType bool_instance(&bool_type, {});
+inline constexpr PrimitiveType char_type(PrimitiveType::Primitives::CHAR);  static constexpr InstantiatedType char_instance(&char_type, {});
+inline constexpr PrimitiveType string_type(PrimitiveType::Primitives::STRING); static constexpr InstantiatedType string_instance(&string_type, {});
+static constexpr InstantiatedType devoid_instance(Type::getDevoid(), {});
+inline constexpr const Type& devoid_type = *devoid_instance.type;
 }

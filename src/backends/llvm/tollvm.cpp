@@ -1,11 +1,10 @@
 #include "tollvm.hpp"
-
-#include "ast/expressions.hpp"
-#include "ast/statements.hpp"
+/*
+#include "ast/ast.hpp"
 #include "error.hpp"
+#include "peep_mir/peep_mir.hpp"
 #include "settings.hpp"
 #include "utilities/variant_overload.hpp"
-#include "validation/ast_validation.hpp"
 
 #include <filesystem>
 #include <llvm/IR/BasicBlock.h>
@@ -48,16 +47,15 @@ struct FunctionBuilder {
     else
       builder.CreateRetVoid();
 
-    if (verifyFunction(*func, &errs()))
+    if (verifyFunction(*func, &errs())) {
+      return_block->getModule()->print(outs(), nullptr);
       throw BackendError("Failed to verify Function!", func->getName().str(), 0);
+    }
   }
 
 };
 
-
-//Our scientists have been hard at work crafting the largest class possible
-//Shes a beauty
-//You ever seen a class thats expensive to copy AND move?
+//shes big but shes a beauty
 class TU final : public Backend {
   LLVMContext context;
   Module module;
@@ -122,7 +120,7 @@ public:
        )
      );
   }
-  [[nodiscard]] FunctionBuilder createFunction(const Validation::ValidatedFunction& func) {
+  [[nodiscard]] FunctionBuilder createFunction(const PeepMIR::Function& func) {
     std::vector<Type*> arg_types;
     arg_types.reserve(func.parameter_list.size());
     for (const auto& v : func.parameter_list)
@@ -156,7 +154,7 @@ public:
 
     return FunctionBuilder(ret_type, llvmfunc, entry, ending, std::move(locals));
   }
-  void lowerToLLVM(const Validation::ValidatedTU& vtu) {
+  void lowerToLLVM(const PeepMIR::PeepTU& vtu) {
     for (const auto& v : vtu.globals)
       genGlobal(v);
 
@@ -335,7 +333,7 @@ public:
       t = static_cast<AllocaInst*>(v)->getAllocatedType();
     }
     else {
-      v = module.getGlobalVariable(identifier.ident);
+      v = module.getGlobalVariable(identifier.ident); assert(v != nullptr);
       t = static_cast<GlobalVariable*>(v)->getValueType();
     }
 
@@ -384,7 +382,7 @@ public:
     IRBuilder<> func_entry(&f.func->getEntryBlock());
     AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type.type), nullptr);
     f.locals.emplace(declaration.ident, i);
-    f.builder.CreateStore(genExpression(*declaration.expr, f), i);
+    if (declaration.expr) f.builder.CreateStore(genExpression(*declaration.expr, f), i);
     return false;
   }
   bool genIfStatement(const AST::IfStatement& ifstmt, FunctionBuilder& f) {
@@ -420,12 +418,12 @@ public:
   bool genScoped(const AST::ScopedStatement& scoped, FunctionBuilder& f) {
     auto curr = scoped.scope_body.begin();
     const auto end = scoped.scope_body.end();
-    while (true) {
-      const bool jumps_at_end = genStatement(**curr, f);
+    bool jumps_at_end{false};
+    while (curr != end) {
+      jumps_at_end = genStatement(**curr, f);
       ++curr;
-      if (curr == end)
-        return jumps_at_end;
     }
+    return jumps_at_end;
   }
   bool genReturn(const AST::ReturnStatement& ret, FunctionBuilder& f) {
     if (ret.return_value) {
@@ -435,7 +433,7 @@ public:
     f.builder.CreateBr(f.return_block);
     return true;
   }
-  bool genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) { genExpression(*expr_stmt.expr, f); return false; }
+  bool genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) { if (expr_stmt.expr) genExpression(*expr_stmt.expr, f); return false; }
   bool genStatement(const AST::Statement& stmt, FunctionBuilder& f) {
     return utils_match(stmt,
       utils_callon(const AST::VarDeclaration&, genVarDeclaration, f),
@@ -541,9 +539,9 @@ public:
 };
 }
 
-
-std::unique_ptr<Backend> ToLLVM::codegen(const Validation::ValidatedTU& vtu, const std::filesystem::path &file) {
-  std::unique_ptr<TU> ptr(new TU(file.string()));
+std::unique_ptr<Backend> ToLLVM::codegen(const PeepMIR::PeepTU& vtu, const std::filesystem::path &file) {
+  auto ptr = std::make_unique<TU>(file.string());
   ptr->lowerToLLVM(vtu);
   return ptr;
 }
+*/

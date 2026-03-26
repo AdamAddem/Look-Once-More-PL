@@ -4,7 +4,9 @@
 using namespace LOM;
 
 bool Type::convertibleTo(const Type* other) const noexcept {
-  assert(derived_type != CUSTOM  && other->derived_type != CUSTOM );
+  assert(derived_type != CUSTOM);
+  assert(other->derived_type != CUSTOM);
+
   if (other == this)
     return true;
 
@@ -56,7 +58,6 @@ bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
   const auto other_type = other->primitive_type;
   if (other_type == primitive_type) return true;
 
-  using enum Primitives;
   switch (primitive_type) {
   case I8:
   case I16:
@@ -98,7 +99,6 @@ bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
 }
 
 std::string PrimitiveType::toString() const noexcept {
-  using enum Primitives;
   switch (primitive_type) {
   case I8:
     return "i8";
@@ -134,35 +134,26 @@ std::string PrimitiveType::toString() const noexcept {
 //each pointer type can only convert to its own
 //immutable to mutable subtype not allowed
 bool PointerType::convertibleTo(const PointerType* other) const noexcept {
-  using enum Pointers;
   const auto other_type = other->pointer_type;
   if (pointer_type == VAGUE)
     return other_type == VAGUE;
 
-  return (pointer_type == other_type) &&
-         (pointed_type == other->pointed_type) &&
-           (is_pointed_mutable || !other->is_pointed_mutable);
+  return (pointer_type == other_type) and
+         (subtype.type == other->subtype.type) and
+         (subtype.details.is_mutable or not other->subtype.details.is_mutable);
 }
 
 std::string PointerType::toString() const noexcept {
   switch (pointer_type) {
-  case Pointers::RAW:
-    return "raw -> " + pointed_type->toString();
-  case Pointers::UNIQUE:
-    return "unique -> " + pointed_type->toString();
-  case Pointers::VAGUE:
+  case RAW:
+    return "raw -> " + subtype.toString();
+  case UNIQUE:
+    return "unique -> " + subtype.toString();
+  case VAGUE:
     return "vague -> ";
   default:
     assert(false);
   }
-}
-
-
-bool PointerType::sameAs(const Pointers ptr_type, const Type* pointed_type_,
-                     const bool is_pointed_mutable_) const noexcept {
-  return (ptr_type == pointer_type) &&
-  (pointed_type_ == pointed_type) &&
-    (is_pointed_mutable_ == is_pointed_mutable);
 }
 
 bool VariantType::contains(const Type* type) const noexcept {
@@ -188,77 +179,17 @@ std::string VariantType::toString() const noexcept {
   return retval;
 }
 
-bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, const bool nullable) const noexcept {
+bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, bool nullable) const noexcept {
   const auto sz = subtypes.size();
-  if (nullable != is_nullable || subtypes_.size() != sz)
+  if (nullable not_eq is_nullable or subtypes_.size() not_eq sz)
     return false;
 
-  for (auto i{0uz}; i<sz; ++i) {
+  for (auto i{0uz}; i<sz; ++i)
     if (subtypes_[i] != subtypes[i])
       return false;
-  }
 
   return true;
 }
-
-PrimitiveType::PrimitiveType(const Lexer::Token &primitive_token)
-: PrimitiveType([&] { //I hate this language so much
-    using enum Lexer::TokenType;
-    using enum Primitives;
-    assert(Lexer::isCategoryPRIMITIVES(primitive_token.type));
-
-    switch (primitive_token.type) {
-    case KEYWORD_i8:
-      return I8;
-    case KEYWORD_i16:
-      return I16;
-    case KEYWORD_i32:
-      return I32;
-    case KEYWORD_i64:
-      return I64;
-    case KEYWORD_u8:
-      return U8;
-    case KEYWORD_u16:
-      return U16;
-    case KEYWORD_u32:
-      return U32;
-    case KEYWORD_u64:
-      return U64;
-    case KEYWORD_f32:
-      return F32;
-    case KEYWORD_f64:
-      return F64;
-
-    case KEYWORD_BOOL:
-      return BOOL;
-    case KEYWORD_CHAR:
-      return CHAR;
-    case KEYWORD_STRING:
-      return STRING;
-
-    default:
-      assert(false);
-    }
-    }()) {}
-
-PointerType::PointerType(const Lexer::Token& pointer_token, const Type* pointed_type, const bool is_pointed_mutable)
-  : PointerType([&] {
-    using enum Lexer::TokenType;
-    using enum Pointers;
-    assert(Lexer::isCategoryPOINTERS(pointer_token.type));
-
-    switch (pointer_token.type) {
-    case KEYWORD_RAW:
-      return RAW;
-    case KEYWORD_UNIQUE:
-      return UNIQUE;
-    case KEYWORD_VAGUE:
-      return VAGUE;
-    default:
-      assert(false);
-    }
-
-  }(), pointed_type, is_pointed_mutable){}
 
 bool FunctionType::isValidCall(const std::vector<InstantiatedType>& parameters) const noexcept {
   assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
@@ -269,30 +200,5 @@ bool FunctionType::isValidCall(const std::vector<InstantiatedType>& parameters) 
     if (not parameters[i].type->convertibleTo(parameter_types[i]))
       return false;
   }
-  return true;
-}
-
-
-//code duplication go brr
-bool FunctionType::sameAs(const std::vector<InstantiatedType> &parameters, const Type *ret_type) const noexcept {
-  if (ret_type != return_type || parameters.size() != num_parameters)
-    return false;
-
-  for (auto i{0uz}; i<num_parameters; ++i) {
-    if (parameters[i].type != parameter_types[i])
-      return false;
-  }
-
-  return true;
-}
-bool FunctionType::sameAs(const std::vector<const Type *> &parameters, const Type *ret_type) const noexcept {
-  if (ret_type != return_type || parameters.size() != num_parameters)
-    return false;
-
-  for (auto i{0uz}; i<num_parameters; ++i) {
-    if (parameters[i] != parameter_types[i])
-      return false;
-  }
-
   return true;
 }

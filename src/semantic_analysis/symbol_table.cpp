@@ -6,30 +6,6 @@
 using namespace LOM;
 
 
-const Type* SymbolTable::addPointer(const PointerType::Pointers ptr_type, const Type* pointed_type, const bool is_pointed_mutable) noexcept {
-  assert(ptr_type != PointerType::Pointers::VAGUE);
-  for (const auto ptr : pointers) {
-    if (ptr->sameAs(ptr_type, pointed_type, is_pointed_mutable))
-      return ptr;
-  }
-
-  const auto new_pointer = std::construct_at(
-    type_allocator.allocate<PointerType>(), ptr_type, pointed_type, is_pointed_mutable);
-  pointers.push_back(new_pointer);
-  return new_pointer;
-}
-
-const Type* SymbolTable::addVariant(std::vector<const Type*> subtypes, const bool nullable) noexcept {
-  for (const auto variant : variants)
-    if (variant->sameAs(subtypes, nullable))
-      return variant;
-
-  const auto new_variant = std::construct_at(
-    type_allocator.allocate<VariantType>(), std::move(subtypes), nullable);
-  variants.push_back(new_variant);
-  return new_variant;
-}
-
 bool SymbolTable::containsVariable(const std::string &name) const noexcept {
   if (current_scope && current_scope->containsVariable(name))
     return true;
@@ -62,7 +38,15 @@ InstantiatedType SymbolTable::closestVariable(const std::string &name) noexcept 
   return std::get<InstantiatedType>(globals.at(name));
 }
 
-void SymbolTable::addFunction( const std::string &name, std::span<Variable> parameters, const Type* return_type) noexcept {
+void SymbolTable::addFunction(const std::string &name, std::span<Variable> parameters, const Type* return_type) noexcept {
   assert(not globals.contains(name));
-  globals.emplace(name, Function{parameters, return_type});
+  assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
+
+  const Type* parameter_types[Settings::MAX_FUNCTION_PARAMETERS];
+  sz_t sz{};
+  for (; sz< parameters.size(); ++sz)
+    parameter_types[sz] = parameters[sz].type.type;
+
+  globals.emplace(name,
+    Function{parameters, types.addFunction(std::span(parameter_types, sz), return_type)});
 }

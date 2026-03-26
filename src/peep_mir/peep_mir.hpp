@@ -1,7 +1,6 @@
 #pragma once
 #include "settings.hpp"
 #include "semantic_analysis/types.hpp"
-#include "utilities/arena.hpp"
 #include "utilities/typedefs.hpp"
 
 #include <unordered_map>
@@ -14,7 +13,6 @@ namespace LOM::PeepMIR {
 
 struct Instruction {
   enum : u8_t {
-    NEED_TERMINATOR, BR, BRC, RET, //terminator state
     GLOBAL, LOCAL, FUNCTION, LITERAL, //data state
 
     ADD, SUB, MULT, DIV,
@@ -29,7 +27,7 @@ struct Instruction {
 };
 
 struct Block {
-  std::vector<Instruction> instructions; //last is the terminator
+  std::vector<Instruction> instructions;
   enum class Terminator : u8_t {
     BR, BRC, RET
   }terminator;

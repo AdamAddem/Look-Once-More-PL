@@ -5,7 +5,7 @@
 #include <new>
 
 namespace LOM {
-template <std::size_t N = 4000uz>
+template <std::size_t N = 4096uz>
 class Arena {
   void* curr;
   std::size_t remaining;

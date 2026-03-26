@@ -3,76 +3,88 @@
 
 using namespace LOM::AST;
 
-[[nodiscard]] constexpr
+[[nodiscard]] static constexpr
 bool has_ln(ASTNode::Type type) {
   return std::to_underlying(type) >= ASTNode::Type::DECLARATION &&
-    std::to_underlying(type) <= ASTNode::Type::RETURN && type not_eq ASTNode::Type::SCOPED;
+    std::to_underlying(type) <= ASTNode::Type::EXPR_STMT && type not_eq ASTNode::Type::SCOPED;
 }
 
-void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcept {
-  if (has_ln(node->type) && node->value > ln) {
-    ln = node->value;
-    std::cout << '\n' << ln << ": ";
+static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcept {
+  if (has_ln(node->type())) {
+    while (ln <= node->line_number())
+      std::cout << '\n' << ln++ << ":\t\t";
   }
 
   using enum ASTNode::Type;
-  switch (node->type) {
+  switch (node->type()) {
   case EMPTY:
     assert(false);
   case DECLARATION:
-    std::cout << "decl " << *(++node)->getIdentifier() << " = ";
-    if ((++node)->type == EMPTY)
+    std::cout << (++node)->instance_type().toString() << " ";
+    std::cout << *(++node)->getIdentifier() << " = ";
+    if ((++node)->type() == EMPTY)
       std::cout << "junk";
     else
       print(node, ln);
-    std::cout << ';';
     return;
 
   case IF:
-    std::cout << "if (";
+    std::cout << "if ( ";
     print(++node, ln);
-    std::cout << ")";
-    return print(++node, ln);
+    std::cout << " ) ";
+    print(++node, ln);
+    if ((++node)->type() not_eq EMPTY) {
+      std::cout << " else ";
+      print(node, ln);
+    }
+    return;
 
   case FOR:
-    std::cout << "for (";
+    std::cout << "for ( " << std::flush;
     print(++node, ln);
-    std::cout << ' ';
+    std::cout << "; ";
     print(++node, ln);
-    std::cout << ';';
-    return print(++node, ln);
+    std::cout << "; ";
+    print(++node, ln);
+    std::cout << " )";
+    print(++node, ln);
+    return;
 
   case WHILE:
-    std::cout << "while (";
+    std::cout << "while ( ";
     print(++node, ln);
-    std::cout << ')';
+    std::cout << " )";
     return print(++node, ln);
 
-  case SCOPED:
-    if (node->value == 1)
-      return print(++node, ln);
-
-    if (node->value == 0) {
-      std::cout << ';';
+  case SCOPED: {
+    const u64_t num_children = node->sub_statements();
+    if (num_children == 0)
       return;
+
+    std::cout << "{ ";
+    for (auto i{0uz}; i<num_children; ++i) {
+      print(++node, ln);
+      std::cout << ';';
     }
-    std::cout << '{';
-    print(++node, ln);
-    std::cout << '}';
+    std::cout << " }";
     return;
+  }
 
   case RETURN:
     std::cout << "return ";
-    if ((++node)->type not_eq EMPTY)
+    if ((++node)->type() not_eq EMPTY)
       print(node, ln);
-    std::cout << ';';
     return;
+
+  case EXPR_STMT:
+    return print(++node, ln);
 
   case UNARY: {
     auto opr = node->getOperator();
     const char* opr_str = operatorToString(opr);
     assert(isCategoryUNARY_OPS(opr));
 
+    std::cout << '(';
     if (isCategoryPREFIX_OPS(opr)) {
       std::cout << opr_str;
       if (opr == Operator::NOT || opr == Operator::BITNOT)
@@ -84,7 +96,7 @@ void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcept {
       print(++node, ln);
       std::cout << opr_str;
     }
-
+    std::cout << ')';
     return;
   }
 
@@ -93,13 +105,16 @@ void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcept {
     const char* opr_str = operatorToString(opr);
     assert(isCategoryBINARY_OPS(opr));
 
+    std::cout << '(';
     print(++node, ln);
     std::cout << ' ' << opr_str << ' ';
-    return print(++node, ln);
+    print(++node, ln);
+    std::cout << ')';
+    return;
   }
 
   case CALLING: {
-    u64_t num_params = node->value;
+    u64_t num_params = node->parameter_count();
     print(++node, ln);
 
     std::cout << '(';
@@ -156,17 +171,15 @@ void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcept {
   }
 }
 
-
-
-void SyntaxTree::print() const noexcept {
+void SyntaxTree::print(u64_t starting_line_number) const noexcept {
   if (nodes.empty())
     return;
 
   auto curr = nodes.begin();
   const auto end = nodes.end();
-  u64_t ln = 0;
   while (curr != end) {
-    ::print(curr, ln);
+    ::print(curr, starting_line_number);
+    std::cout << "; ";
     ++curr;
   }
 }

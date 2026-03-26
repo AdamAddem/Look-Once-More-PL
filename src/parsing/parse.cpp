@@ -18,34 +18,42 @@ using namespace LOM::AST;
 
 
 namespace {
-InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
-  Token token = tokens.take();
-  bool is_mutable{false};
-  if (token.isTypeModifier()) {
-    if (token.is(TokenType::KEYWORD_MUT))
-      is_mutable = true;
-    else
-      throw ParsingError("Type modifier not implemented yet, soz.", token);
 
-    token = tokens.take();
+InstantiatedType::InstanceDetails parseTypeDetails(TokenView& tokens) {
+  InstantiatedType::InstanceDetails details;
+  if (tokens.peek().isTypeModifier()) {
+    if (tokens.peek_is(TokenType::KEYWORD_MUT))
+      details.is_mutable = true;
+    else
+      throw ParsingError("Type modifier not implemented yet, soz.", tokens.peek());
+
+    tokens.pop();
   }
 
-  if (token.isPrimitive() || token.is(TokenType::IDENTIFIER)) {
-    if (token.is(TokenType::KEYWORD_DEVOID))
-      return devoid_instance;
+  return details;
+}
 
-    if (token.isPointer()) { //add reference support eventually
+InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
+  const auto details = parseTypeDetails(tokens);
+  Token token = tokens.take();
+
+  if (token.isPrimitive()) {
+    if (token.is(TokenType::KEYWORD_DEVOID))
+      return devoid_literal;
+
+    if (token.isPointer()) {
       tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.");
+      if (token.is(TokenType::KEYWORD_VAGUE)) {
+        const auto subtype_details = parseTypeDetails(tokens);
+        return InstantiatedType(PointerType::vague(subtype_details.is_mutable), details);
+      }
 
       const InstantiatedType subtype_instance = parseType(tokens, table);
       switch (token.type) {
       case TokenType::KEYWORD_RAW:
-        return InstantiatedType(table.addRawPointer(subtype_instance.type, subtype_instance.details.is_mutable), is_mutable);
+        return InstantiatedType(table.addRawPointer(subtype_instance), details);
       case TokenType::KEYWORD_UNIQUE:
-        return InstantiatedType(table.addUniquePointer(subtype_instance.type, subtype_instance.details.is_mutable), is_mutable);
-      case TokenType::KEYWORD_VAGUE:
-        return InstantiatedType(&vague_pointer, is_mutable);
-
+        return InstantiatedType(table.addUniquePointer(subtype_instance), details);
       default:
         assert(false);
       }
@@ -54,35 +62,35 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
 
     switch (token.type) {
     case TokenType::KEYWORD_i8:
-      return InstantiatedType(&i8_type, is_mutable);
+      return InstantiatedType(PrimitiveType::i8(), details);
     case TokenType::KEYWORD_i16:
-      return InstantiatedType(&i16_type, is_mutable);
+      return InstantiatedType(PrimitiveType::i16(), details);
     case TokenType::KEYWORD_i32:
-      return InstantiatedType(&i32_type, is_mutable);
+      return InstantiatedType(PrimitiveType::i32(), details);
     case TokenType::KEYWORD_i64:
-      return InstantiatedType(&i64_type, is_mutable);
+      return InstantiatedType(PrimitiveType::i64(), details);
     case TokenType::KEYWORD_u8:
-      return InstantiatedType(&u8_type, is_mutable);
+      return InstantiatedType(PrimitiveType::u8(), details);
     case TokenType::KEYWORD_u16:
-      return InstantiatedType(&u16_type, is_mutable);
+      return InstantiatedType(PrimitiveType::u16(), details);
     case TokenType::KEYWORD_u32:
-      return InstantiatedType(&u32_type, is_mutable);
+      return InstantiatedType(PrimitiveType::u32(), details);
     case TokenType::KEYWORD_u64:
-      return InstantiatedType(&u64_type, is_mutable);
+      return InstantiatedType(PrimitiveType::u64(), details);
     case TokenType::KEYWORD_f32:
-      return InstantiatedType(&f32_type, is_mutable);
+      return InstantiatedType(PrimitiveType::f32(), details);
     case TokenType::KEYWORD_f64:
-      return InstantiatedType(&f64_type, is_mutable);
+      return InstantiatedType(PrimitiveType::f64(), details);
 
     case TokenType::KEYWORD_CHAR:
-      return InstantiatedType(&char_type, is_mutable);
+      return InstantiatedType(PrimitiveType::char_(), details);
     case TokenType::KEYWORD_BOOL:
-      return InstantiatedType(&bool_type, is_mutable);
+      return InstantiatedType(PrimitiveType::bool_(), details);
     case TokenType::KEYWORD_STRING:
-      return InstantiatedType(&string_type, is_mutable);
+      return InstantiatedType(PrimitiveType::string(), details);
     case TokenType::KEYWORD_DEVOID:
-      assert(is_mutable == false && "Mutable devoid? Is that allowed?");
-      return devoid_instance;
+      assert(details == InstantiatedType::InstanceDetails{} && "Non-plain devoid? Is that allowed?");
+      return devoid_literal;
     default:
       assert(false);
     }
@@ -98,7 +106,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
     const unsigned variant_ln = variant_types_tokens.peek().line_number;
     do {
       const unsigned subtype_ln = variant_types_tokens.peek().line_number;
-      const InstantiatedType subtype = parseType(tokens, table);
+      const InstantiatedType subtype = parseType(variant_types_tokens, table);
       if (subtype.type->isVariant())
         throw ParsingError("Nested variant types not allowed.", subtype.toString(), subtype_ln);
 
@@ -122,7 +130,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
     if (subtypes.size() < 2)
       throw ParsingError("Two or more types must be specified in variant type list.", "", variant_ln);
 
-    return InstantiatedType(table.addVariant(subtypes, nullable), is_mutable);
+    return InstantiatedType(table.addVariant(subtypes, nullable), details);
   }
 
   throw ParsingError("Expected typename.", token);
@@ -177,6 +185,7 @@ struct Body {
     if (tokens.pop_if(TokenType::RPAREN))
       return expression_tree.create(ASTNode::EMPTY, 0, parameter, 0);
 
+
     tokens.expect_then_pop(TokenType::COMMA, "Expected comma in call expression.");
     return expression_tree.create(ASTNode::EMPTY, 0, parameter, generateParameters());
   }
@@ -215,7 +224,7 @@ struct Body {
         break;
       case TokenType::BOOL_LITERAL:
         literal_type = ASTNode::BOOL_LITERAL;
-        literal_value = token.getUint();
+        literal_value = token.getBool();
         break;
       case TokenType::CHAR_LITERAL:
         literal_type = ASTNode::CHAR_LITERAL;
@@ -234,7 +243,7 @@ struct Body {
     }
 
     if (tokens.pop_if(TokenType::LPAREN)) {
-      const auto res = generateExpressionUntil(TokenType::LPAREN);
+      const auto res = generateExpressionUntil(TokenType::RPAREN);
       return res;
     }
 
@@ -277,7 +286,7 @@ struct Body {
       tokens.pop();
       left = expression_tree.create(
         ASTNode::UNARY, value,
-        generatePrimaryExpression(), 0);
+        left, 0);
     }
   }
 
@@ -466,6 +475,8 @@ struct Body {
     const TokenView after_ending = tokens;
     tokens = until_ending;
     const auto res = generateAssignmentExpression();
+    if (not tokens.empty())
+      throw ParsingError(std::format("Expected {}", tokenTypeToString(ending_token)), tokens.peek());
     tokens = after_ending;
     return res;
   }
@@ -485,6 +496,7 @@ struct Body {
     case WHILE:
     case SCOPED:
     case RETURN:
+    case EXPR_STMT:
       assert(false);
 
     case UNARY:
@@ -498,22 +510,26 @@ struct Body {
     case CALLING: {
       tree.emplace_back(CALLING, 0);
       const auto calling_idx = tree.size() - 1;
-      u16_t left_idx = expression.left_idx;
-      u16_t right_idx = expression.right_idx;
-      u64_t num_parameters{};
+      translateExpression(expression.left_idx);
+      if (expression.right_idx == 0)
+        return;
+
+      u16_t left_idx = expression_tree.data[expression.right_idx].left_idx;
+      u16_t right_idx = expression_tree.data[expression.right_idx].right_idx;
+      u64_t num_parameters{1};
       while (true) {
         translateExpression(left_idx);
-        left_idx = expression_tree.data[right_idx].left_idx;
-        right_idx = expression_tree.data[right_idx].right_idx;
         if (right_idx == 0)
           break;
+
+        left_idx = expression_tree.data[right_idx].left_idx;
+        right_idx = expression_tree.data[right_idx].right_idx;
         ++num_parameters;
       }
 
-      tree[calling_idx].value = num_parameters - 1;
+      tree[calling_idx].value() = num_parameters;
       return;
     }
-      assert(false);
     case SUBSCRIPT:
       tree.emplace_back(SUBSCRIPT, expression.value);
       translateExpression(expression.left_idx);
@@ -547,22 +563,16 @@ struct Body {
   }
 
   void parseExpressionStatement() {
+    tree.emplace_back(ASTNode::EXPR_STMT, tokens.current_line_number());
     parseExpressionUntil(TokenType::SEMI_COLON);
   }
 
-  void parseVarDecl(bool is_global = false) {
+  void parseVarDecl() {
     tree.emplace_back(ASTNode::DECLARATION, tokens.current_line_number());
-    InstantiatedType variable_type = parseType(tokens, table);
-    std::string ident = parseIdentifier(tokens);
-    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(new std::string(ident)));
+    tree.emplace_back(parseType(tokens, table));
+
+    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(new std::string(parseIdentifier(tokens))));
     tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.");
-
-    if (tokens.peek_is(TokenType::IDENTIFIER)) {
-      if (tokens.peek().toString() == ident)
-        throw ParsingError("Variable may not be initialized using itself.", tokens.peek());
-
-      assert(false && "custom types unimplemented");
-    }
 
     if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
       tree.emplace_back(ASTNode::EMPTY);
@@ -573,10 +583,6 @@ struct Body {
       parseExpressionUntil(TokenType::SEMI_COLON);
     }
 
-    if (is_global)
-      table.addGlobalVariable(std::move(ident), variable_type);
-    else
-      table.addLocalVariable(std::move(ident), variable_type);
   }
 
   void parseIf() {
@@ -612,6 +618,9 @@ struct Body {
   }
 
   void parseScoped() {
+    if (tokens.pop_if(TokenType::SEMI_COLON))
+      return (void)tree.emplace_back(ASTNode::SCOPED, 0);
+
     tree.emplace_back(ASTNode::SCOPED, 1);
     if (tokens.pop_if(TokenType::LBRACE)) {
       u64_t num_statements = 0;
@@ -622,7 +631,7 @@ struct Body {
         if (tokens.empty())
           throw ParsingError("Expected ending rbrace to scoped statement.", tokens.previousToken());
       }
-      tree[scoped_idx].value = num_statements;
+      tree[scoped_idx].value() = num_statements;
     }
     else
       parseStatement();
@@ -681,7 +690,7 @@ bool parseGlobal(Body& global_body) {
     return false;
 
   tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.");
-  global_body.parseVarDecl(true);
+  global_body.parseVarDecl();
   return true;
 }
 
@@ -693,12 +702,13 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
   //just parses the declarations to load into symbol table
   while (not tokens.empty()) {
     ParsedFunction& function = functions.emplace_back();
+    function.line_number = tokens.current_line_number();
     tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function declaration.");
     function.name = parseIdentifier(tokens);
     tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
 
     SymbolTable::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
-    u64_t num_parameters{};
+    sz_t num_parameters{};
     if (not tokens.pop_if(TokenType::RPAREN))
       while (true) {
         parameters[num_parameters].type = parseType(tokens, table);
@@ -710,7 +720,7 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
         }
       }
 
-    const Type* return_type = &devoid_type;
+    const Type* return_type = Type::devoid();
     if (tokens.pop_if(TokenType::ARROW)) {
       InstantiatedType type = parseType(tokens, table);
       if (not type.isPlain())
@@ -732,12 +742,14 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
 
     table.enterFunctionScope(functions[i].name);
     function_body.parseStatementsUntilEmpty();
+    table.leaveFunctionScope();
     functions[i].function_body.nodes = std::move(function_body.tree);
   }
 }
 
 void printFunction(const ParsedFunction& func, SymbolTable& table) {
-  std::cout << "\nfn " << func.name << "(";
+  std::cout << '\n' << func.line_number << ":\t";
+  std::cout << "fn " << func.name << "(";
   const auto parameters = table.parametersOfFunction(func.name);
   const auto return_type = table.returnTypeOfFunction(func.name);
 
@@ -754,13 +766,14 @@ void printFunction(const ParsedFunction& func, SymbolTable& table) {
     std::cout << " -> ";
     std::cout << return_type->toString();
   }
-  std::cout << " {\n";
-  func.function_body.print();
+  std::cout << " { ";
+  func.function_body.print(func.line_number + 1);
   std::cout << "\n}";
 }
 
 void printTU(ParsedTU& ptu) {
-  ptu.global_tree.print();
+  ptu.global_tree.print(1);
+  std::cout << '\n';
   for (const auto &f : ptu.functions) {
     printFunction(f, ptu.table);
     std::cout << "\n";
@@ -777,6 +790,7 @@ ParsedTU Parser::parseTokens(std::vector<Token> &&token_list) {
 
 
   while (parseGlobal(global_body)) {}
+  ptu.global_tree.nodes = std::move(global_body.tree);
   parseFunctions(global_body, ptu.functions);
 
   if (Settings::doOutputParser()) {

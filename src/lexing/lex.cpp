@@ -102,7 +102,7 @@ void grabCharLiteral(FileInAnalysis &file) {
 void grabSymbol(FileInAnalysis &file) {
   TokenType type;
   const int c = file.stream.get();
-  if (c == '-' && is_num(file.stream.peek())) {
+  if (c == '-' && isCategorySYMBOLS(file.token_list.back().type) && is_num(file.stream.peek())) {
     file.stream.putback('-');
     return grabNumber(file);
   }
@@ -289,7 +289,7 @@ void grabIdentOrKeyword(FileInAnalysis &file) {
     return;
   }
   if (word == "false") [[unlikely]] {
-    file.token_list.emplace_back(TokenType::BOOL_LITERAL, Token::TokenValue(std::in_place_type<std::uint64_t>, 1), file.line_number);
+    file.token_list.emplace_back(TokenType::BOOL_LITERAL, Token::TokenValue(std::in_place_type<std::uint64_t>, 0), file.line_number);
     return;
   }
 

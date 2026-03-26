@@ -12,11 +12,13 @@ namespace LOM::Parser {
 struct ParsedFunction {
   std::string name;
   AST::SyntaxTree function_body;
+  u64_t line_number{};
 
   ParsedFunction() = default;
   ParsedFunction(ParsedFunction &&other) noexcept
   : name(std::move(other.name)),
-    function_body(std::move(other.function_body)) {}
+    function_body(std::move(other.function_body)),
+    line_number(other.line_number){}
 };
 
 struct ParsedTU {

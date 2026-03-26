@@ -45,6 +45,7 @@ add_executable(LookOnceMore
         src/utilities/arena.hpp
         src/utilities/typedefs.hpp
         src/ast/ast.cpp
+        src/utilities/enum_utils.hpp
 )
 
 

@@ -1,16 +1,13 @@
 #pragma once
 #include "types.hpp"
-#include "utilities/arena.hpp"
+#include "utilities/assume_assert.hpp"
 #include "utilities/typedefs.hpp"
 
 #include <unordered_map>
 #include <variant>
 #include <vector>
 
-
-
 namespace LOM {
-
 
 class SymbolTable final {
 public:
@@ -20,63 +17,60 @@ public:
   };
 private:
   class Function {
-    //each num is the number of variables in each scope
-    //first scope is for parameters
-    std::vector<u16_t> scopes;
+    u64_t num_parameters;
     std::vector<Variable> locals;
     const FunctionType* type;
   public:
 
-    explicit Function(std::span<Variable> parameters, const FunctionType* type) : type(type) {
-      scopes.emplace_back(parameters.size());
-      scopes.emplace_back(0);
+    explicit Function(std::span<Variable> parameters, const FunctionType* type)
+    : num_parameters(parameters.size()), type(type) {
+      assume_assert(parameters.size() less_eq Settings::MAX_FUNCTION_PARAMETERS);
       for (const auto& var : parameters)
         locals.emplace_back(var);
     }
 
     [[nodiscard]] auto
-    parameters() const noexcept
-    {return std::span(locals).subspan(0, scopes.front());}
+    parameters() const noexcept{return std::span(locals).subspan(0, num_parameters);}
+
     [[nodiscard]] const Type*
     returnType() const noexcept {return type->returnType();}
 
-    void addScope() noexcept {assert(not scopes.empty()); scopes.emplace_back(0);}
-    void leaveScope() noexcept {
-      assert(scopes.size() > 1);
-      for (auto i{scopes.back() + 1}; i > 0; --i)
-        locals.pop_back();
-      scopes.pop_back();
-    }
-
     [[nodiscard]] bool
     containsVariable(const std::string& name) const noexcept {
-      auto sz = static_cast<i64_t>(locals.size());
-      while (sz-- > 0)
-        if (locals[sz].name == name)
+      auto curr = locals.crbegin();
+      const auto end = locals.crend();
+      while (curr not_eq end) {
+        if (curr->name eq name)
           return true;
+
+        ++curr;
+      }
+
       return false;
     }
 
     [[nodiscard]] bool
     addVariable(std::string name, InstantiatedType type) noexcept {
-      assert(scopes.size() > 1);
       if (containsVariable(name))
           return false;
 
-      ++scopes.back();
       locals.emplace_back(type, std::move(name));
       return true;
     }
 
     [[nodiscard]] InstantiatedType
     getVariable(const std::string& name) const noexcept {
-      assert(containsVariable(name));
-      auto sz = static_cast<i64_t>(locals.size());
-      while (sz-- > 0)
-        if (locals[sz].name == name)
-          return locals[sz].type;
+      assume_assert(containsVariable(name));
+      auto curr = locals.crbegin();
+      const auto end = locals.crend();
+      while (curr not_eq end) {
+        if (curr->name eq name)
+          return curr->type;
 
-      assert(false);
+        ++curr;
+      }
+
+      std::unreachable();
     }
   };
 
@@ -113,14 +107,34 @@ public:
 
     return addGlobalVariable(std::move(name), type);
   }
-  void addGlobalVariable(std::string name, InstantiatedType type);
-  void addLocalVariable(std::string name, InstantiatedType type) const noexcept;
+  void addGlobalVariable(std::string name, InstantiatedType type) {
+    assume_assert(not globals.contains(name));
+    globals.emplace(std::move(name), type);
+  }
+  void addLocalVariable(std::string name, InstantiatedType type) const noexcept {
+    assume_assert(current_scope not_eq nullptr);
+    const bool res = current_scope->addVariable(std::move(name), type);
+    assume_assert(res);
+  }
 
   [[nodiscard]] bool
-  containsVariable(const std::string &name) const noexcept;
+  containsVariable(const std::string &name) const noexcept {
+    if (current_scope && current_scope->containsVariable(name))
+      return true;
+    if (globals.contains(name))
+      return std::holds_alternative<InstantiatedType>(globals.at(name));
+    return false;
+  }
 
   [[nodiscard]] InstantiatedType
-  closestVariable(const std::string &name) noexcept;
+  closestVariable(const std::string &name) noexcept {
+    if (current_scope and current_scope->containsVariable(name))
+      return current_scope->getVariable(name);
+
+    assume_assert(globals.contains(name));
+    assume_assert(std::holds_alternative<InstantiatedType>(globals[name]));
+    return std::get<InstantiatedType>(globals.at(name));
+  }
 
   [[nodiscard]] bool
   containsFunction(const std::string &name) noexcept {
@@ -131,49 +145,41 @@ public:
 
   [[nodiscard]] auto
   parametersOfFunction(const std::string& name) noexcept {
-    assert(containsFunction(name));
+    assume_assert(containsFunction(name));
     return std::get<Function>(globals[name]).parameters();
   }
 
   [[nodiscard]] const Type*
   returnTypeOfFunction(const std::string& name) noexcept {
-    assert(containsFunction(name));
+    assume_assert(containsFunction(name));
     return std::get<Function>(globals[name]).returnType();
   }
 
   [[nodiscard]] bool
-  containsSymbol(const std::string &name) noexcept {return containsVariable(name) || containsFunction(name);}
+  containsSymbol(const std::string &name) noexcept {return containsVariable(name) or containsFunction(name);}
 
   [[nodiscard]] bool
   isClosestSymbolAVariable(const std::string &name) noexcept {
     if (containsVariable(name))
       return true;
 
-    assert(containsFunction(name));
+    assume_assert(containsFunction(name));
     return false;
   }
 
   void enterFunctionScope(const std::string& function_name) noexcept {
-    assert(current_scope == nullptr);
-    assert(containsFunction(function_name));
+    assume_assert(current_scope eq nullptr);
+    assume_assert(containsFunction(function_name));
     current_scope = &std::get<Function>(globals[function_name]);
   }
-  void enterLocalScope() const noexcept {
-    assert(current_scope);
-    current_scope->addScope();
-  }
   void leaveFunctionScope() noexcept {
-    assert(current_scope);
+    assume_assert(current_scope);
     current_scope = nullptr;
-  }
-  void exitLocalScope() const noexcept {
-    assert(current_scope);
-    current_scope->leaveScope();
   }
 
   [[nodiscard]] const Type*
   returnTypeOfCurrentFunction() const noexcept {
-    assert(current_scope);
+    assume_assert(current_scope);
     return current_scope->returnType();
   }
 };

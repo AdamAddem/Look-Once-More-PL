@@ -9,22 +9,22 @@ struct Exclusive { Exclusive() = delete; };
 struct Inclusive { Inclusive() = delete; };
 
 template <class T>
-concept ExclusivityFlag = std::is_same_v<T, Exclusive> || std::is_same_v<T, Inclusive>;
+concept ExclusivityFlag = std::is_same_v<T, Exclusive> or std::is_same_v<T, Inclusive>;
 
 template <EnumType T, ExclusivityFlag lower = Inclusive, ExclusivityFlag higher = Inclusive>
 [[nodiscard]] constexpr bool
 enumBetween(T value, T lower_bound, T higher_bound) {
   return [&]() constexpr {
     if constexpr (std::is_same_v<lower, Exclusive>)
-      return std::to_underlying(value) > std::to_underlying(lower_bound);
+      return std::to_underlying(value) gtr std::to_underlying(lower_bound);
     else
-      return std::to_underlying(value) >= std::to_underlying(lower_bound);
+      return std::to_underlying(value) gtr_eq std::to_underlying(lower_bound);
   }()
-  &&
+  and
   [&]() constexpr {
     if constexpr (std::is_same_v<higher, Exclusive>)
-      return std::to_underlying(value) < std::to_underlying(higher_bound);
+      return std::to_underlying(value) less std::to_underlying(higher_bound);
     else
-      return std::to_underlying(value) <= std::to_underlying(higher_bound);
+      return std::to_underlying(value) less_eq std::to_underlying(higher_bound);
   }();
 }

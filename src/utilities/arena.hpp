@@ -1,14 +1,15 @@
 #pragma once
+#include "typedefs.hpp"
 #include <cstddef>
 #include <iostream>
 #include <memory>
 #include <new>
 
 namespace LOM {
-template <std::size_t N = 4096uz>
+template <sz_t N = 4096uz>
 class Arena {
   void* curr;
-  std::size_t remaining;
+  sz_t remaining;
   Arena* next_arena{nullptr};
 public:
   Arena() : remaining(N) {
@@ -38,7 +39,7 @@ public:
   }
 
   ~Arena() {
-    if (curr == nullptr)
+    if (curr eq nullptr)
       return;
     ::operator delete(static_cast<char*>(curr) - (N - remaining));
     delete next_arena;

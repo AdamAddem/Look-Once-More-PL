@@ -1,6 +1,7 @@
 #include "parse.hpp"
 
 #include "ast/ast.hpp"
+#include "utilities/assume_assert.hpp"
 #include "error.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 
@@ -38,9 +39,6 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
   Token token = tokens.take();
 
   if (token.isPrimitive()) {
-    if (token.is(TokenType::KEYWORD_DEVOID))
-      return devoid_literal;
-
     if (token.isPointer()) {
       tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.");
       if (token.is(TokenType::KEYWORD_VAGUE)) {
@@ -55,7 +53,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
       case TokenType::KEYWORD_UNIQUE:
         return InstantiatedType(table.addUniquePointer(subtype_instance), details);
       default:
-        assert(false);
+        std::unreachable();
       }
 
     }
@@ -89,10 +87,13 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
     case TokenType::KEYWORD_STRING:
       return InstantiatedType(PrimitiveType::string(), details);
     case TokenType::KEYWORD_DEVOID:
-      assert(details == InstantiatedType::InstanceDetails{} && "Non-plain devoid? Is that allowed?");
+      if (details not_eq InstantiatedType::InstanceDetails{})
+        throw ParsingError("Devoid may not have type qualifiers.",
+          InstantiatedType(PrimitiveType::devoid(), details).toString(), token.line_number);
+
       return devoid_literal;
     default:
-      assert(false);
+      std::unreachable();
     }
   }
 
@@ -127,7 +128,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
       subtypes.push_back(subtype.type);
     } while (variant_types_tokens.pop_if(TokenType::COMMA));
 
-    if (subtypes.size() < 2)
+    if (subtypes.size() less 2)
       throw ParsingError("Two or more types must be specified in variant type list.", "", variant_ln);
 
     return InstantiatedType(table.addVariant(subtypes, nullable), details);
@@ -160,7 +161,7 @@ struct Body {
 
   struct ExpressionTree {
     static constexpr u64_t max_expressiontree_size{200};
-    static_assert(max_expressiontree_size < std::numeric_limits<u16_t>::max());
+    static_assert(max_expressiontree_size less std::numeric_limits<u16_t>::max());
     std::array<Expression, max_expressiontree_size> data;
     u64_t begin{1};
 
@@ -173,9 +174,7 @@ struct Body {
       return begin++;
     }
 
-    void reset() {
-      begin = 1;
-    }
+    void reset() { begin = 1; }
   };
 
   ExpressionTree& expression_tree;
@@ -236,7 +235,7 @@ struct Body {
           new std::string(token.takeString()));
         break;
       default:
-        assert(false);
+        std::unreachable();
       }
 
       return expression_tree.create(literal_type, literal_value);
@@ -483,7 +482,7 @@ struct Body {
 
 
   void translateExpression(u16_t idx) {
-    if (idx == 0)
+    if (idx eq 0)
       return;
 
     using enum ASTNode::Type;
@@ -497,7 +496,7 @@ struct Body {
     case SCOPED:
     case RETURN:
     case EXPR_STMT:
-      assert(false);
+      std::unreachable();
 
     case UNARY:
       tree.emplace_back(UNARY, expression.value);
@@ -511,7 +510,7 @@ struct Body {
       tree.emplace_back(CALLING, 0);
       const auto calling_idx = tree.size() - 1;
       translateExpression(expression.left_idx);
-      if (expression.right_idx == 0)
+      if (expression.right_idx eq 0)
         return;
 
       u16_t left_idx = expression_tree.data[expression.right_idx].left_idx;
@@ -519,7 +518,7 @@ struct Body {
       u64_t num_parameters{1};
       while (true) {
         translateExpression(left_idx);
-        if (right_idx == 0)
+        if (right_idx eq 0)
           break;
 
         left_idx = expression_tree.data[right_idx].left_idx;
@@ -548,7 +547,7 @@ struct Body {
       return;
 
     default:
-      assert(false);
+      std::unreachable();
     }
   }
   void parseExpressionUntil(TokenType ending_token) {
@@ -658,12 +657,12 @@ struct Body {
       tokens.pop();
       return parseWhile();
     case TokenType::KEYWORD_DO:
-      assert(false);
+      std::unreachable();
     case TokenType::KEYWORD_RETURN:
       tokens.pop();
       return parseReturn();
     case TokenType::KEYWORD_SWITCH:
-      assert(false);
+      std::unreachable();
     case TokenType::LBRACE:
       return parseScoped();
     case TokenType::LESS:
@@ -686,7 +685,7 @@ struct Body {
 
 bool parseGlobal(Body& global_body) {
   TokenView& tokens = global_body.tokens;
-  if (tokens.peek_is(TokenType::KEYWORD_FN) || tokens.empty())
+  if (tokens.peek_is(TokenType::KEYWORD_FN) or tokens.empty())
     return false;
 
   tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.");
@@ -735,8 +734,8 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
 
   //actually parse the function bodies
   const auto sz = functions.size();
-  assert(sz == function_tokens.size());
-  for (auto i{0uz}; i<sz; ++i) {
+  assume_assert(sz eq function_tokens.size());
+  for (auto i{0uz}; i less sz; ++i) {
     Body function_body
     {{}, function_tokens[i], table, global_body.expression_tree};
 

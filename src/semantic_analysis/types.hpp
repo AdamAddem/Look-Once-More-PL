@@ -2,6 +2,7 @@
 #include "semantic_analysis/types.hpp"
 #include "settings.hpp"
 #include "utilities/arena.hpp"
+#include "utilities/assume_assert.hpp"
 #include "utilities/enum_utils.hpp"
 #include "utilities/typedefs.hpp"
 
@@ -30,28 +31,27 @@ class Type {
   static constexpr u8_t is_array_mask = 1 << 2;
   u8_t flags{};
 protected:
-
-  constexpr void setArithmetic() noexcept {flags |= is_arithmetic_mask;}
-  constexpr void setCallable()   noexcept {flags |= is_callable_mask;}
-  constexpr void setArray()      noexcept {flags |= is_array_mask;}
+  constexpr void setArithmetic() noexcept {flags or_eq is_arithmetic_mask;}
+  constexpr void setCallable()   noexcept {flags or_eq is_callable_mask;}
+  constexpr void setArray()      noexcept {flags or_eq is_array_mask;}
   enum : u8_t {DEVOID, PRIMITIVE, POINTER, VARIANT, FUNCTION, CUSTOM}
   derived_type{};
 
   explicit constexpr Type(auto derived_type)
   : derived_type(derived_type) {}
 public:
-  [[nodiscard]] static constexpr const Type* devoid() { static constexpr Type devoid{DEVOID}; return &devoid; }
+  [[nodiscard]] static consteval const Type* devoid()         { static constexpr Type devoid{DEVOID}; return &devoid; }
 
-  [[nodiscard]] constexpr bool isDevoid()     const noexcept  {return derived_type == DEVOID;}
-  [[nodiscard]] constexpr bool isPrimitive()  const noexcept  {return derived_type == PRIMITIVE;}
-  [[nodiscard]] constexpr bool isPointer()    const noexcept  {return derived_type == POINTER;}
-  [[nodiscard]] constexpr bool isVariant()    const noexcept  {return derived_type == VARIANT;}
-  [[nodiscard]] constexpr bool isFunction()   const noexcept  {return derived_type == FUNCTION;}
-  [[nodiscard]] constexpr bool isCustom()     const noexcept  {return derived_type == CUSTOM;}
+  [[nodiscard]] constexpr bool isDevoid()     const noexcept  {return derived_type eq DEVOID;}
+  [[nodiscard]] constexpr bool isPrimitive()  const noexcept  {return derived_type eq PRIMITIVE;}
+  [[nodiscard]] constexpr bool isPointer()    const noexcept  {return derived_type eq POINTER;}
+  [[nodiscard]] constexpr bool isVariant()    const noexcept  {return derived_type eq VARIANT;}
+  [[nodiscard]] constexpr bool isFunction()   const noexcept  {return derived_type eq FUNCTION;}
+  [[nodiscard]] constexpr bool isCustom()     const noexcept  {return derived_type eq CUSTOM;}
 
-  [[nodiscard]] constexpr bool isArithmetic() const noexcept  {return flags & is_arithmetic_mask;}
-  [[nodiscard]] constexpr bool isCallable()   const noexcept  {return flags & is_callable_mask;}
-  [[nodiscard]] constexpr bool isArray()      const noexcept  {return flags & is_array_mask;}
+  [[nodiscard]] constexpr bool isArithmetic() const noexcept  {return flags bitand is_arithmetic_mask;}
+  [[nodiscard]] constexpr bool isCallable()   const noexcept  {return flags bitand is_callable_mask;}
+  [[nodiscard]] constexpr bool isArray()      const noexcept  {return flags bitand is_array_mask;}
 
   [[nodiscard]] constexpr bool isBool()       const noexcept;
   [[nodiscard]] constexpr bool isIntegral()   const noexcept;
@@ -68,7 +68,7 @@ public:
   Type(const Type&) = delete;
   Type(Type&&) noexcept = delete;
   void operator=(const Type&) = delete;
-  void operator=(Type&&) noexcept = delete;
+  void operator=(Type &&) noexcept = delete;
 };
 
 struct InstantiatedType {
@@ -81,7 +81,7 @@ struct InstantiatedType {
     constexpr explicit InstanceDetails(const bool is_mutable) : is_mutable(is_mutable) {}
 
     [[nodiscard]] constexpr bool
-    operator==(const InstanceDetails &) const = default;
+    operator eq(const InstanceDetails &) const = default;
   }details;
 
   constexpr InstantiatedType() = default;
@@ -92,7 +92,7 @@ struct InstantiatedType {
   : type(type), details(is_mutable) {}
 
   [[nodiscard]] constexpr bool
-  operator==(const InstantiatedType&) const = default;
+  operator eq(const InstantiatedType&) const = default;
 
   [[nodiscard]] constexpr bool
   isPlain() const noexcept { return details == InstanceDetails{}; }
@@ -126,7 +126,7 @@ public:
   isFloating() const noexcept { return enumBetween(primitive_type, F32, F64); }
 
   [[nodiscard]] constexpr bool
-  isBool() const noexcept { return primitive_type == BOOL; }
+  isBool() const noexcept { return primitive_type eq BOOL; }
 
   [[nodiscard]] constexpr u64_t
   maxIntegralValueRepresentable() const noexcept {
@@ -149,7 +149,7 @@ public:
       return std::numeric_limits<u64_t>::max();
 
     default:
-      assert(false);
+      std::unreachable();
     }
   }
 
@@ -171,7 +171,7 @@ public:
       return 0;
 
     default:
-      assert(false);
+      std::unreachable();
     }
   }
 
@@ -179,51 +179,51 @@ public:
   [[nodiscard]] std::string toString() const noexcept;
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(u64_t value) const noexcept { return isIntegral() && value <= maxIntegralValueRepresentable(); }
+  canValueBeRepresented(u64_t value) const noexcept { return isIntegral() and value less_eq maxIntegralValueRepresentable(); }
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(i64_t value) const noexcept { return isIntegral() && value <= static_cast<i64_t>(maxIntegralValueRepresentable()) && value >= minIntegralValueRepresentable(); }
+  canValueBeRepresented(i64_t value) const noexcept { return isIntegral() and value less_eq static_cast<i64_t>(maxIntegralValueRepresentable()) and value gtr_eq minIntegralValueRepresentable(); }
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(float) const noexcept { return primitive_type == F32 || primitive_type == F64; }
+  canValueBeRepresented(float) const noexcept { return primitive_type eq F32 or primitive_type eq F64; }
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(double) const noexcept { return primitive_type == F64; }
+  canValueBeRepresented(double) const noexcept { return primitive_type eq F64; }
 
 
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   i8() noexcept {static constexpr PrimitiveType i8{I8}; return &i8;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   i16() noexcept {static constexpr PrimitiveType i16{I16}; return &i16;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   i32() noexcept {static constexpr PrimitiveType i32{I32}; return &i32;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   i64() noexcept {static constexpr PrimitiveType i64{I64}; return &i64;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   u8() noexcept {static constexpr PrimitiveType u8{U8}; return &u8;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   u16() noexcept {static constexpr PrimitiveType u16{U16}; return &u16;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   u32() noexcept {static constexpr PrimitiveType u32{U32}; return &u32;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   u64() noexcept {static constexpr PrimitiveType u64{U64}; return &u64;}
 
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   f32() noexcept {static constexpr PrimitiveType f32{U32}; return &f32;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   f64() noexcept {static constexpr PrimitiveType f64{U64}; return &f64;}
 
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   bool_() noexcept {static constexpr PrimitiveType bool_{BOOL}; return &bool_;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   char_() noexcept {static constexpr PrimitiveType char_{CHAR}; return &char_;}
-  static constexpr const PrimitiveType*
+  static consteval const PrimitiveType*
   string() noexcept {static constexpr PrimitiveType string{STRING}; return &string;}
 };
 
-constexpr bool Type::isBool()       const noexcept {return derived_type == PRIMITIVE && static_cast<const PrimitiveType*>(this)->isBool();    }
-constexpr bool Type::isIntegral()   const noexcept {return derived_type == PRIMITIVE && static_cast<const PrimitiveType*>(this)->isIntegral();}
-constexpr bool Type::isFloating()   const noexcept {return derived_type == PRIMITIVE && static_cast<const PrimitiveType*>(this)->isFloating();}
+constexpr bool Type::isBool()       const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isBool();    }
+constexpr bool Type::isIntegral()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isIntegral();}
+constexpr bool Type::isFloating()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isFloating();}
 
 
 
@@ -248,19 +248,19 @@ public:
 
   [[nodiscard]] constexpr bool
   sameAs(InstantiatedType subtype, bool is_unique) const noexcept
-  {return subtype == this->subtype && ((pointer_type == UNIQUE) == is_unique);}
+  {return subtype eq this->subtype and ((pointer_type eq UNIQUE) eq is_unique);}
 
   [[nodiscard]] constexpr InstantiatedType
   getSubtype() const noexcept {return subtype;}
 
   [[nodiscard]] constexpr bool
-  isRaw() const noexcept {return pointer_type == RAW;}
+  isRaw() const noexcept {return pointer_type eq RAW;}
 
   [[nodiscard]] constexpr bool
-  isUnique() const noexcept {return pointer_type == UNIQUE;}
+  isUnique() const noexcept {return pointer_type eq UNIQUE;}
 
   [[nodiscard]] constexpr bool
-  isVague() const noexcept {return pointer_type == VAGUE;}
+  isVague() const noexcept {return pointer_type eq VAGUE;}
 
   static constexpr const PointerType*
   vague(bool subtype_mutable) noexcept {
@@ -280,7 +280,7 @@ class VariantType final : public Type {
   constexpr VariantType(std::vector<const Type*> subtypes, bool nullable)
   : Type(VARIANT), is_nullable(nullable), subtypes(std::move(subtypes)) {
     for (const auto subtype : this->subtypes)
-    { assert(subtype != this); assert(not subtype->isVariant()); }
+    { assume_assert(subtype not_eq this); assume_assert(not subtype->isVariant()); }
   }
 
 public:
@@ -301,11 +301,10 @@ class FunctionType final : public Type {
 public:
   constexpr FunctionType(std::span<const Type*> parameters, const Type* return_type)
   : Type(FUNCTION), num_parameters(parameters.size()), return_type(return_type) {
-    assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
+    assume_assert(num_parameters less_eq Settings::MAX_FUNCTION_PARAMETERS);
     setCallable();
-    for (auto i{0uz}; i<num_parameters; ++i)
+    for (auto i{0uz}; i less num_parameters; ++i)
       parameter_types[i] = parameters[i];
-
   }
 
   [[nodiscard]] constexpr u8_t
@@ -319,10 +318,10 @@ public:
 
   [[nodiscard]] constexpr bool
   sameAs(std::span<const Type*> parameters, const Type* ret_type) const noexcept {
-    if (parameters.size() not_eq num_parameters || return_type not_eq ret_type)
+    if (parameters.size() not_eq num_parameters or return_type not_eq ret_type)
       return false;
 
-    for (auto i{0uz}; i<parameters.size(); ++i)
+    for (auto i{0uz}; i less parameters.size(); ++i)
       if (parameters[i] not_eq parameter_types[i])
         return false;
 
@@ -340,19 +339,19 @@ public:
 };
 
 constexpr const PrimitiveType* Type::castToPrimitive() const noexcept {
-  assert(derived_type == PRIMITIVE);
+  assume_assert(derived_type eq PRIMITIVE);
   return static_cast<const PrimitiveType*>(this);
 }
 constexpr const PointerType* Type::castToPointer() const noexcept {
-  assert(derived_type == POINTER);
+  assume_assert(derived_type eq POINTER);
   return static_cast<const PointerType*>(this);
 }
 constexpr const VariantType* Type::castToVariant() const noexcept {
-  assert(derived_type == VARIANT);
+  assume_assert(derived_type eq VARIANT);
   return static_cast<const VariantType*>(this);
 }
 constexpr const FunctionType* Type::castToFunction() const noexcept {
-  assert(derived_type == FUNCTION);
+  assume_assert(derived_type eq FUNCTION);
   return static_cast<const FunctionType*>(this);
 }
 

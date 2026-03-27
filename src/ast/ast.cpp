@@ -1,28 +1,31 @@
 #include "ast.hpp"
+
+#include "utilities/assume_assert.hpp"
+
 #include <iostream>
 
 using namespace LOM::AST;
 
 [[nodiscard]] static constexpr
 bool has_ln(ASTNode::Type type) {
-  return std::to_underlying(type) >= ASTNode::Type::DECLARATION &&
-    std::to_underlying(type) <= ASTNode::Type::EXPR_STMT && type not_eq ASTNode::Type::SCOPED;
+  return std::to_underlying(type) gtr_eq ASTNode::Type::DECLARATION and
+    std::to_underlying(type) less_eq ASTNode::Type::EXPR_STMT and type not_eq ASTNode::Type::SCOPED;
 }
 
 static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcept {
   if (has_ln(node->type())) {
-    while (ln <= node->line_number())
+    while (ln less_eq node->line_number())
       std::cout << '\n' << ln++ << ":\t\t";
   }
 
   using enum ASTNode::Type;
   switch (node->type()) {
   case EMPTY:
-    assert(false);
+    std::unreachable();
   case DECLARATION:
     std::cout << (++node)->instance_type().toString() << " ";
     std::cout << *(++node)->getIdentifier() << " = ";
-    if ((++node)->type() == EMPTY)
+    if ((++node)->type() eq EMPTY)
       std::cout << "junk";
     else
       print(node, ln);
@@ -58,11 +61,11 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
 
   case SCOPED: {
     const u64_t num_children = node->sub_statements();
-    if (num_children == 0)
+    if (num_children eq 0)
       return;
 
     std::cout << "{ ";
-    for (auto i{0uz}; i<num_children; ++i) {
+    for (auto i{0uz}; i less num_children; ++i) {
       print(++node, ln);
       std::cout << ';';
     }
@@ -80,14 +83,14 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     return print(++node, ln);
 
   case UNARY: {
-    auto opr = node->getOperator();
+    const auto opr = node->getOperator();
     const char* opr_str = operatorToString(opr);
-    assert(isCategoryUNARY_OPS(opr));
+    assume_assert(isCategoryUNARY_OPS(opr));
 
     std::cout << '(';
     if (isCategoryPREFIX_OPS(opr)) {
       std::cout << opr_str;
-      if (opr == Operator::NOT || opr == Operator::BITNOT)
+      if (opr eq Operator::NOT or opr eq Operator::BITNOT)
         std::cout << ' ';
 
       print(++node, ln);
@@ -101,9 +104,9 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
   }
 
   case BINARY: {
-    auto opr = node->getOperator();
+    const auto opr = node->getOperator();
     const char* opr_str = operatorToString(opr);
-    assert(isCategoryBINARY_OPS(opr));
+    assume_assert(isCategoryBINARY_OPS(opr));
 
     std::cout << '(';
     print(++node, ln);
@@ -118,7 +121,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     print(++node, ln);
 
     std::cout << '(';
-    if (num_params == 0) {
+    if (num_params eq 0) {
       std::cout << ')';
       return;
     }
@@ -132,7 +135,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
   }
 
   case SUBSCRIPT:
-    assert(false);
+    std::unreachable();
 
   case IDENTIFIER:
     std::cout << *node->getIdentifier();
@@ -167,7 +170,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     return;
 
   default:
-    assert(false);
+    std::unreachable();
   }
 }
 
@@ -177,7 +180,7 @@ void SyntaxTree::print(u64_t starting_line_number) const noexcept {
 
   auto curr = nodes.begin();
   const auto end = nodes.end();
-  while (curr != end) {
+  while (curr not_eq end) {
     ::print(curr, starting_line_number);
     std::cout << "; ";
     ++curr;

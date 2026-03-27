@@ -6,7 +6,6 @@ LOMError::LOMError(const Stage err_stage,
            const std::string& what, const std::string& err_context,
            const unsigned line_num) :
   error_stage(err_stage) {
-
   using enum Stage;
   switch (error_stage) {
   case LexingError:
@@ -26,14 +25,7 @@ LOMError::LOMError(const Stage err_stage,
     break;
   }
 
-  error_message.append("error on line ");
-  error_message.append(std::to_string(line_num)  + ":\n");
-
-  error_message.append(what);
-  error_message.append("\n\n");
-
-  error_message.append("Context:\n");
-  error_message.append(err_context);
+  error_message.append(std::format("error on line {}:\n{}\n\nContext:\n{}", line_num, what, err_context));
 }
 
 LexingError::LexingError(const std::string& what, const Lexer::Token& token) :

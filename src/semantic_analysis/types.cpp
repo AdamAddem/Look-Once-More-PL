@@ -1,27 +1,28 @@
 #include "types.hpp"
 #include "lexing/lex.hpp"
+#include "utilities/assume_assert.hpp"
 
 using namespace LOM;
 
 bool Type::convertibleTo(const Type* other) const noexcept {
-  assert(derived_type != CUSTOM);
-  assert(other->derived_type != CUSTOM);
+  assume_assert(derived_type not_eq CUSTOM);
+  assume_assert(other->derived_type not_eq CUSTOM);
 
-  if (other == this)
+  if (other eq this)
     return true;
 
 
   const auto other_type = other->derived_type;
-  if (other_type == VARIANT)
+  if (other_type eq VARIANT)
     return other->castToVariant()->contains(this);
 
-  if (derived_type != other_type || flags != other->flags)
+  if (derived_type not_eq other_type or flags not_eq other->flags)
     return false;
 
 
   switch (derived_type) {
   case DEVOID:
-    assert(false); //only one devoid instance allowed, so this should've returned earlier
+    std::unreachable(); //only one devoid instance allowed, so this should've returned earlier
   case PRIMITIVE:
     return castToPrimitive()->convertibleTo(other->castToPrimitive());
   case POINTER:
@@ -30,8 +31,8 @@ bool Type::convertibleTo(const Type* other) const noexcept {
   case FUNCTION:
   case CUSTOM:
     return false;
-   default:
-    assert(false);
+  default:
+    std::unreachable();
   }
 
 }
@@ -50,51 +51,51 @@ std::string Type::toString() const noexcept {
   case FUNCTION:
   case CUSTOM:
   default:
-    assert(false && "unimplemented");
+    std::unreachable();
   }
 }
 
 bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
   const auto other_type = other->primitive_type;
-  if (other_type == primitive_type) return true;
+  if (other_type eq primitive_type) return true;
 
   switch (primitive_type) {
   case I8:
   case I16:
   case I32:
   case I64: //convert if other type is a greater size signed integer
-    static_assert(std::to_underlying(I8) < std::to_underlying(I16));
-    static_assert(std::to_underlying(I16) < std::to_underlying(I32));
-    static_assert(std::to_underlying(I32) < std::to_underlying(I64));
-    return std::to_underlying(other_type) > std::to_underlying(primitive_type) &&
-           std::to_underlying(other_type) <= std::to_underlying(I64);
+    static_assert(std::to_underlying(I8) less std::to_underlying(I16));
+    static_assert(std::to_underlying(I16) less std::to_underlying(I32));
+    static_assert(std::to_underlying(I32) less std::to_underlying(I64));
+    return std::to_underlying(other_type) gtr std::to_underlying(primitive_type) and
+           std::to_underlying(other_type) less_eq std::to_underlying(I64);
   case U8:
   case U16:
   case U32:
   case U64: //convert if other type is a greater size signed/unsigned integer
-    static_assert(std::to_underlying(U8) < std::to_underlying(U16));
-    static_assert(std::to_underlying(U16) < std::to_underlying(U32));
-    static_assert(std::to_underlying(U32) < std::to_underlying(U64));
-    static_assert(std::to_underlying(U8) - 4 == std::to_underlying(I8));
-    static_assert(std::to_underlying(U64) - 4 == std::to_underlying(I64));
-    if (other->isUnsignedIntegral() && std::to_underlying(other_type) > std::to_underlying(primitive_type))
+    static_assert(std::to_underlying(U8) less std::to_underlying(U16));
+    static_assert(std::to_underlying(U16) less std::to_underlying(U32));
+    static_assert(std::to_underlying(U32) less std::to_underlying(U64));
+    static_assert(std::to_underlying(U8) - 4 eq std::to_underlying(I8));
+    static_assert(std::to_underlying(U64) - 4 eq std::to_underlying(I64));
+    if (other->isUnsignedIntegral() and std::to_underlying(other_type) gtr std::to_underlying(primitive_type))
       return true;
 
-    return std::to_underlying(other_type) > (std::to_underlying(primitive_type) - 4) &&
-       std::to_underlying(other_type) <= std::to_underlying(I64);
+    return std::to_underlying(other_type) gtr (std::to_underlying(primitive_type) - 4) and
+       std::to_underlying(other_type) less_eq std::to_underlying(I64);
 
   case F32:
-    if (other_type == F32) return true;
+    if (other_type eq F32) return true;
     [[fallthrough]];
   case F64:
-    return other_type == F64;
+    return other_type eq F64;
 
   case BOOL:
   case CHAR:
   case STRING:
     return false; //only converts to the same type which has been checked already
   default:
-    assert(false);
+    std::unreachable();
   }
 }
 
@@ -127,7 +128,7 @@ std::string PrimitiveType::toString() const noexcept {
   case STRING:
     return "string";
   default:
-    assert(false);
+    std::unreachable();
   }
 }
 
@@ -135,11 +136,11 @@ std::string PrimitiveType::toString() const noexcept {
 //immutable to mutable subtype not allowed
 bool PointerType::convertibleTo(const PointerType* other) const noexcept {
   const auto other_type = other->pointer_type;
-  if (pointer_type == VAGUE)
-    return other_type == VAGUE;
+  if (pointer_type eq VAGUE)
+    return other_type eq VAGUE;
 
-  return (pointer_type == other_type) and
-         (subtype.type == other->subtype.type) and
+  return (pointer_type eq other_type) and
+         (subtype.type eq other->subtype.type) and
          (subtype.details.is_mutable or not other->subtype.details.is_mutable);
 }
 
@@ -152,13 +153,13 @@ std::string PointerType::toString() const noexcept {
   case VAGUE:
     return "vague -> ";
   default:
-    assert(false);
+    std::unreachable();
   }
 }
 
 bool VariantType::contains(const Type* type) const noexcept {
   for (const auto t : subtypes)
-    if (type == t)
+    if (type eq t)
       return true;
 
   return false;
@@ -184,18 +185,18 @@ bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, bool nullabl
   if (nullable not_eq is_nullable or subtypes_.size() not_eq sz)
     return false;
 
-  for (auto i{0uz}; i<sz; ++i)
-    if (subtypes_[i] != subtypes[i])
+  for (auto i{0uz}; i less sz; ++i)
+    if (subtypes_[i] not_eq subtypes[i])
       return false;
 
   return true;
 }
 
 bool FunctionType::isValidCall(const std::vector<InstantiatedType>& parameters) const noexcept {
-  assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
+  assume_assert(parameters.size() less_eq Settings::MAX_FUNCTION_PARAMETERS);
   const auto num_params = parameters.size();
-  for (auto i{0uz}; i<num_params; ++i) {
-    if (parameter_types[i] == nullptr)
+  for (auto i{0uz}; i less num_params; ++i) {
+    if (parameter_types[i] eq nullptr)
       return false;
     if (not parameters[i].type->convertibleTo(parameter_types[i]))
       return false;

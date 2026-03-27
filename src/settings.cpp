@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iostream>
 #include <unordered_map>
+#include <utility>
 
 enum class Args : unsigned {
   OUTPUT_LEXER,
@@ -121,13 +122,13 @@ std::vector<std::filesystem::path> Settings::setArgs(const unsigned argc, const 
       optimization_level = 3; break;
 
     default:
-      assert(false);
+      std::unreachable();
     }
 
   }
   if (output_name.empty())
 #ifdef _WIN32
-    output_name = "lom.exe";
+      output_name = "lom.exe";
 #else
       output_name = "lom.out";
 #endif

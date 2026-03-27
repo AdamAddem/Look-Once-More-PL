@@ -1,11 +1,8 @@
 #pragma once
-#include "semantic_analysis/symbol_table.hpp"
 #include "ast/ast.hpp"
+#include "semantic_analysis/symbol_table.hpp"
 
-namespace LOM::Lexer {
-  struct Token;
-}
-
+namespace LOM::Lexer { struct Token; }
 
 namespace LOM::Parser {
 

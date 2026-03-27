@@ -1,26 +1,26 @@
 #include "peep_mir.hpp"
-#include "../semantic_analysis/symbol_table.hpp"
 #include "ast/ast.hpp"
 #include "error.hpp"
 #include "parsing/parse.hpp"
+#include "semantic_analysis/symbol_table.hpp"
 #include "settings.hpp"
-#include "utilities/variant_overload.hpp"
+#include "utilities/typedefs.hpp"
 
 #include <cassert>
 #include <format>
 #include <iostream>
 #include <variant>
 
-/*
+
 using namespace LOM;
 using namespace LOM::Parser;
 using namespace LOM::PeepMIR;
 using namespace LOM::AST;
 
+namespace {
+
 struct Peeper {
   Function& current_function;
-  std::vector<PeepTU::Global>& globals;
-  std::unordered_map<std::string, Function>& functions;
   SymbolTable& table;
 
   InstantiatedType peepLiteralExpression(const LiteralExpression &literal) const {
@@ -337,44 +337,19 @@ struct Peeper {
   }
 };
 
-static void peepFunction(PeepTU& tu, ParsedFunction &func, SymbolTable& table) {
-  std::vector<const Type*> param_types;
-  table.enterScope(func.return_type);
+void peepFunction(ParsedFunction &func, SymbolTable& table) {
+  table.enterFunctionScope(func.name);
 
-  for (auto &decl : func.parameter_list) {
-    peepVarDeclaration(decl, table);
-    param_types.emplace_back(decl.type.type);
-  }
-
-  table.addFunction(func.name, param_types, func.return_type);
-
-  const bool is_devoid_return = func.return_type->isDevoid();
-  bool has_return_statement = false;
-  for (const auto statement : func.function_body) {
-    peepStatement(*statement, table);
-
-    if (!is_devoid_return && std::holds_alternative<ReturnStatement>(*statement))
-      has_return_statement = true;
-  }
-
-  if (!has_return_statement) {
-    if (!is_devoid_return)
-      throw ValidationError("Value returning function has no return statement.", std::format("Expected type '{}'", func.return_type->toString()), 42069);
-
-    func.function_body.emplace_back(new Statement{std::in_place_type<ReturnStatement>, 0});
-  }
-
-
-  table.leaveScope();
+  table.leaveFunctionScope();
 }
 
-PeepTU PeepMIR::lowerToPeep(ParsedTU &&ptu) {
-  SymbolTable table;
-  for (auto& decl : ptu.globals)
-    table.addGlobalVariable(std::move(decl.ident), decl.type);
+}
 
-  for (auto &f : ptu.functions)
-    peepFunction(table, f);
+PeepTU PeepMIR::lowerToPeep(ParsedTU &&parsed_tu) {
+  SymbolTable table;
+  PeepTU peeped_tu;
+  for (auto &func : parsed_tu.functions)
+    peepFunction(func, table);
 
   if (Settings::doOutputValidation()) {
     std::cout << "--- Validation Passed ---\n\n";
@@ -383,4 +358,4 @@ PeepTU PeepMIR::lowerToPeep(ParsedTU &&ptu) {
 
 
   assert(false);
-} */
+}

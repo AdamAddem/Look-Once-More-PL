@@ -1,11 +1,12 @@
 #pragma once
+#include "typedefs.hpp"
 
 template <class T>
 class owned_ptr {
   T* owned{nullptr};
 public:
   constexpr owned_ptr() noexcept = default;
-  constexpr owned_ptr(T* mine_now) noexcept : owned(mine_now) {}
+  constexpr explicit owned_ptr(T* mine_now) noexcept : owned(mine_now) {}
 
   owned_ptr(const owned_ptr&) = delete;
   owned_ptr& operator=(const owned_ptr&) = delete;
@@ -19,8 +20,8 @@ public:
   [[nodiscard]] constexpr T& operator*() const noexcept {return *owned;}
   [[nodiscard]] constexpr T* operator->() const noexcept {return owned;}
 
-  constexpr bool operator==(const decltype(nullptr)) const noexcept { return owned == nullptr; }
-  constexpr operator bool() const noexcept { return owned != nullptr; }
+  constexpr bool operator eq(const decltype(nullptr)) const noexcept { return owned eq nullptr; }
+  constexpr operator bool() const noexcept { return owned not_eq nullptr; }
 };
 
 template <class T>

@@ -1,6 +1,6 @@
 #pragma once
 #include "settings.hpp"
-#include "semantic_analysis/types.hpp"
+#include "semantic_analysis/symbol_table.hpp"
 #include "utilities/typedefs.hpp"
 
 #include <unordered_map>
@@ -22,8 +22,15 @@ struct Instruction {
     EQ, NEQ,
     ADDRESS_OF,
   }op;
-
   u64_t value;
+
+  [[nodiscard]] i64_t getInt() const                      {return std::bit_cast<i64_t>(value);}
+  [[nodiscard]] u64_t getUint() const                     {return value;}
+  [[nodiscard]] float getFloat() const                    {return std::bit_cast<float>(static_cast<u32_t>(value));}
+  [[nodiscard]] double getDouble() const                  {return std::bit_cast<double>(value);}
+  [[nodiscard]] bool getBool() const                      {return value;}
+  [[nodiscard]] char getChar() const                      {return static_cast<char>(value);}
+  [[nodiscard]] std::string* getString() const            {return std::bit_cast<std::string*>(value); }
 };
 
 struct Block {
@@ -36,23 +43,20 @@ struct Block {
 struct Function {
   const FunctionType* type;
   std::vector<const Type*> locals;
-  std::vector<Block> blocks; //if empty, then it is an external function
+  std::vector<Block> blocks;
 
-  explicit Function(const FunctionType* function_type)
-  : type(function_type) {}
+  explicit Function(const FunctionType* function_type) : type(function_type) {}
 };
 
 struct PeepTU {
   struct Global {
     std::string name;
-    InstantiatedType type;
   };
+  SymbolTable table;
 
-  std::vector<Global> globals;
   std::unordered_map<std::string, Function> functions;
-
 };
 
-inline PeepTU lowerToPeep(Parser::ParsedTU &&) { assert(false); }
+PeepTU lowerToPeep(Parser::ParsedTU &&);
 
 };

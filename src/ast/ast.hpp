@@ -1,13 +1,14 @@
 #pragma once
 #pragma once
 #include "semantic_analysis/types.hpp"
+#include "utilities/assume_assert.hpp"
 #include "utilities/typedefs.hpp"
 #include <cassert>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <type_traits>
 
 namespace LOM::AST {
 
@@ -102,12 +103,7 @@ constexpr bool isCategoryUNARY_OPS(const Operator e) {
   return std::to_underlying(e) >= 22 && std::to_underlying(e) < 30;
 }
 
-}
-
-
-namespace LOM::AST {
-
-struct ASTNode;
+class ASTNode;
 struct SyntaxTree {
   explicit SyntaxTree(std::vector<ASTNode> nodes) : nodes(std::move(nodes)) {}
   SyntaxTree() = default;
@@ -117,17 +113,13 @@ struct SyntaxTree {
   void print(u64_t starting_line_number) const noexcept;
 
 };
- void print(std::span<const ASTNode> nodes);
 
-
-//Is this overengineered? Yes.
-//But its awesome.
-struct ASTNode {
-private:
+//Is this overengineered? Yes. yeah. yep.
+class ASTNode {
 
   //This language is so garbage icl
-  static_assert(alignof(InstantiatedType) == 8);
-  static_assert(sizeof(InstantiatedType) == 16);
+  static_assert(alignof(InstantiatedType) eq 8);
+  static_assert(sizeof(InstantiatedType) eq 16);
   alignas(InstantiatedType)
   u8_t data[sizeof(InstantiatedType)];
 public:
@@ -165,9 +157,7 @@ public:
     data[0] = type;
     value() = value_;
   }
-  constexpr explicit ASTNode(InstantiatedType instantiated) {
-    std::construct_at<InstantiatedType>(reinterpret_cast<InstantiatedType *>(data), instantiated);
-  }
+  constexpr explicit ASTNode(InstantiatedType instantiated) { std::construct_at<InstantiatedType>(reinterpret_cast<InstantiatedType *>(data), instantiated); }
 
   [[nodiscard]] constexpr u64_t&
   value() noexcept { return *std::launder(reinterpret_cast<u64_t*>(data + 8)); }
@@ -182,71 +172,70 @@ public:
   line_number() const noexcept { return value(); }
 
   [[nodiscard]] constexpr u64_t
-  sub_statements() const noexcept { assert(type() == SCOPED); return value(); }
+  sub_statements() const noexcept { assume_assert(type() eq SCOPED); return value(); }
 
   [[nodiscard]] constexpr u64_t
-  parameter_count() const noexcept { assert(type() == CALLING); return value(); }
-
+  parameter_count() const noexcept { assume_assert(type() eq CALLING); return value(); }
 
   [[nodiscard]] constexpr InstantiatedType
   instance_type() const noexcept { return *std::launder(reinterpret_cast<const InstantiatedType*>(data)); }
 
-  static_assert(sizeof(u64_t) >= sizeof(Operator));
+  static_assert(sizeof(u64_t) gtr_eq sizeof(Operator));
   static_assert(std::unsigned_integral<std::underlying_type_t<Operator>>);
   [[nodiscard]] constexpr Operator
   getOperator() const noexcept {
-    assert(type() == UNARY || type() == BINARY);
+    assume_assert(type() eq UNARY or type() eq BINARY);
     return static_cast<Operator>(value());
   }
 
   [[nodiscard]] constexpr const std::string*
   getIdentifier() const noexcept {
-    assert(type() == IDENTIFIER);
+    assume_assert(type() eq IDENTIFIER);
     return std::bit_cast<std::string*>(value());
   }
 
   [[nodiscard]] constexpr i64_t
   getInt() const noexcept {
-    assert(type() == INT_LITERAL);
+    assume_assert(type() eq INT_LITERAL);
     return std::bit_cast<i64_t>(value());
   }
 
   [[nodiscard]] constexpr u64_t
   getUint() const noexcept {
-    assert(type() == UINT_LITERAL);
+    assume_assert(type() eq UINT_LITERAL);
     return value();
   }
 
-  static_assert(sizeof(float) == sizeof(u32_t));
+  static_assert(sizeof(float) eq sizeof(u32_t));
   [[nodiscard]] constexpr float
   getFloat() const noexcept {
-    assert(type() == FLOAT_LITERAL);
+    assume_assert(type() eq FLOAT_LITERAL);
     return std::bit_cast<float>(static_cast<u32_t>(value()));
   }
 
-  static_assert(sizeof(double) == sizeof(u64_t));
+  static_assert(sizeof(double) eq sizeof(u64_t));
   [[nodiscard]] constexpr double
   getDouble() const noexcept {
-    assert(type() == DOUBLE_LITERAL);
+    assume_assert(type() eq DOUBLE_LITERAL);
     return std::bit_cast<double>(value());
   }
 
   [[nodiscard]] constexpr bool
   getBool() const noexcept {
-    assert(type() == BOOL_LITERAL);
+    assume_assert(type() eq BOOL_LITERAL);
     return value();
   }
 
   [[nodiscard]] constexpr char
   getChar() const noexcept {
-    assert(type() == CHAR_LITERAL);
+    assume_assert(type() eq CHAR_LITERAL);
     return static_cast<char>(value());
   }
 
-  static_assert(sizeof(u64_t) >= sizeof(void*));
+  static_assert(sizeof(u64_t) gtr_eq sizeof(void*));
   [[nodiscard]] constexpr std::string*
   getString() const noexcept {
-    assert(type() == STRING_LITERAL);
+    assume_assert(type() eq STRING_LITERAL);
     return std::bit_cast<std::string*>(value());
   }
 

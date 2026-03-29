@@ -2,13 +2,12 @@
 #include "lex.hpp"
 #include <functional>
 #include <iostream>
-#include <stdexcept>
 #include <utility>
 
 using namespace LOM::Lexer;
 
 void Token::throw_if(const TokenType unwanted_type, const char* err_msg) const {
-  if (type eq unwanted_type)
+  if (type == unwanted_type)
    throw ParsingError(err_msg, *this);
 }
 
@@ -18,8 +17,8 @@ void Token::throw_if_not(const TokenType expected_type, const char* err_msg) con
 }
 
 std::string Token::toString() const {
-  if (type eq TokenType::IDENTIFIER)
-    return std::get<std::string>(value);
+  if (type == TokenType::IDENTIFIER)
+    return to_stdstring();
 
   if (isLiteral()) {
     switch (type) {
@@ -34,7 +33,7 @@ std::string Token::toString() const {
     case TokenType::CHAR_LITERAL:
       return std::to_string(getChar());
     case TokenType::STRING_LITERAL:
-      return std::get<std::string>(value);
+      return to_stdstring();
     case TokenType::BOOL_LITERAL:
       return getBool() ? "true" : "false";
 
@@ -48,7 +47,7 @@ std::string Token::toString() const {
 
 std::string Token::toDebugString() const {
 
-  if (type eq TokenType::IDENTIFIER)
+  if (type == TokenType::IDENTIFIER)
     return {"id::" + toString()};
 
   if (isLiteral()) {
@@ -74,7 +73,7 @@ std::string Token::toDebugString() const {
     }
   }
 
-  if (type eq TokenType::KEYWORD_DEVOID) [[unlikely]]
+  if (type == TokenType::KEYWORD_DEVOID) [[unlikely]]
     return {"devoid"};
 
   return tokenTypeToString(type);
@@ -93,17 +92,17 @@ TokenView::print(const unsigned initial_indent) const {
   while (curr_print not_eq end) {
     const auto type = curr_print->type;
     const unsigned ln = curr_print->line_number;
-    while (ln gtr last_linenum) {
+    while (ln > last_linenum) {
       std::cout << std::endl;
       ++last_linenum;
       std::cout << last_linenum << ": " << std::string(indent, ' ');
     }
 
-    if (type eq TokenType::LBRACE) {
+    if (type == TokenType::LBRACE) {
       std::cout << "{ ";
       indent++;
     }
-    else if (type eq TokenType::RBRACE) {
+    else if (type == TokenType::RBRACE) {
       std::cout << "\b} ";
       indent--;
     }
@@ -143,9 +142,9 @@ TokenView::getTokensBetween(const TokenType opening_token, const TokenType closi
       throw ParsingError(errmsg, *(begin - 1));
     }
 
-    if (begin->type eq opening_token)
+    if (begin->type == opening_token)
       ++open;
-    else if (begin->type eq closing_token)
+    else if (begin->type == closing_token)
       --open;
 
     pop();
@@ -176,7 +175,7 @@ TokenView::distanceFromFirstOf(const TokenType type) const {
   auto curr = begin;
   while (not curr->is(type)) {
     ++curr;
-    if (curr eq end) {
+    if (curr == end) {
       std::string errmsg = "Expected ";
       errmsg.append(tokenTypeToString(type));
       throw ParsingError(errmsg, *(curr - 1));

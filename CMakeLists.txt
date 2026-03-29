@@ -26,6 +26,7 @@ add_executable(LookOnceMore
         src/parsing/parse.cpp
 
         src/ast/ast.hpp
+        src/ast/ast.cpp
 
         src/semantic_analysis/types.hpp
         src/semantic_analysis/types.cpp
@@ -43,9 +44,10 @@ add_executable(LookOnceMore
         src/utilities/owned_ptr.hpp
         src/utilities/arena.hpp
         src/utilities/typedefs.hpp
-        src/ast/ast.cpp
         src/utilities/enum_utils.hpp
         src/utilities/assume_assert.hpp
+        src/utilities/releasing_vector.hpp
+        src/utilities/type_flags.hpp
 )
 
 

@@ -1,13 +1,14 @@
 #pragma once
 #include "ast/ast.hpp"
 #include "semantic_analysis/symbol_table.hpp"
+#include "utilities/owned_ptr.hpp"
 
 namespace LOM::Lexer { struct Token; }
 
 namespace LOM::Parser {
 
 struct ParsedFunction {
-  std::string name;
+  c_str name;
   AST::SyntaxTree function_body;
   u64_t line_number{};
 
@@ -16,6 +17,7 @@ struct ParsedFunction {
   : name(std::move(other.name)),
     function_body(std::move(other.function_body)),
     line_number(other.line_number){}
+  ~ParsedFunction() {name.destroy();}
 };
 
 struct ParsedTU {

@@ -1,6 +1,5 @@
 #pragma once
 #include "typedefs.hpp"
-#include <cstddef>
 #include <iostream>
 #include <memory>
 #include <new>
@@ -39,7 +38,7 @@ public:
   }
 
   ~Arena() {
-    if (curr eq nullptr)
+    if (curr == nullptr)
       return;
     ::operator delete(static_cast<char*>(curr) - (N - remaining));
     delete next_arena;

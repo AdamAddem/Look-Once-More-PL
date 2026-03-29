@@ -42,12 +42,12 @@ protected:
 public:
   [[nodiscard]] static consteval const Type* devoid()         { static constexpr Type devoid{DEVOID}; return &devoid; }
 
-  [[nodiscard]] constexpr bool isDevoid()     const noexcept  {return derived_type eq DEVOID;}
-  [[nodiscard]] constexpr bool isPrimitive()  const noexcept  {return derived_type eq PRIMITIVE;}
-  [[nodiscard]] constexpr bool isPointer()    const noexcept  {return derived_type eq POINTER;}
-  [[nodiscard]] constexpr bool isVariant()    const noexcept  {return derived_type eq VARIANT;}
-  [[nodiscard]] constexpr bool isFunction()   const noexcept  {return derived_type eq FUNCTION;}
-  [[nodiscard]] constexpr bool isCustom()     const noexcept  {return derived_type eq CUSTOM;}
+  [[nodiscard]] constexpr bool isDevoid()     const noexcept  {return derived_type == DEVOID;}
+  [[nodiscard]] constexpr bool isPrimitive()  const noexcept  {return derived_type == PRIMITIVE;}
+  [[nodiscard]] constexpr bool isPointer()    const noexcept  {return derived_type == POINTER;}
+  [[nodiscard]] constexpr bool isVariant()    const noexcept  {return derived_type == VARIANT;}
+  [[nodiscard]] constexpr bool isFunction()   const noexcept  {return derived_type == FUNCTION;}
+  [[nodiscard]] constexpr bool isCustom()     const noexcept  {return derived_type == CUSTOM;}
 
   [[nodiscard]] constexpr bool isArithmetic() const noexcept  {return flags bitand is_arithmetic_mask;}
   [[nodiscard]] constexpr bool isCallable()   const noexcept  {return flags bitand is_callable_mask;}
@@ -81,7 +81,7 @@ struct InstantiatedType {
     constexpr explicit InstanceDetails(const bool is_mutable) : is_mutable(is_mutable) {}
 
     [[nodiscard]] constexpr bool
-    operator eq(const InstanceDetails &) const = default;
+    operator ==(const InstanceDetails &) const = default;
   }details;
 
   constexpr InstantiatedType() = default;
@@ -92,7 +92,7 @@ struct InstantiatedType {
   : type(type), details(is_mutable) {}
 
   [[nodiscard]] constexpr bool
-  operator eq(const InstantiatedType&) const = default;
+  operator ==(const InstantiatedType&) const = default;
 
   [[nodiscard]] constexpr bool
   isPlain() const noexcept { return details == InstanceDetails{}; }
@@ -126,7 +126,7 @@ public:
   isFloating() const noexcept { return enumBetween(primitive_type, F32, F64); }
 
   [[nodiscard]] constexpr bool
-  isBool() const noexcept { return primitive_type eq BOOL; }
+  isBool() const noexcept { return primitive_type == BOOL; }
 
   [[nodiscard]] constexpr u64_t
   maxIntegralValueRepresentable() const noexcept {
@@ -179,16 +179,16 @@ public:
   [[nodiscard]] std::string toString() const noexcept;
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(u64_t value) const noexcept { return isIntegral() and value less_eq maxIntegralValueRepresentable(); }
+  canValueBeRepresented(u64_t value) const noexcept { return isIntegral() and value <= maxIntegralValueRepresentable(); }
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(i64_t value) const noexcept { return isIntegral() and value less_eq static_cast<i64_t>(maxIntegralValueRepresentable()) and value gtr_eq minIntegralValueRepresentable(); }
+  canValueBeRepresented(i64_t value) const noexcept { return isIntegral() and value <= static_cast<i64_t>(maxIntegralValueRepresentable()) and value >= minIntegralValueRepresentable(); }
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(float) const noexcept { return primitive_type eq F32 or primitive_type eq F64; }
+  canValueBeRepresented(float) const noexcept { return primitive_type == F32 or primitive_type == F64; }
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(double) const noexcept { return primitive_type eq F64; }
+  canValueBeRepresented(double) const noexcept { return primitive_type == F64; }
 
 
   static consteval const PrimitiveType*
@@ -247,20 +247,20 @@ public:
   [[nodiscard]] std::string toString() const noexcept;
 
   [[nodiscard]] constexpr bool
-  sameAs(InstantiatedType subtype, bool is_unique) const noexcept
-  {return subtype eq this->subtype and ((pointer_type eq UNIQUE) eq is_unique);}
+  sameAs(InstantiatedType other_subtype, bool is_unique) const noexcept
+  {return other_subtype == subtype and ((pointer_type == UNIQUE) == is_unique);}
 
   [[nodiscard]] constexpr InstantiatedType
   getSubtype() const noexcept {return subtype;}
 
   [[nodiscard]] constexpr bool
-  isRaw() const noexcept {return pointer_type eq RAW;}
+  isRaw() const noexcept {return pointer_type == RAW;}
 
   [[nodiscard]] constexpr bool
-  isUnique() const noexcept {return pointer_type eq UNIQUE;}
+  isUnique() const noexcept {return pointer_type == UNIQUE;}
 
   [[nodiscard]] constexpr bool
-  isVague() const noexcept {return pointer_type eq VAGUE;}
+  isVague() const noexcept {return pointer_type == VAGUE;}
 
   static constexpr const PointerType*
   vague(bool subtype_mutable) noexcept {
@@ -280,7 +280,7 @@ class VariantType final : public Type {
   constexpr VariantType(std::vector<const Type*> subtypes, bool nullable)
   : Type(VARIANT), is_nullable(nullable), subtypes(std::move(subtypes)) {
     for (const auto subtype : this->subtypes)
-    { assume_assert(subtype not_eq this); assume_assert(not subtype->isVariant()); }
+    {assume_assert(subtype not_eq this); assert(not subtype->isVariant());}
   }
 
 public:
@@ -301,9 +301,9 @@ class FunctionType final : public Type {
 public:
   constexpr FunctionType(std::span<const Type*> parameters, const Type* return_type)
   : Type(FUNCTION), num_parameters(parameters.size()), return_type(return_type) {
-    assume_assert(num_parameters less_eq Settings::MAX_FUNCTION_PARAMETERS);
+    assume_assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
     setCallable();
-    for (auto i{0uz}; i less num_parameters; ++i)
+    for (auto i{0uz}; i < num_parameters; ++i)
       parameter_types[i] = parameters[i];
   }
 
@@ -321,7 +321,7 @@ public:
     if (parameters.size() not_eq num_parameters or return_type not_eq ret_type)
       return false;
 
-    for (auto i{0uz}; i less parameters.size(); ++i)
+    for (auto i{0uz}; i < parameters.size(); ++i)
       if (parameters[i] not_eq parameter_types[i])
         return false;
 
@@ -339,19 +339,19 @@ public:
 };
 
 constexpr const PrimitiveType* Type::castToPrimitive() const noexcept {
-  assume_assert(derived_type eq PRIMITIVE);
+  assume_assert(derived_type == PRIMITIVE);
   return static_cast<const PrimitiveType*>(this);
 }
 constexpr const PointerType* Type::castToPointer() const noexcept {
-  assume_assert(derived_type eq POINTER);
+  assume_assert(derived_type == POINTER);
   return static_cast<const PointerType*>(this);
 }
 constexpr const VariantType* Type::castToVariant() const noexcept {
-  assume_assert(derived_type eq VARIANT);
+  assume_assert(derived_type == VARIANT);
   return static_cast<const VariantType*>(this);
 }
 constexpr const FunctionType* Type::castToFunction() const noexcept {
-  assume_assert(derived_type eq FUNCTION);
+  assume_assert(derived_type == FUNCTION);
   return static_cast<const FunctionType*>(this);
 }
 
@@ -403,6 +403,8 @@ class TypeContext {
   }
 
 public:
+  TypeContext() = default;
+  TypeContext(TypeContext&& other) noexcept = default;
 
   [[nodiscard]] const PointerType*
   addRawPointer(InstantiatedType subtype) noexcept
@@ -419,6 +421,11 @@ public:
   [[nodiscard]] const FunctionType*
   addFunction(std::span<const Type*> parameter_types, const Type* return_type) noexcept
   {return returnExistingOrNew(functions, parameter_types, return_type);}
+
+  ~TypeContext() {
+    for (const auto variant : variants) //necessary because variants contain vectors
+      std::destroy_at(variant);
+  }
 };
 
 

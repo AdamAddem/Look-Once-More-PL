@@ -57,6 +57,6 @@ struct PeepTU {
   std::unordered_map<std::string, Function> functions;
 };
 
-PeepTU lowerToPeep(Parser::ParsedTU &&);
+inline PeepTU lowerToPeep(Parser::ParsedTU &&) {assert(false);}
 
 };

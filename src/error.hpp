@@ -2,7 +2,7 @@
 #include <string>
 
 namespace LOM::Lexer {
-struct Token;
+class Token;
 }
 
 namespace LOM {

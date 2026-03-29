@@ -1,10 +1,11 @@
 #pragma once
-#include <unordered_map>
+#include "utilities/typedefs.hpp"
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace LOM::Lexer {
-enum class TokenType : unsigned {
+enum class TokenType : u8_t {
   INVALID_TOKEN,
   IDENTIFIER,
   INT_LITERAL,
@@ -93,7 +94,7 @@ enum class TokenType : unsigned {
 };
 
 
-inline const std::unordered_map<std::string, TokenType> stringToTokenType{
+inline const std::unordered_map<std::string_view, TokenType> stringToTokenType{
 
 	{"INVALID_TOKEN", TokenType::INVALID_TOKEN}, {"IDENTIFIER", TokenType::IDENTIFIER}, {"INT_LITERAL", TokenType::INT_LITERAL}, 
 	{"UINT_LITERAL", TokenType::UINT_LITERAL}, {"FLOAT_LITERAL", TokenType::FLOAT_LITERAL}, {"DOUBLE_LITERAL", TokenType::DOUBLE_LITERAL}, 

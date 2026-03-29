@@ -29,8 +29,8 @@ LOMError::LOMError(const Stage err_stage,
 }
 
 LexingError::LexingError(const std::string& what, const Lexer::Token& token) :
-LOMError(Stage::LexingError, what, token.toString(), token.line_number) {}
+LOMError(Stage::LexingError, what, token.toString(), token.getLN()) {}
 
 
 ParsingError::ParsingError(const std::string& what, const Lexer::Token& token) :
-LOMError(Stage::ParsingError, what, token.toString(), token.line_number) {}
+LOMError(Stage::ParsingError, what, token.toString(), token.getLN()) {}

@@ -1,47 +1,99 @@
 #pragma once
 #include "tokentype.hpp"
+#include "utilities/assume_assert.hpp"
+#include "utilities/owned_ptr.hpp"
 #include "utilities/typedefs.hpp"
 
+#include <cstring>
 #include <filesystem>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace LOM::Lexer {
 
-
-struct Token {
-  using TokenValue = std::variant<u64_t, std::string>;
+class Token {
+  using TokenValue = u64_t;
   TokenType type;
+  u32_t line_number;
   TokenValue value;
-  u64_t line_number;
+  friend class TokenView;
 
-  Token(TokenType type, u64_t line_number) : type(type), line_number(line_number) {}
-  Token(TokenType type, TokenValue &&value, u64_t line_number) : type(type), value(std::move(value)), line_number(line_number) {}
-  Token(Token &&other) noexcept : type(other.type), value(std::move(other.value)), line_number(other.line_number) { other.type = TokenType::INVALID_TOKEN; }
-  Token &operator=(Token &&other) noexcept { type = other.type; other.type = TokenType::INVALID_TOKEN; value = std::move(other.value); line_number = other.line_number; return *this; }
-  Token(const Token &) = default;
-  Token &operator=(const Token &) = default;
+  [[nodiscard]] constexpr char*
+  copy_string() const noexcept {
+    assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
+    const sz_t sz = std::strlen(std::bit_cast<char*>(value));
+    return
+    std::strcpy(new char[sz+1], std::bit_cast<char*>(value));
+  }
+
+  [[nodiscard]] constexpr std::string
+  to_stdstring() const noexcept {
+    assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
+    const sz_t sz = std::strlen(std::bit_cast<char*>(value));
+    return std::string(std::bit_cast<char*>(value), sz);
+  }
+
+public:
+
+  Token(TokenType type, u32_t line_number) : type(type), line_number(line_number), value() {}
+  Token(TokenType type, u64_t value, u32_t line_number) : type(type), line_number(line_number), value(value) {}
+  Token(char character_literal, u32_t line_number) : type(TokenType::CHAR_LITERAL), line_number(line_number), value(static_cast<u64_t>(character_literal)) {}
+  Token(TokenType type, owned_ptr<char> string, u32_t line_number) : type(type), line_number(line_number), value(std::bit_cast<u64_t>(string.release())) {}
+  Token(Token &&other) noexcept : type(other.type), line_number(other.line_number), value(other.value) {other.type = TokenType::INVALID_TOKEN; other.value = 0;}
+  Token &operator=(Token &&other) noexcept {type = other.type; other.type=TokenType::INVALID_TOKEN; value = other.value; other.value = 0; line_number = other.line_number; return *this;}
+
+  Token(const Token& other)
+  : type(other.type), line_number(other.line_number) {
+    if (other.is(TokenType::STRING_LITERAL) or other.is(TokenType::IDENTIFIER))
+      value = std::bit_cast<u64_t>(other.copy_string());
+    else
+      value = other.value;
+  }
+
+  Token &operator=(const Token& other) = delete;
+
+  ~Token() {
+    if (type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER)
+      assert(value == 0 and "String value of token should have been taken already");
+  }
 
   void throw_if(TokenType unwanted_type, const char* err_msg) const;
   void throw_if_not(TokenType expected_type, const char* err_msg) const;
 
-  [[nodiscard]] constexpr bool is(TokenType _type) const  {return type eq _type;}
-  [[nodiscard]] constexpr bool isPrimitive() const        {return isCategoryPRIMITIVES(type);}
-  [[nodiscard]] constexpr bool isLiteral() const          {return isCategoryLITERALS(type);}
-  [[nodiscard]] constexpr bool isPointer() const          {return isCategoryPOINTERS(type);}
-  [[nodiscard]] constexpr bool isTypeModifier() const     {return isCategoryTYPE_MODIFIERS(type);}
+  [[nodiscard]] constexpr TokenType getType() const noexcept           {return type;}
+  [[nodiscard]] constexpr u32_t getLN() const noexcept                 {return line_number;}
+  [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept {return type == token_type;}
+  [[nodiscard]] constexpr bool isPrimitive() const noexcept            {return isCategoryPRIMITIVES(type);}
+  [[nodiscard]] constexpr bool isLiteral() const noexcept              {return isCategoryLITERALS(type);}
+  [[nodiscard]] constexpr bool isPointer() const noexcept              {return isCategoryPOINTERS(type);}
+  [[nodiscard]] constexpr bool isTypeModifier() const noexcept         {return isCategoryTYPE_MODIFIERS(type);}
 
   [[nodiscard]] std::string toString() const;
   [[nodiscard]] std::string toDebugString() const;
 
-  [[nodiscard]] i64_t getInt() const                      {return std::bit_cast<i64_t>(std::get<u64_t>(value));}
-  [[nodiscard]] u64_t getUint() const                     {return std::get<u64_t>(value);}
-  [[nodiscard]] float getFloat() const                    {return std::bit_cast<float>(static_cast<u32_t>(std::get<u64_t>(value)));}
-  [[nodiscard]] double getDouble() const                  {return std::bit_cast<double>(std::get<u64_t>(value));}
-  [[nodiscard]] bool getBool() const                      {return std::get<u64_t>(value);}
-  [[nodiscard]] char getChar() const                      {return static_cast<char>(std::get<u64_t>(value));}
-  [[nodiscard]] std::string takeString()                  {return std::get<std::string>(std::move(value));}
+  [[nodiscard]] constexpr i64_t
+  getInt() const noexcept {assume_assert(type == TokenType::INT_LITERAL); return std::bit_cast<i64_t>(value);}
+
+  [[nodiscard]] constexpr u64_t
+  getUint() const noexcept {assume_assert(type == TokenType::UINT_LITERAL); return value;}
+
+  [[nodiscard]] constexpr float
+  getFloat() const noexcept {assume_assert(type == TokenType::FLOAT_LITERAL); return std::bit_cast<float>(static_cast<u32_t>(value));}
+
+  [[nodiscard]] constexpr double
+  getDouble() const noexcept {assume_assert(type == TokenType::DOUBLE_LITERAL); return std::bit_cast<double>(value);}
+
+  [[nodiscard]] constexpr bool
+  getBool() const noexcept {assume_assert(type == TokenType::BOOL_LITERAL); return value;}
+
+  [[nodiscard]] constexpr char
+  getChar() const noexcept {assume_assert(type == TokenType::CHAR_LITERAL); return static_cast<char>(value);}
+
+  [[nodiscard]] constexpr char*
+  takeString() noexcept {
+    assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
+    const auto retval = std::bit_cast<char*>(value); value = 0; return retval;
+  }
 };
 
 class TokenView {
@@ -57,16 +109,16 @@ public:
   }
   TokenView(TokenIter begin, TokenIter end) : begin(begin), end(end) {}
 
-  [[nodiscard]] const Token& peek() const noexcept                            { return *begin; }
-  [[nodiscard]] bool peek_is(const TokenType type) const noexcept             { return begin->type eq type; }
-  [[nodiscard]] const Token& peek_ahead(const long distance) const noexcept   { return *(begin + distance); }
-  [[nodiscard]] Token take() noexcept                                         { return std::move(*begin++); }
-  [[nodiscard]] bool empty() const noexcept                                   { return begin eq end; }
-  [[nodiscard]] unsigned size() const noexcept                                { return begin - end; }
-  [[nodiscard]] const Token& previousToken() const noexcept                   { return *(begin - 1); }
-  [[nodiscard]] u64_t current_line_number() const noexcept                    { return empty() ? (begin - 1)->line_number : begin->line_number; }
-  void pop() noexcept                                                         { if (not empty()) ++begin; }
-  bool pop_if(const TokenType type) noexcept                                  { if (empty() or begin->type not_eq type) return false; ++begin; return true; }
+  [[nodiscard]] const Token& peek() const noexcept                            {return *begin;}
+  [[nodiscard]] bool peek_is(const TokenType type) const noexcept             {return begin->type == type;}
+  [[nodiscard]] const Token& peek_ahead(const long distance) const noexcept   {return *(begin + distance);}
+  [[nodiscard]] Token take() noexcept                                         {return std::move(*begin++);}
+  [[nodiscard]] bool empty() const noexcept                                   {return begin == end;}
+  [[nodiscard]] unsigned size() const noexcept                                {return begin - end;}
+  [[nodiscard]] const Token& previousToken() const noexcept                   {return *(begin - 1);}
+  [[nodiscard]] u32_t current_line_number() const noexcept                    {return empty() ? (begin - 1)->line_number : begin->line_number;}
+  void pop() noexcept                                                         {if (not empty()) ++begin;}
+  bool pop_if(const TokenType type) noexcept                                  {if (empty() or begin->type not_eq type) return false; ++begin; return true;}
 
   void expect_then_pop(TokenType expected_type, const char* err_msg);
   void expect(TokenType expected_type, const char* err_msg) const;

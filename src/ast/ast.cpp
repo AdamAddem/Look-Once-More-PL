@@ -8,13 +8,12 @@ using namespace LOM::AST;
 
 [[nodiscard]] static constexpr
 bool has_ln(ASTNode::Type type) {
-  return std::to_underlying(type) gtr_eq ASTNode::Type::DECLARATION and
-    std::to_underlying(type) less_eq ASTNode::Type::EXPR_STMT and type not_eq ASTNode::Type::SCOPED;
+  return enumBetween(type, ASTNode::DECLARATION, ASTNode::EXPR_STMT) && type not_eq ASTNode::SCOPED;
 }
 
 static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcept {
   if (has_ln(node->type())) {
-    while (ln less_eq node->line_number())
+    while (ln <= node->line_number())
       std::cout << '\n' << ln++ << ":\t\t";
   }
 
@@ -25,7 +24,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
   case DECLARATION:
     std::cout << (++node)->instance_type().toString() << " ";
     std::cout << *(++node)->getIdentifier() << " = ";
-    if ((++node)->type() eq EMPTY)
+    if ((++node)->type() == EMPTY)
       std::cout << "junk";
     else
       print(node, ln);
@@ -61,11 +60,11 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
 
   case SCOPED: {
     const u64_t num_children = node->sub_statements();
-    if (num_children eq 0)
+    if (num_children == 0)
       return;
 
     std::cout << "{ ";
-    for (auto i{0uz}; i less num_children; ++i) {
+    for (auto i{0uz}; i < num_children; ++i) {
       print(++node, ln);
       std::cout << ';';
     }
@@ -85,12 +84,12 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
   case UNARY: {
     const auto opr = node->getOperator();
     const char* opr_str = operatorToString(opr);
-    assume_assert(isCategoryUNARY_OPS(opr));
+    assert(isCategoryUNARY_OPS(opr));
 
     std::cout << '(';
     if (isCategoryPREFIX_OPS(opr)) {
       std::cout << opr_str;
-      if (opr eq Operator::NOT or opr eq Operator::BITNOT)
+      if (opr == Operator::NOT or opr == Operator::BITNOT)
         std::cout << ' ';
 
       print(++node, ln);
@@ -106,7 +105,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
   case BINARY: {
     const auto opr = node->getOperator();
     const char* opr_str = operatorToString(opr);
-    assume_assert(isCategoryBINARY_OPS(opr));
+    assert(isCategoryBINARY_OPS(opr));
 
     std::cout << '(';
     print(++node, ln);
@@ -121,7 +120,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     print(++node, ln);
 
     std::cout << '(';
-    if (num_params eq 0) {
+    if (num_params == 0) {
       std::cout << ')';
       return;
     }
@@ -138,7 +137,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::unreachable();
 
   case IDENTIFIER:
-    std::cout << *node->getIdentifier();
+    std::cout << node->getIdentifier();
     return;
 
   case INT_LITERAL:

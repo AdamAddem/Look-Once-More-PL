@@ -11,7 +11,7 @@
 #include <iostream>
 #include <variant>
 
-
+/*
 using namespace LOM;
 using namespace LOM::Parser;
 using namespace LOM::PeepMIR;
@@ -358,4 +358,4 @@ PeepTU PeepMIR::lowerToPeep(ParsedTU &&parsed_tu) {
 
 
   assert(false);
-}
+} */

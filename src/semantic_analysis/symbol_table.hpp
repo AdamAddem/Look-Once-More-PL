@@ -3,6 +3,7 @@
 #include "utilities/assume_assert.hpp"
 #include "utilities/typedefs.hpp"
 
+#include <cstring>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -13,36 +14,40 @@ class SymbolTable final {
 public:
   struct Variable {
     InstantiatedType type;
-    std::string name;
+    std::unique_ptr<char> name;
   };
-private:
+
   class Function {
     u64_t num_parameters;
     std::vector<Variable> locals;
     const FunctionType* type;
-  public:
 
+    friend class SymbolTable;
     explicit Function(std::span<Variable> parameters, const FunctionType* type)
-    : num_parameters(parameters.size()), type(type) {
-      assume_assert(parameters.size() less_eq Settings::MAX_FUNCTION_PARAMETERS);
-      for (const auto& var : parameters)
-        locals.emplace_back(var);
+   : num_parameters(parameters.size()), type(type) {
+      assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
+      for (auto& var : parameters)
+        locals.emplace_back(std::move(var));
     }
+  public:
+    Function(const Function&) = delete;
+    Function(Function&&) = default;
 
     [[nodiscard]] auto
-    parameters() const noexcept{return std::span(locals).subspan(0, num_parameters);}
+    parameters() const noexcept
+    {return std::span(locals).subspan(0, num_parameters);}
 
     [[nodiscard]] const Type*
-    returnType() const noexcept {return type->returnType();}
+    returnType() const noexcept
+    {return type->returnType();}
 
     [[nodiscard]] bool
-    containsVariable(const std::string& name) const noexcept {
+    containsVariable(const char* name) const noexcept {
       auto curr = locals.crbegin();
       const auto end = locals.crend();
       while (curr not_eq end) {
-        if (curr->name eq name)
+        if (std::strcmp(curr->name.get(), name) == 0)
           return true;
-
         ++curr;
       }
 
@@ -50,23 +55,22 @@ private:
     }
 
     [[nodiscard]] bool
-    addVariable(std::string name, InstantiatedType type) noexcept {
-      if (containsVariable(name))
+    addVariable(std::unique_ptr<char> name, InstantiatedType variable_type) noexcept {
+      if (containsVariable(name.get()))
           return false;
 
-      locals.emplace_back(type, std::move(name));
+      locals.emplace_back(variable_type, std::move(name));
       return true;
     }
 
     [[nodiscard]] InstantiatedType
-    getVariable(const std::string& name) const noexcept {
-      assume_assert(containsVariable(name));
+    getVariable(const char* name) const noexcept {
+      assert(containsVariable(name));
       auto curr = locals.crbegin();
       const auto end = locals.crend();
       while (curr not_eq end) {
-        if (curr->name eq name)
+        if (std::strcmp(curr->name.get(), name) == 0)
           return curr->type;
-
         ++curr;
       }
 
@@ -74,18 +78,19 @@ private:
     }
   };
 
+private:
   using Symbol = std::variant<InstantiatedType, Function>;
-  std::unordered_map<std::string, Symbol> globals;
+  std::unordered_map<std::string_view, Symbol> globals;
   Function* current_scope{nullptr};
-
   TypeContext types;
+
 public:
 
   SymbolTable() = default;
   SymbolTable(SymbolTable&& other) noexcept = default;
 
   void addFunction(
-    const std::string &name,
+    std::string_view name,
     std::span<Variable> parameters,
     const Type* return_type) noexcept;
 
@@ -101,24 +106,18 @@ public:
   addVariant(std::vector<const Type*> subtypes, bool nullable) noexcept
   {return types.addVariant(std::move(subtypes), nullable);}
 
-  void addVariable(std::string name, InstantiatedType type) {
-    if (current_scope)
-      return addLocalVariable(std::move(name), type);
-
-    return addGlobalVariable(std::move(name), type);
-  }
-  void addGlobalVariable(std::string name, InstantiatedType type) {
-    assume_assert(not globals.contains(name));
+  void addGlobalVariable(std::string_view name, InstantiatedType type) {
+    assert(not globals.contains(name));
     globals.emplace(std::move(name), type);
   }
-  void addLocalVariable(std::string name, InstantiatedType type) const noexcept {
+  void addLocalVariable(std::unique_ptr<char> name, InstantiatedType type) const noexcept {
     assume_assert(current_scope not_eq nullptr);
     const bool res = current_scope->addVariable(std::move(name), type);
     assume_assert(res);
   }
 
   [[nodiscard]] bool
-  containsVariable(const std::string &name) const noexcept {
+  containsVariable(const char* name) const noexcept {
     if (current_scope && current_scope->containsVariable(name))
       return true;
     if (globals.contains(name))
@@ -127,49 +126,57 @@ public:
   }
 
   [[nodiscard]] InstantiatedType
-  closestVariable(const std::string &name) noexcept {
+  closestVariable(const char* name) noexcept {
     if (current_scope and current_scope->containsVariable(name))
       return current_scope->getVariable(name);
 
-    assume_assert(globals.contains(name));
-    assume_assert(std::holds_alternative<InstantiatedType>(globals[name]));
+    assert(globals.contains(name));
+    assert(std::holds_alternative<InstantiatedType>(globals[name]));
     return std::get<InstantiatedType>(globals.at(name));
   }
 
   [[nodiscard]] bool
-  containsFunction(const std::string &name) noexcept {
+  containsFunction(std::string_view name) noexcept {
     if (globals.contains(name))
       return std::holds_alternative<Function>(globals[name]);
     return false;
   }
 
   [[nodiscard]] auto
-  parametersOfFunction(const std::string& name) noexcept {
-    assume_assert(containsFunction(name));
+  parametersOfFunction(std::string_view name) noexcept {
+    assert(containsFunction(name));
     return std::get<Function>(globals[name]).parameters();
   }
 
   [[nodiscard]] const Type*
-  returnTypeOfFunction(const std::string& name) noexcept {
-    assume_assert(containsFunction(name));
+  returnTypeOfFunction(std::string_view name) noexcept {
+    assert(containsFunction(name));
     return std::get<Function>(globals[name]).returnType();
   }
 
-  [[nodiscard]] bool
-  containsSymbol(const std::string &name) noexcept {return containsVariable(name) or containsFunction(name);}
+  [[nodiscard]] const Function&
+  getFunction(std::string_view name) noexcept {
+    assert(globals.contains(name));
+    assert(std::holds_alternative<Function>(globals[name]));
+    return std::get<Function>(globals[name]);
+  }
 
   [[nodiscard]] bool
-  isClosestSymbolAVariable(const std::string &name) noexcept {
+  containsSymbol(const char* name) noexcept
+  {return containsVariable(name) or containsFunction(name);}
+
+  [[nodiscard]] bool
+  isClosestSymbolAVariable(const char* name) noexcept {
     if (containsVariable(name))
       return true;
 
-    assume_assert(containsFunction(name));
+    assert(containsFunction(name));
     return false;
   }
 
-  void enterFunctionScope(const std::string& function_name) noexcept {
-    assume_assert(current_scope eq nullptr);
-    assume_assert(containsFunction(function_name));
+  void enterFunctionScope(std::string_view function_name) noexcept {
+    assume_assert(current_scope == nullptr);
+    assert(containsFunction(function_name));
     current_scope = &std::get<Function>(globals[function_name]);
   }
   void leaveFunctionScope() noexcept {

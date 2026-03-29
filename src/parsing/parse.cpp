@@ -47,7 +47,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
       }
 
       const InstantiatedType subtype_instance = parseType(tokens, table);
-      switch (token.type) {
+      switch (token.getType()) {
       case TokenType::KEYWORD_RAW:
         return InstantiatedType(table.addRawPointer(subtype_instance), details);
       case TokenType::KEYWORD_UNIQUE:
@@ -58,7 +58,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
 
     }
 
-    switch (token.type) {
+    switch (token.getType()) {
     case TokenType::KEYWORD_i8:
       return InstantiatedType(PrimitiveType::i8(), details);
     case TokenType::KEYWORD_i16:
@@ -89,7 +89,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
     case TokenType::KEYWORD_DEVOID:
       if (details not_eq InstantiatedType::InstanceDetails{})
         throw ParsingError("Devoid may not have type qualifiers.",
-          InstantiatedType(PrimitiveType::devoid(), details).toString(), token.line_number);
+          InstantiatedType(PrimitiveType::devoid(), details).toString(), token.getLN());
 
       return devoid_literal;
     default:
@@ -104,9 +104,9 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
     std::vector<const Type*> subtypes;
     std::unordered_set<const Type* > typenames; //prevent duplicate types
 
-    const unsigned variant_ln = variant_types_tokens.peek().line_number;
+    const unsigned variant_ln = variant_types_tokens.peek().getLN();
     do {
-      const unsigned subtype_ln = variant_types_tokens.peek().line_number;
+      const unsigned subtype_ln = variant_types_tokens.peek().getLN();
       const InstantiatedType subtype = parseType(variant_types_tokens, table);
       if (subtype.type->isVariant())
         throw ParsingError("Nested variant types not allowed.", subtype.toString(), subtype_ln);
@@ -128,7 +128,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
       subtypes.push_back(subtype.type);
     } while (variant_types_tokens.pop_if(TokenType::COMMA));
 
-    if (subtypes.size() less 2)
+    if (subtypes.size() < 2)
       throw ParsingError("Two or more types must be specified in variant type list.", "", variant_ln);
 
     return InstantiatedType(table.addVariant(subtypes, nullable), details);
@@ -137,7 +137,7 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
   throw ParsingError("Expected typename.", token);
 }
 
-std::string parseIdentifier(TokenView& tokens) {
+char* parseIdentifier(TokenView& tokens) {
   Token token = tokens.take();
 
   if (token.is(TokenType::IDENTIFIER))
@@ -145,7 +145,6 @@ std::string parseIdentifier(TokenView& tokens) {
 
   throw ParsingError("Expected identifier.", token);
 }
-
 
 struct Body {
   std::vector<ASTNode> tree;
@@ -161,7 +160,7 @@ struct Body {
 
   struct ExpressionTree {
     static constexpr u64_t max_expressiontree_size{200};
-    static_assert(max_expressiontree_size less std::numeric_limits<u16_t>::max());
+    static_assert(max_expressiontree_size < std::numeric_limits<u16_t>::max());
     std::array<Expression, max_expressiontree_size> data;
     u64_t begin{1};
 
@@ -204,7 +203,7 @@ struct Body {
       auto literal_type = ASTNode::EMPTY;
       u64_t literal_value;
 
-      switch (token.type) {
+      switch (token.getType()) {
       case TokenType::INT_LITERAL:
         literal_type = ASTNode::INT_LITERAL;
         literal_value = std::bit_cast<u64_t>(token.getInt());
@@ -231,8 +230,7 @@ struct Body {
         break;
       case TokenType::STRING_LITERAL:
         literal_type = ASTNode::STRING_LITERAL;
-        literal_value = std::bit_cast<u64_t>(
-          new std::string(token.takeString()));
+        literal_value = std::bit_cast<u64_t>(token.takeString());
         break;
       default:
         std::unreachable();
@@ -246,8 +244,7 @@ struct Body {
       return res;
     }
 
-    std::string identifier = tokens.take().takeString();
-    const auto identifier_value = std::bit_cast<u64_t>(new std::string(std::move(identifier)));
+    const auto identifier_value = std::bit_cast<u64_t>(tokens.take().takeString());
     return expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
   }
 
@@ -255,7 +252,7 @@ struct Body {
     auto left = generatePrimaryExpression();
     while (true) {
       u64_t value;
-      switch (tokens.peek().type) {
+      switch (tokens.peek().getType()) {
       case TokenType::PLUSPLUS:
         value = static_cast<u64_t>(Operator::POST_INCREMENT);
         break;
@@ -291,7 +288,7 @@ struct Body {
 
   u16_t generatePrefixExpression() {
     u64_t value;
-    switch (tokens.peek().type) {
+    switch (tokens.peek().getType()) {
     case TokenType::PLUSPLUS:
       value = static_cast<u64_t>(Operator::PRE_INCREMENT);
       break;
@@ -334,7 +331,7 @@ struct Body {
     auto left = generateExponentExpression();
     while (true) {
       u64_t value;
-      switch (tokens.peek().type) {
+      switch (tokens.peek().getType()) {
       case TokenType::STAR:
         value = static_cast<u64_t>(Operator::MULTIPLY);
         break;
@@ -358,7 +355,7 @@ struct Body {
     auto left = generateFactorExpression();
     while (true) {
       u64_t value;
-      switch (tokens.peek().type) {
+      switch (tokens.peek().getType()) {
       case TokenType::PLUS:
         value = static_cast<u64_t>(Operator::ADD);
         break;
@@ -379,7 +376,7 @@ struct Body {
     auto left= generateTermExpression();
     while (true) {
       u64_t value;
-      switch (tokens.peek().type) {
+      switch (tokens.peek().getType()) {
       case TokenType::KEYWORD_EQUALS:
         value = static_cast<u64_t>(Operator::EQUAL);
         break;
@@ -413,7 +410,7 @@ struct Body {
     auto left = generateRelationalExpression();
     while (true) {
       u64_t value;
-      switch (tokens.peek().type) {
+      switch (tokens.peek().getType()) {
       case TokenType::KEYWORD_BITAND:
         value = static_cast<u64_t>(Operator::BITAND);
         break;
@@ -437,7 +434,7 @@ struct Body {
     auto left = generateBitwiseExpression();
     while (true) {
       u64_t value;
-      switch (tokens.peek().type) {
+      switch (tokens.peek().getType()) {
       case TokenType::KEYWORD_AND:
         value = static_cast<u64_t>(Operator::AND);
         break;
@@ -482,7 +479,7 @@ struct Body {
 
 
   void translateExpression(u16_t idx) {
-    if (idx eq 0)
+    if (idx == 0)
       return;
 
     using enum ASTNode::Type;
@@ -510,7 +507,7 @@ struct Body {
       tree.emplace_back(CALLING, 0);
       const auto calling_idx = tree.size() - 1;
       translateExpression(expression.left_idx);
-      if (expression.right_idx eq 0)
+      if (expression.right_idx == 0)
         return;
 
       u16_t left_idx = expression_tree.data[expression.right_idx].left_idx;
@@ -518,7 +515,7 @@ struct Body {
       u64_t num_parameters{1};
       while (true) {
         translateExpression(left_idx);
-        if (right_idx eq 0)
+        if (right_idx == 0)
           break;
 
         left_idx = expression_tree.data[right_idx].left_idx;
@@ -570,7 +567,7 @@ struct Body {
     tree.emplace_back(ASTNode::DECLARATION, tokens.current_line_number());
     tree.emplace_back(parseType(tokens, table));
 
-    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(new std::string(parseIdentifier(tokens))));
+    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(parseIdentifier(tokens)));
     tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.");
 
     if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
@@ -646,7 +643,7 @@ struct Body {
     if (first.isPrimitive() or first.isTypeModifier())
       return parseVarDecl();
 
-    switch (first.type) {
+    switch (first.getType()) {
     case TokenType::KEYWORD_IF:
       tokens.pop();
       return parseIf();
@@ -703,7 +700,8 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
     ParsedFunction& function = functions.emplace_back();
     function.line_number = tokens.current_line_number();
     tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function declaration.");
-    function.name = parseIdentifier(tokens);
+    char* function_name = parseIdentifier(tokens);
+    function.name.reset(function_name);
     tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
 
     SymbolTable::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
@@ -711,7 +709,7 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
     if (not tokens.pop_if(TokenType::RPAREN))
       while (true) {
         parameters[num_parameters].type = parseType(tokens, table);
-        parameters[num_parameters].name = parseIdentifier(tokens);
+        parameters[num_parameters].name.reset(parseIdentifier(tokens));
         ++num_parameters;
         if (not tokens.pop_if(TokenType::COMMA)) {
           tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
@@ -729,17 +727,17 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
 
     tokens.expect_then_pop(TokenType::LBRACE, "Expected function definition.");
     function_tokens.emplace_back(tokens.getTokensBetweenBraces());
-    table.addFunction(function.name, std::span(parameters, num_parameters), return_type);
+    table.addFunction(function_name, std::span(parameters, num_parameters), return_type);
   }
 
   //actually parse the function bodies
   const auto sz = functions.size();
-  assume_assert(sz eq function_tokens.size());
-  for (auto i{0uz}; i less sz; ++i) {
+  assert(sz == function_tokens.size());
+  for (auto i{0uz}; i < sz; ++i) {
     Body function_body
     {{}, function_tokens[i], table, global_body.expression_tree};
 
-    table.enterFunctionScope(functions[i].name);
+    table.enterFunctionScope(functions[i].name.get());
     function_body.parseStatementsUntilEmpty();
     table.leaveFunctionScope();
     functions[i].function_body.nodes = std::move(function_body.tree);
@@ -748,9 +746,10 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
 
 void printFunction(const ParsedFunction& func, SymbolTable& table) {
   std::cout << '\n' << func.line_number << ":\t";
-  std::cout << "fn " << func.name << "(";
-  const auto parameters = table.parametersOfFunction(func.name);
-  const auto return_type = table.returnTypeOfFunction(func.name);
+  std::cout << "fn " << func.name.get() << "(";
+  auto& function = table.getFunction(func.name.get());
+  const auto parameters = function.parameters();
+  const auto return_type = function.returnType();
 
   for (auto &parameter : parameters) {
     std::cout << parameter.type.toString();
@@ -801,10 +800,3 @@ ParsedTU Parser::parseTokens(std::vector<Token> &&token_list) {
 
   return ptu;
 }
-
-
-
-
-
-
-

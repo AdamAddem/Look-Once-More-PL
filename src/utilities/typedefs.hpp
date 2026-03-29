@@ -16,9 +16,3 @@ using f64_t = std::float64_t;
 using sz_t = std::size_t;
 using iptr_t = std::intptr_t;
 using uptr_t = std::uintptr_t;
-
-#define eq ==
-#define less <
-#define less_eq <=
-#define gtr >
-#define gtr_eq >=

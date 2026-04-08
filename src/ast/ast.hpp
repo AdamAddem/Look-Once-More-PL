@@ -1,8 +1,8 @@
 #pragma once
 #pragma once
+#include "edenlib/assume_assert.hpp"
+#include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
-#include "utilities/assume_assert.hpp"
-#include "utilities/typedefs.hpp"
 #include <cassert>
 #include <string>
 #include <type_traits>
@@ -234,7 +234,9 @@ public:
 inline SyntaxTree::SyntaxTree(std::vector<ASTNode> nodes) : nodes(std::move(nodes)) {}
 inline SyntaxTree::~SyntaxTree() {
   for (auto& node: nodes)
-  if (node.type() == ASTNode::IDENTIFIER or node.type() == ASTNode::STRING_LITERAL)
+  if (node.type() == ASTNode::IDENTIFIER)
+    delete node.getIdentifier();
+  else if (node.type() == ASTNode::STRING_LITERAL)
     delete node.getString();
 }
 }

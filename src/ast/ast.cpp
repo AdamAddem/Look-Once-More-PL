@@ -1,6 +1,6 @@
 #include "ast.hpp"
 
-#include "utilities/assume_assert.hpp"
+#include "edenlib/assume_assert.hpp"
 
 #include <iostream>
 
@@ -8,7 +8,7 @@ using namespace LOM::AST;
 
 [[nodiscard]] static constexpr
 bool has_ln(ASTNode::Type type) {
-  return enumBetween(type, ASTNode::DECLARATION, ASTNode::EXPR_STMT) && type not_eq ASTNode::SCOPED;
+  return eden::enumBetween(type, ASTNode::DECLARATION, ASTNode::EXPR_STMT) && type not_eq ASTNode::SCOPED;
 }
 
 static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcept {
@@ -23,7 +23,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::unreachable();
   case DECLARATION:
     std::cout << (++node)->instance_type().toString() << " ";
-    std::cout << *(++node)->getIdentifier() << " = ";
+    std::cout << (++node)->getIdentifier() << " = ";
     if ((++node)->type() == EMPTY)
       std::cout << "junk";
     else

@@ -1,5 +1,5 @@
 #pragma once
-#include "utilities/typedefs.hpp"
+#include "edenlib/typedefs.hpp"
 #include <string>
 #include <unordered_map>
 #include <utility>

@@ -19,7 +19,7 @@ using namespace LOM;
 
 
 [[maybe_unused]] static std::unique_ptr<Backend>
-processLOMFile( const std::filesystem::path& filename )
+processLOMFile(const std::filesystem::path& filename)
 try {
   return Backend::codegen(
                   lowerToPeep(
@@ -36,6 +36,10 @@ int main(const int argc, const char* argv[]) {
   if (filepaths.empty())
     throw std::runtime_error("At least one file name must be specified");
 
+
+  for (auto i{0uz}; i<10'000; ++i)
+    auto k = parseTokens(tokenizeFile(filepaths[0]));
+  /*
   const bool output_asm = Settings::doOutputASM();
   const bool output_ir = Settings::doOutputIR();
   const bool output_obj = Settings::doOutputOBJ() or Settings::doLinking();
@@ -51,6 +55,7 @@ int main(const int argc, const char* argv[]) {
 
   if (Settings::doLinking())
     Backend::linkObjects(filepaths);
+    */
 
   return 0;
 }

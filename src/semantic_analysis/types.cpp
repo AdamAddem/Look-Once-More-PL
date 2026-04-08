@@ -1,6 +1,6 @@
 #include "types.hpp"
+#include "edenlib/assume_assert.hpp"
 #include "lexing/lex.hpp"
-#include "utilities/assume_assert.hpp"
 
 using namespace LOM;
 
@@ -10,7 +10,6 @@ bool Type::convertibleTo(const Type* other) const noexcept {
 
   if (other == this)
     return true;
-
 
   const auto other_type = other->derived_type;
   if (other_type == VARIANT)

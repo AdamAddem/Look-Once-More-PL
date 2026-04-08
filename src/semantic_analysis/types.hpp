@@ -1,10 +1,10 @@
 #pragma once
+#include "edenlib/arena.hpp"
+#include "edenlib/assume_assert.hpp"
+#include "edenlib/enum_utils.hpp"
+#include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
 #include "settings.hpp"
-#include "utilities/arena.hpp"
-#include "utilities/assume_assert.hpp"
-#include "utilities/enum_utils.hpp"
-#include "utilities/typedefs.hpp"
 
 #include <cassert>
 #include <span>
@@ -21,7 +21,6 @@ class PrimitiveType;
 class PointerType;
 class VariantType;
 class FunctionType;
-class TypeContext;
 
 class Type {
   friend class TypeContext;
@@ -112,21 +111,25 @@ class PrimitiveType final : public Type {
 
   constexpr explicit
   PrimitiveType(decltype(primitive_type) type) noexcept : Type(PRIMITIVE), primitive_type(type)
-  { enumBetween(type, I8, F64) ? setArithmetic() : void{}; }
+  { eden::enumBetween(type, I8, F64) ? setArithmetic() : void{}; }
 
 public:
 
   [[nodiscard]] constexpr bool
-  isIntegral() const noexcept { return enumBetween(primitive_type, I8, U64); }
+  isIntegral() const noexcept
+  {return eden::enumBetween(primitive_type, I8, U64);}
 
   [[nodiscard]] constexpr bool
-  isUnsignedIntegral() const noexcept { return enumBetween(primitive_type, U8, U64); }
+  isUnsignedIntegral() const noexcept
+  {return eden::enumBetween(primitive_type, U8, U64);}
 
   [[nodiscard]] constexpr bool
-  isFloating() const noexcept { return enumBetween(primitive_type, F32, F64); }
+  isFloating() const noexcept
+  {return eden::enumBetween(primitive_type, F32, F64);}
 
   [[nodiscard]] constexpr bool
-  isBool() const noexcept { return primitive_type == BOOL; }
+  isBool() const noexcept
+  {return primitive_type == BOOL;}
 
   [[nodiscard]] constexpr u64_t
   maxIntegralValueRepresentable() const noexcept {
@@ -175,57 +178,55 @@ public:
     }
   }
 
-  [[nodiscard]] bool convertibleTo(const PrimitiveType* other) const noexcept;
-  [[nodiscard]] std::string toString() const noexcept;
+  [[nodiscard]] bool
+  convertibleTo(const PrimitiveType* other) const noexcept;
+
+  [[nodiscard]] std::string
+  toString() const noexcept;
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(u64_t value) const noexcept { return isIntegral() and value <= maxIntegralValueRepresentable(); }
+  canValueBeRepresented(u64_t value) const noexcept
+  {return isIntegral() and value <= maxIntegralValueRepresentable();}
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(i64_t value) const noexcept { return isIntegral() and value <= static_cast<i64_t>(maxIntegralValueRepresentable()) and value >= minIntegralValueRepresentable(); }
+  canValueBeRepresented(i64_t value) const noexcept
+  {return isIntegral() and value <= static_cast<i64_t>(maxIntegralValueRepresentable()) and value >= minIntegralValueRepresentable();}
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(float) const noexcept { return primitive_type == F32 or primitive_type == F64; }
+  canValueBeRepresented(float) const noexcept
+  {return primitive_type == F32 or primitive_type == F64;}
 
   [[nodiscard]] constexpr bool
-  canValueBeRepresented(double) const noexcept { return primitive_type == F64; }
+  canValueBeRepresented(double) const noexcept
+  {return primitive_type == F64;}
 
+#define type_singleton(type_name, type_enum) \
+  static consteval const PrimitiveType* \
+  type_name() noexcept \
+  {static constexpr PrimitiveType type_name{type_enum}; return &type_name;}
 
-  static consteval const PrimitiveType*
-  i8() noexcept {static constexpr PrimitiveType i8{I8}; return &i8;}
-  static consteval const PrimitiveType*
-  i16() noexcept {static constexpr PrimitiveType i16{I16}; return &i16;}
-  static consteval const PrimitiveType*
-  i32() noexcept {static constexpr PrimitiveType i32{I32}; return &i32;}
-  static consteval const PrimitiveType*
-  i64() noexcept {static constexpr PrimitiveType i64{I64}; return &i64;}
-  static consteval const PrimitiveType*
-  u8() noexcept {static constexpr PrimitiveType u8{U8}; return &u8;}
-  static consteval const PrimitiveType*
-  u16() noexcept {static constexpr PrimitiveType u16{U16}; return &u16;}
-  static consteval const PrimitiveType*
-  u32() noexcept {static constexpr PrimitiveType u32{U32}; return &u32;}
-  static consteval const PrimitiveType*
-  u64() noexcept {static constexpr PrimitiveType u64{U64}; return &u64;}
+  type_singleton(i8, I8)
+  type_singleton(i16, I16)
+  type_singleton(i32, I32)
+  type_singleton(i64, I64)
 
-  static consteval const PrimitiveType*
-  f32() noexcept {static constexpr PrimitiveType f32{U32}; return &f32;}
-  static consteval const PrimitiveType*
-  f64() noexcept {static constexpr PrimitiveType f64{U64}; return &f64;}
+  type_singleton(u8, U8)
+  type_singleton(u16, U16)
+  type_singleton(u32, U32)
+  type_singleton(u64, U64)
 
-  static consteval const PrimitiveType*
-  bool_() noexcept {static constexpr PrimitiveType bool_{BOOL}; return &bool_;}
-  static consteval const PrimitiveType*
-  char_() noexcept {static constexpr PrimitiveType char_{CHAR}; return &char_;}
-  static consteval const PrimitiveType*
-  string() noexcept {static constexpr PrimitiveType string{STRING}; return &string;}
+  type_singleton(f32, F32)
+  type_singleton(f64, F64)
+
+  type_singleton(bool_, BOOL)
+  type_singleton(char_, CHAR)
+  type_singleton(string, STRING)
+#undef type_singleton
 };
 
 constexpr bool Type::isBool()       const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isBool();    }
 constexpr bool Type::isIntegral()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isIntegral();}
 constexpr bool Type::isFloating()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isFloating();}
-
-
 
 class PointerType final : public Type {
   friend class TypeContext;
@@ -279,8 +280,10 @@ class VariantType final : public Type {
 
   constexpr VariantType(std::vector<const Type*> subtypes, bool nullable)
   : Type(VARIANT), is_nullable(nullable), subtypes(std::move(subtypes)) {
+#ifndef NDEBUG
     for (const auto subtype : this->subtypes)
-    {assume_assert(subtype not_eq this); assert(not subtype->isVariant());}
+    {assert(subtype not_eq this); assert(not subtype->isVariant());}
+#endif
   }
 
 public:
@@ -372,7 +375,7 @@ static constexpr InstantiatedType string_literal{PrimitiveType::string(), {}};
 
 
 class TypeContext {
-  Arena<> type_arena;
+  eden::Arena<> type_arena;
   std::vector<PointerType*> pointers;
   std::vector<VariantType*> variants;
   std::vector<FunctionType*> functions;

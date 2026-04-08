@@ -1,8 +1,8 @@
 #pragma once
+#include "edenlib/assume_assert.hpp"
+#include "edenlib/owned.hpp"
+#include "edenlib/typedefs.hpp"
 #include "tokentype.hpp"
-#include "utilities/assume_assert.hpp"
-#include "utilities/owned_ptr.hpp"
-#include "utilities/typedefs.hpp"
 
 #include <cstring>
 #include <filesystem>
@@ -38,7 +38,7 @@ public:
   Token(TokenType type, u32_t line_number) : type(type), line_number(line_number), value() {}
   Token(TokenType type, u64_t value, u32_t line_number) : type(type), line_number(line_number), value(value) {}
   Token(char character_literal, u32_t line_number) : type(TokenType::CHAR_LITERAL), line_number(line_number), value(static_cast<u64_t>(character_literal)) {}
-  Token(TokenType type, owned_ptr<char> string, u32_t line_number) : type(type), line_number(line_number), value(std::bit_cast<u64_t>(string.release())) {}
+  Token(TokenType type, eden::owned_ptr<char[]> string, u32_t line_number) : type(type), line_number(line_number), value(std::bit_cast<u64_t>(string.release())) {}
   Token(Token &&other) noexcept : type(other.type), line_number(other.line_number), value(other.value) {other.type = TokenType::INVALID_TOKEN; other.value = 0;}
   Token &operator=(Token &&other) noexcept {type = other.type; other.type=TokenType::INVALID_TOKEN; value = other.value; other.value = 0; line_number = other.line_number; return *this;}
 
@@ -70,6 +70,9 @@ public:
 
   [[nodiscard]] std::string toString() const;
   [[nodiscard]] std::string toDebugString() const;
+
+  [[nodiscard]] constexpr u64_t
+  getRawValue() const noexcept {return value;}
 
   [[nodiscard]] constexpr i64_t
   getInt() const noexcept {assume_assert(type == TokenType::INT_LITERAL); return std::bit_cast<i64_t>(value);}

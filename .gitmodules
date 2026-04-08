@@ -1,0 +1,3 @@
+[submodule "src/edenlib"]
+	path = src/edenlib
+	url = git@github.com:AdamAddem/StandardLibraryRemixed.git

@@ -1,10 +1,10 @@
 #include "peep_mir.hpp"
 #include "ast/ast.hpp"
+#include "edenlib/typedefs.hpp"
 #include "error.hpp"
 #include "parsing/parse.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 #include "settings.hpp"
-#include "utilities/typedefs.hpp"
 
 #include <cassert>
 #include <format>

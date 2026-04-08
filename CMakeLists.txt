@@ -2,14 +2,12 @@ cmake_minimum_required(VERSION 3.31)
 project(LookOnceMore)
 
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_BUILD_TYPE Debug)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -O0")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic")
 
 find_package(LLVM 20.1.8 REQUIRED CONFIG)
 
-
-
 include_directories(${PROJECT_SOURCE_DIR}/src)
+add_subdirectory(${PROJECT_SOURCE_DIR}/src/edenlib)
 add_executable(LookOnceMore
         main.cpp
         src/error.hpp
@@ -40,14 +38,6 @@ add_executable(LookOnceMore
         src/backends/codegen.cpp
         src/backends/llvm/tollvm.hpp
         src/backends/llvm/tollvm.cpp
-
-        src/utilities/owned_ptr.hpp
-        src/utilities/arena.hpp
-        src/utilities/typedefs.hpp
-        src/utilities/enum_utils.hpp
-        src/utilities/assume_assert.hpp
-        src/utilities/releasing_vector.hpp
-        src/utilities/type_flags.hpp
 )
 
 

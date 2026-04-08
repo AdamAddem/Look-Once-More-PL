@@ -1,16 +1,16 @@
 #include "parse.hpp"
 
 #include "ast/ast.hpp"
-#include "utilities/assume_assert.hpp"
 #include "error.hpp"
+#include "lexing/lex.hpp"
+#include "settings.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 
 #include <iostream>
 #include <unordered_set>
 #include <utility>
 
-#include "lexing/lex.hpp"
-#include "settings.hpp"
+
 
 using namespace LOM;
 using namespace LOM::Lexer;
@@ -206,27 +206,27 @@ struct Body {
       switch (token.getType()) {
       case TokenType::INT_LITERAL:
         literal_type = ASTNode::INT_LITERAL;
-        literal_value = std::bit_cast<u64_t>(token.getInt());
+        literal_value = token.getRawValue();
         break;
       case TokenType::UINT_LITERAL:
         literal_type = ASTNode::UINT_LITERAL;
-        literal_value = token.getUint();
+        literal_value = token.getRawValue();
         break;
       case TokenType::FLOAT_LITERAL:
         literal_type = ASTNode::FLOAT_LITERAL;
-        literal_value = token.getUint();
+        literal_value = token.getRawValue();
         break;
       case TokenType::DOUBLE_LITERAL:
         literal_type = ASTNode::DOUBLE_LITERAL;
-        literal_value = token.getUint();
+        literal_value = token.getRawValue();
         break;
       case TokenType::BOOL_LITERAL:
         literal_type = ASTNode::BOOL_LITERAL;
-        literal_value = token.getBool();
+        literal_value = token.getRawValue();
         break;
       case TokenType::CHAR_LITERAL:
         literal_type = ASTNode::CHAR_LITERAL;
-        literal_value = token.getUint();
+        literal_value = token.getRawValue();
         break;
       case TokenType::STRING_LITERAL:
         literal_type = ASTNode::STRING_LITERAL;

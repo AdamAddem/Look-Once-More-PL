@@ -1,7 +1,7 @@
 #pragma once
+#include "edenlib/assume_assert.hpp"
+#include "edenlib/typedefs.hpp"
 #include "types.hpp"
-#include "utilities/assume_assert.hpp"
-#include "utilities/typedefs.hpp"
 
 #include <cstring>
 #include <unordered_map>

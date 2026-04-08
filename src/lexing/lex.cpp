@@ -1,8 +1,8 @@
 #include "lex.hpp"
 
+#include "edenlib/releasing_vector.hpp"
 #include "error.hpp"
 #include "settings.hpp"
-#include "utilities/releasing_vector.hpp"
 
 #include <cassert>
 #include <cctype>
@@ -14,6 +14,8 @@
 namespace {
 using namespace LOM;
 using namespace LOM::Lexer;
+using eden::releasing_string;
+using eden::flags::reserve_initial;
 
 struct FileInAnalysis {
   std::ifstream stream;
@@ -57,6 +59,7 @@ charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
 
 // called when opening quotes already consumed
 void grabStringLiteral(FileInAnalysis &file) {
+
   releasing_string literal{reserve_initial<4>};
   int c = file.stream.get();
   while (c not_eq EOF) {
@@ -262,7 +265,7 @@ void grabNumber(FileInAnalysis &file) {
 // first letter in front of file
 void grabIdentOrKeyword(FileInAnalysis &file) {
   int c = file.stream.get();
-  releasing_string word;
+  releasing_string word(reserve_initial<4>);
   while (c not_eq EOF) {
     if (not std::isalnum(c) and c not_eq '_')
       break;
@@ -304,7 +307,8 @@ void skipWS(FileInAnalysis& file) {
   }
 }
 
-[[nodiscard]] bool skipComments(FileInAnalysis& file) {
+[[nodiscard]] bool
+skipComments(FileInAnalysis& file) {
   constexpr static auto stream_max = std::numeric_limits<std::streamsize>::max();
   file.stream.get();
   if (file.stream.peek() == '/') {
@@ -318,7 +322,9 @@ void skipWS(FileInAnalysis& file) {
   return false;
 }
 
-[[nodiscard]] bool canStartIdentifier(int c) { return std::isalpha(c) or c == '_'; }
+[[nodiscard]] bool
+canStartIdentifier(int c)
+{return std::isalpha(c) or c == '_';}
 }
 
 std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {

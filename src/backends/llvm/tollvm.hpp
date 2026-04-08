@@ -11,6 +11,9 @@ namespace LOM::PeepMIR {
 
 namespace LOM::ToLLVM {
 
-inline std::unique_ptr<Backend> codegen(const PeepMIR::PeepTU&, const std::filesystem::path &) {assert(false);}
+inline std::unique_ptr<Backend> codegen(const PeepMIR::PeepTU&, const std::filesystem::path &) {
+  assert(false);
+  return nullptr;
+}
 
 }

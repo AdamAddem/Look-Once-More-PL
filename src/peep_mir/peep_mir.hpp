@@ -1,7 +1,7 @@
 #pragma once
-#include "settings.hpp"
+#include "edenlib/typedefs.hpp"
 #include "semantic_analysis/symbol_table.hpp"
-#include "utilities/typedefs.hpp"
+#include "settings.hpp"
 
 #include <unordered_map>
 

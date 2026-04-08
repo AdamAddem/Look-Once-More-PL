@@ -61,8 +61,10 @@ Below are language features, only some of which are implemented currently, that 
           fn main() -> i32 { Resource x; x.doThing(); }
 ---
 ### Compiling
-Currently the only dependencies are LLVM version 20.1.8. Compile as such:
+Currently the only dependencies are LLVM version 20.1.8. 
+Clone and compile as such:
 ```
+git clone --recurse-submodules https://github.com/AdamAddem/Look-Once-More-PL
 mkdir build && cd build && cmake .. && make
 ```
 Either clang or gcc are required to support linking objects into an executable. <br> 

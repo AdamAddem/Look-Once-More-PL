@@ -5,7 +5,6 @@
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
 #include <cassert>
-#include <coroutine>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -108,6 +107,10 @@ struct SyntaxTree {
   void print(u64_t starting_line_number) const noexcept;
 };
 
+/*
+[[nodiscard]] std::string
+nodeToString(std::vector<ASTNode>::const_iterator) noexcept; */
+
 //Is this overengineered? Yes. yeah. yep.
 class ASTNode {
 
@@ -122,7 +125,7 @@ public:
     EMPTY,
                  // HAS <value>    | <Following Nodes...>
     //Statements:
-    DECLARATION, // HAS LN         | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR
+    DECLARATION, // HAS LN         | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
     IF,          // HAS LN         | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STATEMENT
     FOR,         // HAS LN         | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
     WHILE,       // HAS LN         | CONDITION_EXPR, SCOPED
@@ -190,7 +193,7 @@ public:
     return static_cast<Operator>(value());
   }
 
-  [[nodiscard]] constexpr const char*
+  [[nodiscard]] constexpr char*
   identifier() const noexcept {
     assert(type() == IDENTIFIER);
     return std::bit_cast<char*>(value());

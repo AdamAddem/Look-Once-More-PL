@@ -10,19 +10,12 @@ struct Token;
 namespace LOM::Parser {
 
 struct Function {
-  eden::releasing_string::released_ptr name;
-  AST::SyntaxTree function_body;
+  eden::owned_stringview name;
+  AST::SyntaxTree body;
   u64_t line_number{};
 
   Function() = default;
-  Function(Function &&other) noexcept
-  : name(std::move(other.name)),
-    function_body(std::move(other.function_body)),
-    line_number(other.line_number){}
-
-  ~Function() {
-    eden::releasing_string::destroy_and_deallocate(std::move(name));
-  }
+  ~Function() {assert(name == nullptr);}
 };
 
 struct TU {

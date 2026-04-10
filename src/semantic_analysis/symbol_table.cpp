@@ -4,7 +4,7 @@
 
 using namespace LOM;
 
-void SymbolTable::addFunction(std::string_view name, std::span<Variable> parameters, const Type* return_type) noexcept {
+void SymbolTable::addFunction(const eden::owned_stringview& name, std::span<Variable> parameters, const Type* return_type) noexcept {
   assert(not globals.contains(name));
   assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
   const Type* parameter_types[Settings::MAX_FUNCTION_PARAMETERS];

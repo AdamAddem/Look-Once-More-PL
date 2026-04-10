@@ -38,14 +38,15 @@ public:
 };
 
 struct Peeper {
-  std::vector<Block> body;
+  eden::releasing_vector<const Type*> locals;
+  eden::releasing_vector<Instruction> instructions;
+  eden::releasing_vector<Function::Block> blocks;
   TreeView nodes;
   SymbolTable& table;
-  u64_t current_line_number;
+  u64_t current_line_number{};
 
-  InstantiatedType peepIdentifier(const char* identifier_str) {
-
-  }
+  Peeper(SyntaxTree& tree, SymbolTable& table)
+  : nodes{tree.nodes.begin(), tree.nodes.end()}, table(table) {}
 
   InstantiatedType peepLiteral() {
     auto& node = nodes.pop();
@@ -70,16 +71,15 @@ struct Peeper {
     }
   }
 
-  InstantiatedType peepVariableExpression() {
-    if (!table.containsVariable(identifier.ident)) {
-      if (table.containsFunction(identifier.ident))
-        throw ValidationError("Function name where variable name expected.", identifier.ident, identifier.line_number);
+  InstantiatedType peepVariableExpression(const char* identifier) const {
+    if (not table.containsVariable(identifier)) {
+      if (table.containsFunction(identifier))
+        throw ValidationError("Function name where variable name expected.", identifier, current_line_number);
 
-      throw ValidationError("Undeclared Identifier.", identifier.ident, identifier.line_number);
+      throw ValidationError("Undeclared Identifier.", identifier, current_line_number);
     }
 
-
-    return table.closestVariable(identifier.ident);
+    return table.closestVariable(identifier);
   }
 
   InstantiatedType peepSubscriptExpression() {assert(false);}
@@ -346,7 +346,7 @@ struct Peeper {
   }
 
   void peepIfStatement() {
-    const InstantiatedType instance = peepExpression(*if_statement.condition);
+    const auto condition_type = peepExpression();
     if (instance.type->isVariant())
       throw ValidationError("Variant type used in if statement condition.", std::format("Condition is of type '{}'", instance.toString()), if_statement.line_number);
 
@@ -359,20 +359,22 @@ struct Peeper {
   }
 
   void peepVarDeclaration() {
-    if (table.isSymbolInCurrentScope(declaration.ident))
-      throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", declaration.ident), declaration.line_number);
+    const auto declaration_type = nodes.pop().instance_type();
+    char* name = nodes.pop().identifier();
+    if (table.containsLocalVariable(name))
+      throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name), current_line_number);
 
-    if (declaration.expr) {
-      const InstantiatedType initialization_type = peepExpression(*declaration.expr);
-      if (not initialization_type.type->convertibleTo(declaration.type.type))
+    table.addLocalVariable(eden::releasing_string::released_ptr(name), declaration_type);
+
+    if (not nodes.peek_is(ASTNode::EMPTY)) {
+      const auto initialization_type = peepExpression();
+      if (not initialization_type.type->convertibleTo(declaration_type.type))
         throw ValidationError("Variable initialization's type is not compatible with variable type.",
           std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
-          declaration.ident,  declaration.type.toString(), std::visit(ExpressionToStringVisitor{}, *declaration.expr), initialization_type.toString()),
-          declaration.line_number);
-
+          name,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
+      instructions.emplace_back(Instruction::LOCAL, locals.size());
+      locals.emplace_back(declaration_type.type);
     }
-
-    table.addLocalVariable(declaration.ident, declaration.type);
   }
 
   void peepStatement() {
@@ -431,21 +433,19 @@ struct Peeper {
 };
 
 void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table) {
-  Function new_function(table.enterFunctionScope(func.name));
-  TreeView view{func.function_body.nodes.begin(), func.function_body.nodes.end()};
-  Peeper test{{}, view, table};
+  auto function_type = table.enterFunctionScope(func.name.get());
+  Peeper test{func.body, table};
   test.peepUntilEmpty();
-
   table.leaveFunctionScope();
 }
 
 }
 
-TU PeepMIR::lowerToPeep(Parser::TU &&parsed_tu) {
-  SymbolTable table;
-  TU peeped_tu;
+TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
+  SymbolTable& table = parsed_tu.table;
+  TU tu(table.takeTypeContext());
   for (auto &func : parsed_tu.functions)
-    peepFunction(func, table);
+    peepFunction(tu, func, table);
 
   if (Settings::doOutputValidation()) {
     std::cout << "--- Validation Passed ---\n\n";

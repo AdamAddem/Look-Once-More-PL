@@ -10,8 +10,6 @@
 #include <unordered_set>
 #include <utility>
 
-
-
 using namespace LOM;
 using namespace LOM::Lexer;
 using namespace LOM::Parser;
@@ -144,17 +142,12 @@ releasing_string::released_ptr parseIdentifier(TokenView& tokens) {
 }
 
 struct Body {
-  std::vector<ASTNode> tree;
-  TokenView tokens;
-  SymbolTable& table;
-
   struct Expression {
     ASTNode::Type type;
     u16_t left_idx;
     u16_t right_idx; //unary expressions do not contain right_idx
     u64_t value;
   };
-
   struct ExpressionTree {
     static constexpr u64_t max_expressiontree_size{200};
     static_assert(max_expressiontree_size < std::numeric_limits<u16_t>::max());
@@ -170,12 +163,17 @@ struct Body {
       return begin++;
     }
 
-    void reset() {
-      begin = 1;
-    }
+    void reset()
+    {begin = 1;}
   };
 
+  std::vector<ASTNode> tree;
+  TokenView tokens;
+  SymbolTable& table;
   ExpressionTree& expression_tree;
+
+  Body(TokenView tokens, SymbolTable& table, ExpressionTree& expression_tree)
+  : tokens(tokens), table(table), expression_tree(expression_tree) {}
 
   u16_t generateParameters() {
     const auto parameter = generateAssignmentExpression();
@@ -731,12 +729,12 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
   assert(sz == function_tokens.size());
   for (auto i{0uz}; i < sz; ++i) {
     Body function_body
-    {{}, function_tokens[i], table, global_body.expression_tree};
+    (function_tokens[i], table, global_body.expression_tree);
 
     table.enterFunctionScope(functions[i].name.get());
     function_body.parseStatementsUntilEmpty();
     table.leaveFunctionScope();
-    functions[i].function_body.nodes = std::move(function_body.tree);
+    functions[i].body.nodes = std::move(function_body.tree);
   }
 }
 
@@ -761,7 +759,7 @@ void printFunction(const Function& func, SymbolTable& table) {
     std::cout << return_type->toString();
   }
   std::cout << " { ";
-  func.function_body.print(func.line_number + 1);
+  func.body.print(func.line_number + 1);
   std::cout << "\n}";
 }
 
@@ -778,9 +776,7 @@ void printTU(TU& ptu) {
 TU Parser::parseTokens(std::vector<Token> &&token_list) {
   Body::ExpressionTree expression_tree;
   TU ptu;
-  Body global_body{{}, TokenView{token_list}, ptu.table,
-    expression_tree};
-
+  Body global_body(TokenView{token_list}, ptu.table, expression_tree);
 
   while (parseGlobal(global_body)) {}
   ptu.global_tree.nodes = std::move(global_body.tree);

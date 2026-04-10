@@ -1,61 +1,114 @@
 #pragma once
 #include "edenlib/typedefs.hpp"
+#include "edenlib/releasing_vector.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 #include "settings.hpp"
-
-#include <unordered_map>
 
 namespace LOM::Parser {
 struct TU;
 }
 
 namespace LOM::PeepMIR {
+using released_string = eden::releasing_string::released_span;
+
+template <class T>
+using released_span = eden::releasing_vector<T>::released_span;
+
+template<class T>
+using released_ptr = eden::releasing_vector<T>::released_ptr;
 
 struct Instruction {
-  enum : u8_t {
-    GLOBAL, LOCAL, FUNCTION,
+  enum Type : u8_t {
+    GLOBAL, LOCAL, FUNCTION, //value idx
     INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
 
+    //value not determined yet for the operators
     ADD, SUB, MULT, DIV,
     ASSIGN,
     CMP_LESS, CMP_GTR, CMP_LEQ, CMP_GEQ,
     AND, OR, BITAND, BITOR, BITXOR, BITNOT,
     EQ, NEQ,
     ADDRESS_OF,
-  }op;
+
+    BR, BRC, RET
+  }type;
   u64_t value;
 
-  [[nodiscard]] i64_t getInt() const noexcept                  {return std::bit_cast<i64_t>(value);}
-  [[nodiscard]] u64_t getUint() const noexcept                 {return value;}
-  [[nodiscard]] float getFloat() const noexcept                {return std::bit_cast<float>(static_cast<u32_t>(value));}
-  [[nodiscard]] double getDouble() const noexcept              {return std::bit_cast<double>(value);}
-  [[nodiscard]] bool getBool() const noexcept                  {return value;}
-  [[nodiscard]] char getChar() const noexcept                  {return static_cast<char>(value);}
-  [[nodiscard]] char* getString() const noexcept               {return std::bit_cast<char*>(value); }
-};
+  constexpr Instruction(Type type, u64_t value) noexcept
+  : type(type), value(value) {}
 
-struct Block {
-  std::vector<Instruction> instructions;
-  enum class Terminator : u8_t {
-    BR, BRC, RET
-  }terminator;
+  [[nodiscard]] constexpr i64_t
+  int_value() const noexcept
+  {assume_assert(type == INT_LITERAL); return std::bit_cast<i64_t>(value);}
+
+  [[nodiscard]] constexpr u64_t
+  uint_value() const noexcept
+  {assume_assert(type == UINT_LITERAL); return value;}
+
+  [[nodiscard]] constexpr float
+  float_value() const noexcept
+  {assume_assert(type == FLOAT_LITERAL); return std::bit_cast<float>(static_cast<u32_t>(value));}
+
+  [[nodiscard]] constexpr double
+  double_value() const noexcept
+  {assume_assert(type == DOUBLE_LITERAL); return std::bit_cast<double>(value);}
+
+  [[nodiscard]] constexpr bool
+  bool_value() const noexcept
+  {assume_assert(type == BOOL_LITERAL); return value;}
+
+  [[nodiscard]] constexpr char
+  char_value() const noexcept
+  {assume_assert(type == CHAR_LITERAL); return static_cast<char>(value);}
+
+  [[nodiscard]] constexpr char*
+  string_value() const noexcept
+  {assume_assert(type == STRING_LITERAL); return std::bit_cast<char*>(value);}
+
+  [[nodiscard]] constexpr u64_t
+  global_idx() const noexcept
+  {assume_assert(type == GLOBAL); return value;}
+
+  [[nodiscard]] constexpr u64_t
+  local_idx() const noexcept
+  {assume_assert(type == LOCAL); return value;}
+
+  [[nodiscard]] constexpr u64_t
+  function_idx() const noexcept
+  {assume_assert(type == FUNCTION); return value;}
+
 };
 
 struct Function {
-  const FunctionType* type;
-  std::vector<const Type*> locals;
-  std::vector<Block> blocks;
+  struct Block {
+    u64_t begin_idx;
+    u64_t terminator_idx;
+  };
 
-  explicit Function(const FunctionType* function_type) : type(function_type) {}
+  released_string name;
+  const FunctionType* type;
+  released_span<const Type*> locals;
+  released_ptr<Instruction> instructions;
+  released_span<Block> blocks;
+
+  Function(
+    released_string name,
+    const FunctionType* function_type) noexcept
+  : name(std::move(name)), type(function_type) {}
 };
 
 struct TU {
   struct Global {
-    std::string name;
+    const Type* type;
+    released_string name;
   };
-  SymbolTable table;
 
-  std::unordered_map<std::string, Function> functions;
+  explicit TU(TypeContext&& types) noexcept
+  : types(std::move(types)) {}
+
+  TypeContext types;
+  std::vector<Global> globals;
+  std::vector<Function> functions;
 };
 
 TU lowerToPeep(Parser::TU &&);

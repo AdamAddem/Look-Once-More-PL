@@ -1,9 +1,11 @@
 #pragma once
 #pragma once
 #include "edenlib/assume_assert.hpp"
+#include "edenlib/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
 #include <cassert>
+#include <coroutine>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -11,7 +13,6 @@
 #include <vector>
 
 namespace LOM::AST {
-
 enum class Operator : u8_t {
   ADD,
   SUBTRACT,
@@ -47,47 +48,47 @@ enum class Operator : u8_t {
 
 inline const std::unordered_map<std::string, Operator> stringToOperator{
 
-    {"+", Operator::ADD},
-    {"-", Operator::SUBTRACT},
-    {"*", Operator::MULTIPLY},
-    {"/", Operator::DIVIDE},
-    {"^", Operator::POWER},
-    {"%", Operator::MODULUS},
-    {"=", Operator::ASSIGN},
-    {"<", Operator::LESS},
-    {">", Operator::GREATER},
-    {"<=", Operator::LESS_EQUAL},
-    {">=", Operator::GREATER_EQUAL},
-    {"and", Operator::AND},
-    {"or", Operator::OR},
-    {"xor", Operator::XOR},
-    {"bitand", Operator::BITAND},
-    {"bitor", Operator::BITOR},
-    {"bitxor", Operator::BITXOR},
-    {"eq", Operator::EQUAL},
-    {"not_eq", Operator::NOT_EQUAL},
-    {"cast", Operator::CAST},
-    {"cast_if", Operator::CAST_IF},
-    {"unsafe_cast", Operator::UNSAFE_CAST},
-    {"++", Operator::PRE_INCREMENT},
-    {"--", Operator::PRE_DECREMENT},
-    {"-", Operator::UNARY_MINUS},
-    {"@", Operator::ADDRESS_OF},
-    {"bitnot", Operator::BITNOT},
-    {"not", Operator::NOT},
-    {"++", Operator::POST_INCREMENT},
-    {"--", Operator::POST_DECREMENT},
-};
+      {"+", Operator::ADD},
+      {"-", Operator::SUBTRACT},
+      {"*", Operator::MULTIPLY},
+      {"/", Operator::DIVIDE},
+      {"^", Operator::POWER},
+      {"%", Operator::MODULUS},
+      {"=", Operator::ASSIGN},
+      {"<", Operator::LESS},
+      {">", Operator::GREATER},
+      {"<=", Operator::LESS_EQUAL},
+      {">=", Operator::GREATER_EQUAL},
+      {"and", Operator::AND},
+      {"or", Operator::OR},
+      {"xor", Operator::XOR},
+      {"bitand", Operator::BITAND},
+      {"bitor", Operator::BITOR},
+      {"bitxor", Operator::BITXOR},
+      {"eq", Operator::EQUAL},
+      {"not_eq", Operator::NOT_EQUAL},
+      {"cast", Operator::CAST},
+      {"cast_if", Operator::CAST_IF},
+      {"unsafe_cast", Operator::UNSAFE_CAST},
+      {"++", Operator::PRE_INCREMENT},
+      {"--", Operator::PRE_DECREMENT},
+      {"-", Operator::UNARY_MINUS},
+      {"@", Operator::ADDRESS_OF},
+      {"bitnot", Operator::BITNOT},
+      {"not", Operator::NOT},
+      {"++", Operator::POST_INCREMENT},
+      {"--", Operator::POST_DECREMENT},
+  };
 
 constexpr const char *operatorToString(const Operator e) {
   constexpr const char *toString[] = {
 
-      "+",      "-",    "*",       "/",           "^",      "%",
-      "=",      "<",    ">",       "<=",          ">=",     "and",
-      "or",     "xor",  "bitand",  "bitor",       "bitxor", "eq",
-      "not_eq", "cast", "cast_if", "unsafe_cast", "++",     "--",
-      "-",      "@",    "bitnot",  "not",         "++",     "--",
-  };
+    "+",      "-",    "*",       "/",           "^",      "%",
+    "=",      "<",    ">",       "<=",          ">=",     "and",
+    "or",     "xor",  "bitand",  "bitor",       "bitxor", "eq",
+    "not_eq", "cast", "cast_if", "unsafe_cast", "++",     "--",
+    "-",      "@",    "bitnot",  "not",         "++",     "--",
+};
   return toString[std::to_underlying(e)];
 }
 constexpr bool isCategoryBINARY_OPS(const Operator e) {return std::to_underlying(e) < 19;}
@@ -119,7 +120,7 @@ public:
 
   enum Type : u8_t {
     EMPTY,
-                 // HAS <value>    | <Following Nodes>...
+                 // HAS <value>    | <Following Nodes...>
     //Statements:
     DECLARATION, // HAS LN         | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR
     IF,          // HAS LN         | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STATEMENT
@@ -137,7 +138,12 @@ public:
     IDENTIFIER,  // HAS CHAR*      |
 
     //value holds the bitwise representation of their respective type
-    INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL,
+    INT_LITERAL,
+    UINT_LITERAL,
+    FLOAT_LITERAL,
+    DOUBLE_LITERAL,
+    BOOL_LITERAL,
+    CHAR_LITERAL,
 
     //HAS STRING*
     STRING_LITERAL
@@ -170,61 +176,67 @@ public:
   [[nodiscard]] constexpr InstantiatedType
   instance_type() const noexcept {return *std::launder(reinterpret_cast<const InstantiatedType*>(data));}
 
+  [[nodiscard]] constexpr char*
+  string_ptr() const noexcept {
+    assert(type() == IDENTIFIER or type() == STRING_LITERAL);
+    return std::bit_cast<char*>(value());
+  }
+
   static_assert(sizeof(u64_t) >= sizeof(Operator));
   static_assert(std::unsigned_integral<std::underlying_type_t<Operator>>);
   [[nodiscard]] constexpr Operator
-  getOperator() const noexcept {
+  operator_val() const noexcept {
     assert(type() == UNARY or type() == BINARY);
     return static_cast<Operator>(value());
   }
 
   [[nodiscard]] constexpr const char*
-  getIdentifier() const noexcept {
+  identifier() const noexcept {
     assert(type() == IDENTIFIER);
     return std::bit_cast<char*>(value());
   }
 
   [[nodiscard]] constexpr i64_t
-  getInt() const noexcept {
+  int_val() const noexcept {
     assert(type() == INT_LITERAL);
     return std::bit_cast<i64_t>(value());
   }
 
   [[nodiscard]] constexpr u64_t
-  getUint() const noexcept {
+  uint_val() const noexcept {
     assert(type() == UINT_LITERAL);
     return value();
   }
 
   static_assert(sizeof(float) == sizeof(u32_t));
   [[nodiscard]] constexpr float
-  getFloat() const noexcept {
+  float_val() const noexcept {
     assert(type() == FLOAT_LITERAL);
     return std::bit_cast<float>(static_cast<u32_t>(value()));
   }
 
   static_assert(sizeof(double) == sizeof(u64_t));
   [[nodiscard]] constexpr double
-  getDouble() const noexcept {
+  double_val() const noexcept {
     assert(type() == DOUBLE_LITERAL);
     return std::bit_cast<double>(value());
   }
 
   [[nodiscard]] constexpr bool
-  getBool() const noexcept {
+  bool_val() const noexcept {
     assert(type() == BOOL_LITERAL);
     return value();
   }
 
   [[nodiscard]] constexpr char
-  getChar() const noexcept {
+  char_val() const noexcept {
     assert(type() == CHAR_LITERAL);
     return static_cast<char>(value());
   }
 
   static_assert(sizeof(u64_t) >= sizeof(void*));
   [[nodiscard]] constexpr char*
-  getString() const noexcept {
+  string_val() const noexcept {
     assert(type() == STRING_LITERAL);
     return std::bit_cast<char*>(value());
   }
@@ -233,10 +245,15 @@ public:
 
 inline SyntaxTree::SyntaxTree(std::vector<ASTNode> nodes) : nodes(std::move(nodes)) {}
 inline SyntaxTree::~SyntaxTree() {
-  for (auto& node: nodes)
-  if (node.type() == ASTNode::IDENTIFIER)
-    delete node.getIdentifier();
-  else if (node.type() == ASTNode::STRING_LITERAL)
-    delete node.getString();
+  using eden::releasing_string;
+  for (auto& node: nodes) {
+
+    if (node.type() not_eq ASTNode::IDENTIFIER and node.type() not_eq ASTNode::STRING_LITERAL)
+      continue;
+
+    releasing_string::destroy_and_deallocate(
+      releasing_string::released_ptr(node.string_ptr()));
+  }
+
 }
 }

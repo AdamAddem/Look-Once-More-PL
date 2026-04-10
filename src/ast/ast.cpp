@@ -23,7 +23,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::unreachable();
   case DECLARATION:
     std::cout << (++node)->instance_type().toString() << " ";
-    std::cout << (++node)->getIdentifier() << " = ";
+    std::cout << (++node)->identifier() << " = ";
     if ((++node)->type() == EMPTY)
       std::cout << "junk";
     else
@@ -82,7 +82,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     return print(++node, ln);
 
   case UNARY: {
-    const auto opr = node->getOperator();
+    const auto opr = node->operator_val();
     const char* opr_str = operatorToString(opr);
     assert(isCategoryUNARY_OPS(opr));
 
@@ -103,7 +103,7 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
   }
 
   case BINARY: {
-    const auto opr = node->getOperator();
+    const auto opr = node->operator_val();
     const char* opr_str = operatorToString(opr);
     assert(isCategoryBINARY_OPS(opr));
 
@@ -137,35 +137,35 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::unreachable();
 
   case IDENTIFIER:
-    std::cout << node->getIdentifier();
+    std::cout << node->identifier();
     return;
 
   case INT_LITERAL:
-    std::cout << node->getInt();
+    std::cout << node->int_val();
     return;
 
   case UINT_LITERAL:
-    std::cout << node->getUint();
+    std::cout << node->uint_val();
     return;
 
   case FLOAT_LITERAL:
-    std::cout << node->getFloat();
+    std::cout << node->float_val();
     return;
 
   case DOUBLE_LITERAL:
-    std::cout << node->getDouble();
+    std::cout << node->double_val();
     return;
 
   case BOOL_LITERAL:
-    std::cout << (node->getBool() ? "true" : "false");
+    std::cout << (node->bool_val() ? "true" : "false");
     return;
 
   case CHAR_LITERAL:
-    std::cout << node->getChar();
+    std::cout << node->char_val();
     return;
 
   case STRING_LITERAL:
-    std::cout << *node->getString();
+    std::cout << *node->string_val();
     return;
 
   default:

@@ -7,7 +7,6 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic")
 find_package(LLVM 20.1.8 REQUIRED CONFIG)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
-add_subdirectory(${PROJECT_SOURCE_DIR}/src/edenlib)
 add_executable(LookOnceMore
         main.cpp
         src/error.hpp

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "edenlib/lifetime_observer.hpp"
 #include "ast/ast.hpp"
 #include "backends/codegen.hpp"
 #include "error.hpp"
@@ -36,9 +37,7 @@ int main(const int argc, const char* argv[]) {
   if (filepaths.empty())
     throw std::runtime_error("At least one file name must be specified");
 
-
-  for (auto i{0uz}; i<10'000; ++i)
-    auto k = parseTokens(tokenizeFile(filepaths[0]));
+  auto k = lowerToPeep(parseTokens(tokenizeFile(filepaths[0])));
   /*
   const bool output_asm = Settings::doOutputASM();
   const bool output_ir = Settings::doOutputIR();

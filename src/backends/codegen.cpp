@@ -7,7 +7,7 @@
 
 using namespace LOM;
 
-std::unique_ptr<Backend> Backend::codegen(const PeepMIR::PeepTU& vtu, const std::filesystem::path& file) {
+std::unique_ptr<Backend> Backend::codegen(const PeepMIR::TU& vtu, const std::filesystem::path& file) {
   assert(false);
   switch (Settings::chosenBackend()) {
   case Settings::Backend::LLVM:

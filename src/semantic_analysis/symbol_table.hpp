@@ -1,5 +1,6 @@
 #pragma once
 #include "edenlib/assume_assert.hpp"
+#include "edenlib/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "types.hpp"
 
@@ -14,7 +15,17 @@ class SymbolTable final {
 public:
   struct Variable {
     InstantiatedType type;
-    std::unique_ptr<char> name;
+    eden::owned_stringview name;
+
+    Variable() = default;
+    Variable(InstantiatedType type, eden::releasing_string::released_ptr name) noexcept
+    : type(type), name(std::move(name)) {}
+    Variable(Variable&& other) noexcept = default;
+    Variable& operator=(Variable&& other) noexcept = default;
+    ~Variable() {
+      eden::releasing_string::destroy_and_deallocate(
+        eden::releasing_string::released_ptr(name.release()));
+    }
   };
 
   class Function {
@@ -33,7 +44,7 @@ public:
     Function(const Function&) = delete;
     Function(Function&&) = default;
 
-    [[nodiscard]] auto
+    [[nodiscard]] std::span<const Variable>
     parameters() const noexcept
     {return std::span(locals).subspan(0, num_parameters);}
 
@@ -55,7 +66,7 @@ public:
     }
 
     [[nodiscard]] bool
-    addVariable(std::unique_ptr<char> name, InstantiatedType variable_type) noexcept {
+    addVariable(eden::releasing_string::released_ptr name, InstantiatedType variable_type) noexcept {
       if (containsVariable(name.get()))
           return false;
 
@@ -108,9 +119,9 @@ public:
 
   void addGlobalVariable(std::string_view name, InstantiatedType type) {
     assert(not globals.contains(name));
-    globals.emplace(std::move(name), type);
+    globals.emplace(name, type);
   }
-  void addLocalVariable(std::unique_ptr<char> name, InstantiatedType type) const noexcept {
+  void addLocalVariable(eden::releasing_string::released_ptr name, InstantiatedType type) const noexcept {
     assume_assert(current_scope not_eq nullptr);
     const bool res = current_scope->addVariable(std::move(name), type);
     assume_assert(res);
@@ -174,11 +185,14 @@ public:
     return false;
   }
 
-  void enterFunctionScope(std::string_view function_name) noexcept {
+  const FunctionType*
+  enterFunctionScope(std::string_view function_name) noexcept {
     assume_assert(current_scope == nullptr);
     assert(containsFunction(function_name));
     current_scope = &std::get<Function>(globals[function_name]);
+    return current_scope->type;
   }
+
   void leaveFunctionScope() noexcept {
     assume_assert(current_scope);
     current_scope = nullptr;

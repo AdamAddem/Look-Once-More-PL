@@ -373,6 +373,26 @@ static constexpr InstantiatedType bool_literal{PrimitiveType::bool_(), {}};
 static constexpr InstantiatedType char_literal{PrimitiveType::char_(), {}};
 static constexpr InstantiatedType string_literal{PrimitiveType::string(), {}};
 
+static constexpr InstantiatedType signedToLiteralInstance(i64_t val) {
+  val = val < 0 ? (val * -1) - 1 : val;
+  if (val <= std::numeric_limits<i8_t>::max())
+    return i8_literal;
+  if (val <= std::numeric_limits<i16_t>::max())
+    return i16_literal;
+  if (val <= std::numeric_limits<i32_t>::max())
+    return i32_literal;
+  return i64_literal;
+}
+
+static constexpr InstantiatedType unsignedToLiteralInstance(u64_t val) {
+  if (val <= std::numeric_limits<u8_t>::max())
+    return u8_literal;
+  if (val <= std::numeric_limits<u16_t>::max())
+    return u16_literal;
+  if (val <= std::numeric_limits<u32_t>::max())
+    return u32_literal;
+  return u64_literal;
+}
 
 class TypeContext {
   eden::Arena<> type_arena;

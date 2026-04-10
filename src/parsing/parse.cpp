@@ -16,7 +16,7 @@ using namespace LOM;
 using namespace LOM::Lexer;
 using namespace LOM::Parser;
 using namespace LOM::AST;
-
+using eden::releasing_string;
 
 namespace {
 
@@ -137,13 +137,10 @@ InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
   throw ParsingError("Expected typename.", token);
 }
 
-char* parseIdentifier(TokenView& tokens) {
+releasing_string::released_ptr parseIdentifier(TokenView& tokens) {
   Token token = tokens.take();
-
-  if (token.is(TokenType::IDENTIFIER))
-    return token.takeString();
-
-  throw ParsingError("Expected identifier.", token);
+  token.throw_if_not(TokenType::IDENTIFIER, "Expected identifier.");
+  return token.takeString();
 }
 
 struct Body {
@@ -173,7 +170,9 @@ struct Body {
       return begin++;
     }
 
-    void reset() { begin = 1; }
+    void reset() {
+      begin = 1;
+    }
   };
 
   ExpressionTree& expression_tree;
@@ -230,7 +229,7 @@ struct Body {
         break;
       case TokenType::STRING_LITERAL:
         literal_type = ASTNode::STRING_LITERAL;
-        literal_value = std::bit_cast<u64_t>(token.takeString());
+        literal_value = std::bit_cast<u64_t>(token.takeString().get());
         break;
       default:
         std::unreachable();
@@ -244,7 +243,7 @@ struct Body {
       return res;
     }
 
-    const auto identifier_value = std::bit_cast<u64_t>(tokens.take().takeString());
+    const auto identifier_value = std::bit_cast<u64_t>(tokens.take().takeString().get());
     return expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
   }
 
@@ -477,7 +476,6 @@ struct Body {
     return res;
   }
 
-
   void translateExpression(u16_t idx) {
     if (idx == 0)
       return;
@@ -567,7 +565,7 @@ struct Body {
     tree.emplace_back(ASTNode::DECLARATION, tokens.current_line_number());
     tree.emplace_back(parseType(tokens, table));
 
-    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(parseIdentifier(tokens)));
+    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(parseIdentifier(tokens).get()));
     tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.");
 
     if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
@@ -578,7 +576,6 @@ struct Body {
       tokens.reject(TokenType::SEMI_COLON, "Expected initializing expression in variable declaration.");
       parseExpressionUntil(TokenType::SEMI_COLON);
     }
-
   }
 
   void parseIf() {
@@ -690,18 +687,17 @@ bool parseGlobal(Body& global_body) {
   return true;
 }
 
-void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
+void parseFunctions(Body& global_body, std::vector<Function>& functions) {
   TokenView& tokens = global_body.tokens;
   SymbolTable& table = global_body.table;
   std::vector<TokenView> function_tokens;
 
   //just parses the declarations to load into symbol table
   while (not tokens.empty()) {
-    ParsedFunction& function = functions.emplace_back();
+    Function& function = functions.emplace_back();
     function.line_number = tokens.current_line_number();
     tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function declaration.");
-    char* function_name = parseIdentifier(tokens);
-    function.name.reset(function_name);
+    function.name = parseIdentifier(tokens);
     tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
 
     SymbolTable::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
@@ -709,7 +705,7 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
     if (not tokens.pop_if(TokenType::RPAREN))
       while (true) {
         parameters[num_parameters].type = parseType(tokens, table);
-        parameters[num_parameters].name.reset(parseIdentifier(tokens));
+        parameters[num_parameters].name = parseIdentifier(tokens);
         ++num_parameters;
         if (not tokens.pop_if(TokenType::COMMA)) {
           tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
@@ -727,7 +723,7 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
 
     tokens.expect_then_pop(TokenType::LBRACE, "Expected function definition.");
     function_tokens.emplace_back(tokens.getTokensBetweenBraces());
-    table.addFunction(function_name, std::span(parameters, num_parameters), return_type);
+    table.addFunction(function.name, std::span(parameters, num_parameters), return_type);
   }
 
   //actually parse the function bodies
@@ -744,7 +740,7 @@ void parseFunctions(Body& global_body, std::vector<ParsedFunction>& functions) {
   }
 }
 
-void printFunction(const ParsedFunction& func, SymbolTable& table) {
+void printFunction(const Function& func, SymbolTable& table) {
   std::cout << '\n' << func.line_number << ":\t";
   std::cout << "fn " << func.name.get() << "(";
   auto& function = table.getFunction(func.name.get());
@@ -753,7 +749,7 @@ void printFunction(const ParsedFunction& func, SymbolTable& table) {
 
   for (auto &parameter : parameters) {
     std::cout << parameter.type.toString();
-    std::cout << " " << parameter.name << ", ";
+    std::cout << " " << parameter.name.get() << ", ";
   }
 
   if (not parameters.empty())
@@ -769,20 +765,19 @@ void printFunction(const ParsedFunction& func, SymbolTable& table) {
   std::cout << "\n}";
 }
 
-void printTU(ParsedTU& ptu) {
+void printTU(TU& ptu) {
   ptu.global_tree.print(1);
   std::cout << '\n';
   for (const auto &f : ptu.functions) {
     printFunction(f, ptu.table);
     std::cout << "\n";
   }
-
 }
 
 }
-ParsedTU Parser::parseTokens(std::vector<Token> &&token_list) {
+TU Parser::parseTokens(std::vector<Token> &&token_list) {
   Body::ExpressionTree expression_tree;
-  ParsedTU ptu;
+  TU ptu;
   Body global_body{{}, TokenView{token_list}, ptu.table,
     expression_tree};
 
@@ -791,7 +786,7 @@ ParsedTU Parser::parseTokens(std::vector<Token> &&token_list) {
   ptu.global_tree.nodes = std::move(global_body.tree);
   parseFunctions(global_body, ptu.functions);
 
-  if (Settings::doOutputParser()) {
+  if (Settings::doOutputParser()) [[unlikely]] {
     std::cout << "\n--- Parser Output ---\n";
     printTU(ptu);
     std::cout << "--- Parser Output ---\n";

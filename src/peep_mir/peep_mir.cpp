@@ -11,23 +11,66 @@
 #include <iostream>
 #include <variant>
 
-/*
 using namespace LOM;
-using namespace LOM::Parser;
 using namespace LOM::PeepMIR;
 using namespace LOM::AST;
 
 namespace {
 
-struct Peeper {
-  Function& current_function;
-  SymbolTable& table;
+class TreeView {
+  std::vector<ASTNode>::iterator begin;
+  std::vector<ASTNode>::iterator end;
+public:
+  TreeView(std::vector<ASTNode>::iterator begin, std::vector<ASTNode>::iterator end) noexcept
+  :begin(begin), end(end) {}
 
-  InstantiatedType peepLiteralExpression(const LiteralExpression &literal) const {
-    return {literal.type, {}};
+  [[nodiscard]] ASTNode&
+  peek() const noexcept {return *begin;}
+
+  [[nodiscard]] bool
+  peek_is(ASTNode::Type type) const noexcept {return begin->type() == type;}
+
+  ASTNode& pop() noexcept {return *(begin++);}
+  void put_back() noexcept {--begin;}
+
+  [[nodiscard]] bool
+  empty() const noexcept {return begin == end;}
+};
+
+struct Peeper {
+  std::vector<Block> body;
+  TreeView nodes;
+  SymbolTable& table;
+  u64_t current_line_number;
+
+  InstantiatedType peepIdentifier(const char* identifier_str) {
+
   }
 
-  InstantiatedType peepVariableExpression(const IdentifierExpression &identifier) const {
+  InstantiatedType peepLiteral() {
+    auto& node = nodes.pop();
+    switch (node.type()) {
+    case ASTNode::INT_LITERAL:
+      return signedToLiteralInstance(node.int_val());
+    case ASTNode::UINT_LITERAL:
+      return unsignedToLiteralInstance(node.uint_val());
+    case ASTNode::FLOAT_LITERAL:
+      return f32_literal;
+    case ASTNode::DOUBLE_LITERAL:
+      return f64_literal;
+    case ASTNode::BOOL_LITERAL:
+      return bool_literal;
+    case ASTNode::CHAR_LITERAL:
+      return char_literal;
+    case ASTNode::STRING_LITERAL:
+      return string_literal;
+
+    default:
+      std::unreachable();
+    }
+  }
+
+  InstantiatedType peepVariableExpression() {
     if (!table.containsVariable(identifier.ident)) {
       if (table.containsFunction(identifier.ident))
         throw ValidationError("Function name where variable name expected.", identifier.ident, identifier.line_number);
@@ -39,9 +82,9 @@ struct Peeper {
     return table.closestVariable(identifier.ident);
   }
 
-  InstantiatedType peepSubscriptExpression(const SubscriptExpression&) const {assert(false);}
+  InstantiatedType peepSubscriptExpression() {assert(false);}
 
-  InstantiatedType peepCallingExpression(const CallingExpression &calling) {
+  InstantiatedType peepCallingExpression(u64_t parameter_count) {
     if (not std::holds_alternative<IdentifierExpression>(*calling.called))
       throw ValidationError("Callable non-functions unfortunately not supported :(", std::visit(ExpressionToStringVisitor{}, *calling.called), calling.line_number);
 
@@ -76,7 +119,7 @@ struct Peeper {
     throw ValidationError("Ambiguous function call.", context, calling.line_number);
   }
 
-  InstantiatedType peepBinaryExpression(BinaryExpression &binary) {
+  InstantiatedType peepBinaryExpression(Operator opr) {
     InstantiatedType left_instance = peepExpression(*binary.expr_left);
     const bool left_is_mutable = left_instance.details.is_mutable;
     const InstantiatedType right_instance = peepExpression(*binary.expr_right);
@@ -173,7 +216,7 @@ struct Peeper {
     }
   }
 
-  InstantiatedType peepUnaryExpression(UnaryExpression &unary) {
+  InstantiatedType peepUnaryExpression(Operator opr) {
     InstantiatedType instance = peepExpression(*unary.expr);
     if (instance.type->isVariant())
       throw ValidationError("Unary operator used on variant type.", instance.toString(), unary.line_number);
@@ -220,23 +263,31 @@ struct Peeper {
     return instance;
   }
 
-  InstantiatedType peepExpression(Expression &expression) {
-    return utils_match(expression,
-      utils_callon(UnaryExpression&, peepUnaryExpression),
-      utils_callon(BinaryExpression&, peepBinaryExpression),
-      utils_callon(const CallingExpression&, peepCallingExpression),
-      utils_callon(const SubscriptExpression&, peepSubscriptExpression),
-      utils_callon(const IdentifierExpression&, peepVariableExpression),
-      utils_callon(const LiteralExpression&, peepLiteralExpression)
-    );
+  InstantiatedType peepExpression() {
+    auto& node = nodes.pop();
+    switch (node.type()) {
+    case ASTNode::UNARY:
+      return peepUnaryExpression(node.operator_val());
+    case ASTNode::BINARY:
+      return peepBinaryExpression(node.operator_val());
+    case ASTNode::CALLING:
+      return peepCallingExpression(node.parameter_count());
+    case ASTNode::SUBSCRIPT:
+      assert(false);
+    case ASTNode::IDENTIFIER:
+      return peepIdentifier(node.identifier());
+
+    default:
+      std::unreachable();
+    }
   }
 
-  void peepExpressionStatement(const ExpressionStatement &expression_statement) {
+  void peepExpressionStatement() {
     if (expression_statement.expr)
       peepExpression(*expression_statement.expr);
   }
 
-  void peepReturnStatement(const ReturnStatement &return_statement) {
+  void peepReturnStatement() {
 
     if (return_statement.return_value) {
       const InstantiatedType ret_type = peepExpression(*return_statement.return_value);
@@ -256,12 +307,12 @@ struct Peeper {
 
   }
 
-  void peepScopedStatement(const ScopedStatement &scoped) {
+  void peepScopedStatement(u64_t num_children) {
     for (const auto s : scoped.scope_body)
       peepStatement(*s);
   }
 
-  void peepWhileLoop(const WhileLoop &while_loop) {
+  void peepWhileLoop() {
     const InstantiatedType instance = peepExpression(*while_loop.condition);
 
     if (not instance.type->isBool())
@@ -272,7 +323,7 @@ struct Peeper {
     peepStatement(*while_loop.loop_body);
   }
 
-  void peepForLoop(const ForLoop &for_loop) {
+  void peepForLoop() {
     table.enterScope(&devoid_type);
     if (for_loop.var_statement)
       peepStatement(*for_loop.var_statement);
@@ -294,7 +345,7 @@ struct Peeper {
     table.leaveScope();
   }
 
-  void peepIfStatement(const IfStatement &if_statement) {
+  void peepIfStatement() {
     const InstantiatedType instance = peepExpression(*if_statement.condition);
     if (instance.type->isVariant())
       throw ValidationError("Variant type used in if statement condition.", std::format("Condition is of type '{}'", instance.toString()), if_statement.line_number);
@@ -307,7 +358,7 @@ struct Peeper {
       peepStatement(*if_statement.false_branch);
   }
 
-  void peepVarDeclaration(const VarDeclaration &declaration) {
+  void peepVarDeclaration() {
     if (table.isSymbolInCurrentScope(declaration.ident))
       throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", declaration.ident), declaration.line_number);
 
@@ -324,30 +375,75 @@ struct Peeper {
     table.addLocalVariable(declaration.ident, declaration.type);
   }
 
-  void peepStatement(const Statement &statement) {
-    utils_match(statement,
-      utils_callon(const VarDeclaration&, peepVarDeclaration),
-      utils_callon(const IfStatement&, peepIfStatement),
-      utils_callon(const ForLoop&, peepForLoop),
-      utils_callon(const WhileLoop&, peepWhileLoop),
-      utils_callon(const ScopedStatement&, peepScopedStatement),
-      utils_callon(const ReturnStatement&, peepReturnStatement),
-      utils_callon(const ExpressionStatement&, peepExpressionStatement),
-      );
+  void peepStatement() {
+    auto& node = nodes.pop();
+    switch (node.type()) {
+    case ASTNode::EMPTY:
+      assert(false);
+    case ASTNode::DECLARATION:
+      current_line_number = node.line_number();
+      return peepVarDeclaration();
+    case ASTNode::IF:
+      current_line_number = node.line_number();
+      return peepIfStatement();
+    case ASTNode::FOR:
+      current_line_number = node.line_number();
+      return peepForLoop();
+    case ASTNode::WHILE:
+      current_line_number = node.line_number();
+      return peepWhileLoop();
+    case ASTNode::SCOPED:
+      return peepScopedStatement(node.sub_statements());
+    case ASTNode::RETURN:
+      current_line_number = node.line_number();
+      return peepReturnStatement();
+    case ASTNode::EXPR_STMT:
+      current_line_number = node.line_number();
+      return peepExpressionStatement();
+
+    case ASTNode::UNARY:
+    case ASTNode::BINARY:
+    case ASTNode::CALLING:
+    case ASTNode::SUBSCRIPT:
+    case ASTNode::IDENTIFIER:
+      nodes.put_back();
+      return (void)peepExpression();
+
+    case ASTNode::INT_LITERAL:
+    case ASTNode::UINT_LITERAL:
+    case ASTNode::FLOAT_LITERAL:
+    case ASTNode::DOUBLE_LITERAL:
+    case ASTNode::BOOL_LITERAL:
+    case ASTNode::CHAR_LITERAL:
+    case ASTNode::STRING_LITERAL:
+      nodes.put_back();
+      return (void)peepLiteral();
+
+    default:
+      std::unreachable();
+    }
+  }
+
+  void peepUntilEmpty() {
+    while (not nodes.empty())
+      peepStatement();
   }
 };
 
-void peepFunction(ParsedFunction &func, SymbolTable& table) {
-  table.enterFunctionScope(func.name);
+void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table) {
+  Function new_function(table.enterFunctionScope(func.name));
+  TreeView view{func.function_body.nodes.begin(), func.function_body.nodes.end()};
+  Peeper test{{}, view, table};
+  test.peepUntilEmpty();
 
   table.leaveFunctionScope();
 }
 
 }
 
-PeepTU PeepMIR::lowerToPeep(ParsedTU &&parsed_tu) {
+TU PeepMIR::lowerToPeep(Parser::TU &&parsed_tu) {
   SymbolTable table;
-  PeepTU peeped_tu;
+  TU peeped_tu;
   for (auto &func : parsed_tu.functions)
     peepFunction(func, table);
 
@@ -358,4 +454,4 @@ PeepTU PeepMIR::lowerToPeep(ParsedTU &&parsed_tu) {
 
 
   assert(false);
-} */
+}

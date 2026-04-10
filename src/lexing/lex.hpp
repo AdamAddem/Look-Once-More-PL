@@ -1,6 +1,6 @@
 #pragma once
 #include "edenlib/assume_assert.hpp"
-#include "edenlib/owned.hpp"
+#include "edenlib/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "tokentype.hpp"
 
@@ -21,16 +21,16 @@ class Token {
   [[nodiscard]] constexpr char*
   copy_string() const noexcept {
     assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
-    const sz_t sz = std::strlen(std::bit_cast<char*>(value));
     return
-    std::strcpy(new char[sz+1], std::bit_cast<char*>(value));
+    eden::releasing_string::copy_data(
+      eden::releasing_string::released_ptr(
+        std::bit_cast<char*>(value))).get();
   }
 
   [[nodiscard]] constexpr std::string
   to_stdstring() const noexcept {
     assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
-    const sz_t sz = std::strlen(std::bit_cast<char*>(value));
-    return std::string(std::bit_cast<char*>(value), sz);
+    return std::string(eden::owned_ptr<char[]>(std::bit_cast<char*>(value)));
   }
 
 public:
@@ -38,13 +38,13 @@ public:
   Token(TokenType type, u32_t line_number) : type(type), line_number(line_number), value() {}
   Token(TokenType type, u64_t value, u32_t line_number) : type(type), line_number(line_number), value(value) {}
   Token(char character_literal, u32_t line_number) : type(TokenType::CHAR_LITERAL), line_number(line_number), value(static_cast<u64_t>(character_literal)) {}
-  Token(TokenType type, eden::owned_ptr<char[]> string, u32_t line_number) : type(type), line_number(line_number), value(std::bit_cast<u64_t>(string.release())) {}
+  Token(TokenType type, eden::releasing_string::released_ptr string, u32_t line_number) : type(type), line_number(line_number), value(std::bit_cast<u64_t>(string.release())) {}
   Token(Token &&other) noexcept : type(other.type), line_number(other.line_number), value(other.value) {other.type = TokenType::INVALID_TOKEN; other.value = 0;}
   Token &operator=(Token &&other) noexcept {type = other.type; other.type=TokenType::INVALID_TOKEN; value = other.value; other.value = 0; line_number = other.line_number; return *this;}
 
   Token(const Token& other)
   : type(other.type), line_number(other.line_number) {
-    if (other.is(TokenType::STRING_LITERAL) or other.is(TokenType::IDENTIFIER))
+    if (type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER)
       value = std::bit_cast<u64_t>(other.copy_string());
     else
       value = other.value;
@@ -92,10 +92,12 @@ public:
   [[nodiscard]] constexpr char
   getChar() const noexcept {assume_assert(type == TokenType::CHAR_LITERAL); return static_cast<char>(value);}
 
-  [[nodiscard]] constexpr char*
+  [[nodiscard]] constexpr eden::releasing_string::released_ptr
   takeString() noexcept {
     assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
-    const auto retval = std::bit_cast<char*>(value); value = 0; return retval;
+    const auto retval = std::bit_cast<char*>(value);
+    value = 0;
+    return eden::releasing_string::released_ptr(retval);
   }
 };
 

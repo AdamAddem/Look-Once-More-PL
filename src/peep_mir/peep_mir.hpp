@@ -30,12 +30,15 @@ struct Instruction {
     EQ, NEQ,
     ADDRESS_OF,
 
-    BR, BRC, RET
+    BR, //value = block idx
+    BRC, //value = false block idx
+    RET
   }type;
   u64_t value;
 
   constexpr Instruction(Type type, u64_t value) noexcept
   : type(type), value(value) {}
+
 
   [[nodiscard]] constexpr i64_t
   int_value() const noexcept
@@ -76,6 +79,14 @@ struct Instruction {
   [[nodiscard]] constexpr u64_t
   function_idx() const noexcept
   {assume_assert(type == FUNCTION); return value;}
+
+  [[nodiscard]] constexpr u64_t
+  br_idx() const noexcept
+  {assume_assert(type == BR); return value;}
+
+  [[nodiscard]] constexpr u64_t
+  brc_false_idx() const noexcept
+  {assume_assert(type == BRC); return value;}
 
 };
 

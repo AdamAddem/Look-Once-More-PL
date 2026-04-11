@@ -126,7 +126,7 @@ public:
                  // HAS <value>    | <Following Nodes...>
     //Statements:
     DECLARATION, // HAS LN         | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
-    IF,          // HAS LN         | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STATEMENT
+    IF,          // HAS LN         | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STMT
     FOR,         // HAS LN         | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
     WHILE,       // HAS LN         | CONDITION_EXPR, SCOPED
     SCOPED,      // HAS NUM        | SUB_STATEMENTS... * NUM

@@ -24,17 +24,29 @@ public:
   TreeView(std::vector<ASTNode>::iterator begin, std::vector<ASTNode>::iterator end) noexcept
   :begin(begin), end(end) {}
 
-  [[nodiscard]] ASTNode&
-  peek() const noexcept {return *begin;}
+  [[nodiscard]] constexpr ASTNode&
+  peek() const noexcept
+  {return *begin;}
 
   [[nodiscard]] bool
-  peek_is(ASTNode::Type type) const noexcept {return begin->type() == type;}
+  peek_is(ASTNode::Type type) const noexcept
+  {return begin->type() == type;}
 
-  ASTNode& pop() noexcept {return *(begin++);}
-  void put_back() noexcept {--begin;}
+  constexpr ASTNode&
+  pop() noexcept
+  {return *(begin++);}
 
-  [[nodiscard]] bool
-  empty() const noexcept {return begin == end;}
+  [[nodiscard]] constexpr u64_t
+  pop_scoped() noexcept
+  {assume_assert(begin->type() == ASTNode::SCOPED); return (begin++)->sub_statements();}
+
+  constexpr void
+  put_back() noexcept
+  {--begin;}
+
+  [[nodiscard]] constexpr bool
+  empty() const noexcept
+  {return begin == end;}
 };
 
 struct Peeper {
@@ -47,6 +59,12 @@ struct Peeper {
 
   Peeper(SyntaxTree& tree, SymbolTable& table)
   : nodes{tree.nodes.begin(), tree.nodes.end()}, table(table) {}
+
+  constexpr void
+  terminate_block(u64_t terminator_idx) noexcept {
+    blocks.back().terminator_idx = terminator_idx;
+    blocks.emplace_back(terminator_idx + 1, 0);
+  }
 
   InstantiatedType peepLiteral() {
     auto& node = nodes.pop();
@@ -263,7 +281,8 @@ struct Peeper {
     return instance;
   }
 
-  InstantiatedType peepExpression() {
+  [[nodiscard]] InstantiatedType
+  peepExpression() {
     auto& node = nodes.pop();
     switch (node.type()) {
     case ASTNode::UNARY:
@@ -324,38 +343,26 @@ struct Peeper {
   }
 
   void peepForLoop() {
-    table.enterScope(&devoid_type);
-    if (for_loop.var_statement)
-      peepStatement(*for_loop.var_statement);
+    peepVarDeclaration();
+    const auto condition = peepExpression();
+    if (not condition.type->isBool())
+      throw ValidationError("Non-boolean for-loop condition.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
-    if (for_loop.condition) {
-      const InstantiatedType instance  = peepExpression(*for_loop.condition);
-      if (instance.type->isVariant())
-        throw ValidationError("Variant used in for loop condition.", instance.toString(), for_loop.line_number);
-
-      if (not instance.type->isBool())
-        throw ValidationError("Non-boolean for-loop condition.", std::format("Condition is of type '{}'", instance.toString()), for_loop.line_number);
-
-    }
-
-    if (for_loop.iteration)
-      peepExpression(*for_loop.iteration);
-
-    peepStatement(*for_loop.loop_body);
-    table.leaveScope();
+    (void)peepExpression();
+    peepScopedStatement(nodes.pop_scoped());
   }
 
   void peepIfStatement() {
-    const auto condition_type = peepExpression();
-    if (instance.type->isVariant())
-      throw ValidationError("Variant type used in if statement condition.", std::format("Condition is of type '{}'", instance.toString()), if_statement.line_number);
+    const auto condition = peepExpression();
+    if (not condition.type->isBool())
+      throw ValidationError("If statement condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
-    if (not instance.type->isBool())
-      throw ValidationError("If statement condition non-boolean.", std::format("Condition is of type '{}'", instance.toString()), if_statement.line_number);
-
-    peepStatement(*if_statement.true_branch);
-    if (if_statement.false_branch)
-      peepStatement(*if_statement.false_branch);
+    const u64_t brc_index = instructions.size(); terminate_block(brc_index);
+    instructions.emplace_back(Instruction::BRC, 0);
+    peepScopedStatement(nodes.pop_scoped());
+    if (not nodes.peek_is(ASTNode::EMPTY))
+      peepStatement();
+    instructions[brc_index].value = (instructions.size() - 1);
   }
 
   void peepVarDeclaration() {
@@ -427,6 +434,11 @@ struct Peeper {
   }
 
   void peepUntilEmpty() {
+    assume_assert(locals.empty());
+    assume_assert(instructions.empty());
+    assume_assert(blocks.empty());
+    blocks.push_back({0, 0});
+
     while (not nodes.empty())
       peepStatement();
   }

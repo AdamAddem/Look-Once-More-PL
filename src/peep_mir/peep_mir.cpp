@@ -1,4 +1,6 @@
 #include "peep_mir.hpp"
+#include "peep_mir/peep_mir.hpp"
+
 #include "ast/ast.hpp"
 #include "edenlib/typedefs.hpp"
 #include "error.hpp"
@@ -28,13 +30,22 @@ public:
   peek() const noexcept
   {return *begin;}
 
-  [[nodiscard]] bool
+  [[nodiscard]] constexpr bool
   peek_is(ASTNode::Type type) const noexcept
   {return begin->type() == type;}
 
   constexpr ASTNode&
   pop() noexcept
   {return *(begin++);}
+
+  [[nodiscard]] constexpr bool
+  pop_if(ASTNode::Type type) noexcept {
+    if (peek_is(type)) {
+      pop();
+      return true;
+    }
+    return false;
+  }
 
   [[nodiscard]] constexpr u64_t
   pop_scoped() noexcept
@@ -60,10 +71,50 @@ struct Peeper {
   Peeper(SyntaxTree& tree, SymbolTable& table)
   : nodes{tree.nodes.begin(), tree.nodes.end()}, table(table) {}
 
+  [[nodiscard]] constexpr Function::Block&
+  current_block() noexcept {return blocks.back();}
+
+  [[nodiscard]] constexpr u32_t
+  current_block_index() const noexcept {return blocks.size();}
+
+  [[nodiscard]] constexpr bool
+  is_current_block_empty() noexcept
+  {return blocks.back().first_instruction_idx == instructions.size();}
+
+  //creates a brc
+  //true index will be the block represented by body
+  //false index will be the block after body executes
   constexpr void
-  terminate_block(u64_t terminator_idx) noexcept {
-    blocks.back().terminator_idx = terminator_idx;
-    blocks.emplace_back(terminator_idx + 1, 0);
+  brc_to_after(auto&& body) noexcept {
+    const u32_t current_block_idx = current_block_index();
+    const u32_t true_block_idx = current_block_idx + 1;
+    body();
+    const u32_t false_block_idx = blocks.size();
+    blocks[current_block_idx].set_brc(true_block_idx, false_block_idx);
+  }
+
+  //creates a br to the block after body
+  constexpr void
+  br_to_after(auto&& body) noexcept {
+    const u32_t current_block_idx = current_block_index();
+    body();
+    blocks[current_block_idx].set_br(blocks.size());
+  }
+
+  //creates a br that goes to the next block, as if it had fallen through
+  //does nothing if current block is empty
+  constexpr void
+  br_fallthrough() noexcept {
+    if (not is_current_block_empty())
+      blocks.back().set_br(blocks.size());
+  }
+
+  //call before any instructions are made
+  //does nothing if current block is empty
+  constexpr void
+  new_block() noexcept {
+    if (not is_current_block_empty())
+      blocks.emplace_back(instructions.size());
   }
 
   InstantiatedType peepLiteral() {
@@ -307,62 +358,72 @@ struct Peeper {
   }
 
   void peepReturnStatement() {
+    const auto function_return_type = table.returnTypeOfCurrentFunction();
+    if (nodes.pop_if(ASTNode::EMPTY)) {
+      if (not function_return_type->isDevoid())
+        throw ValidationError("Non-devoid function expects return value",
+        std::format("Scope return type is '{}'", table.returnTypeOfCurrentFunction()->toString()), current_line_number);
 
-    if (return_statement.return_value) {
-      const InstantiatedType ret_type = peepExpression(*return_statement.return_value);
-      if (not ret_type.type->convertibleTo(table.returnTypeOfCurrentScope()))
-        throw ValidationError("Return statement's type is not compatible with return type of scope.",
-         std::format("Scope return type is '{}' and expression '{}' returns type '{}'",
-           table.returnTypeOfCurrentScope()->toString(), std::visit(ExpressionToStringVisitor{}, *return_statement.return_value), ret_type.toString()),
-             return_statement.line_number);
-
-
+      current_block().set_ret();
+      new_block();
       return;
     }
+    const auto return_expression = peepExpression();
+    if (function_return_type->isDevoid())
+      throw ValidationError("Cannot return value from devoid function",
+      std::format("Return value type is '{}'", return_expression.toString()), current_line_number);
 
-    if (!table.returnTypeOfCurrentScope()->isDevoid())
-      throw ValidationError("No value returned from return statement when scope expects a value.",
-        std::format("Scope return type is '{}'", table.returnTypeOfCurrentScope()->toString()), return_statement.line_number);
+    if (not return_expression.type->convertibleTo(table.returnTypeOfCurrentFunction()))
+      throw ValidationError("Return statement's type is not compatible with return type of scope.",
+       std::format("Scope return type is '{}' and expression '{}' returns type '{}'", function_return_type->toString(), "PLACEHOLDER"),
+       current_line_number);
 
+    current_block().set_ret();
+    new_block();
   }
 
   void peepScopedStatement(u64_t num_children) {
-    for (const auto s : scoped.scope_body)
-      peepStatement(*s);
+    while (num_children-- not_eq 0) {
+      peepStatement();
+    }
   }
 
   void peepWhileLoop() {
-    const InstantiatedType instance = peepExpression(*while_loop.condition);
-
-    if (not instance.type->isBool())
-      throw ValidationError("While Loop condition non-convertible to boolean.",
-        std::format("Condition is of type '{}'", instance.toString()), while_loop.line_number);
-
-
-    peepStatement(*while_loop.loop_body);
-  }
-
-  void peepForLoop() {
-    peepVarDeclaration();
+    br_fallthrough();
+    new_block();
+    const u32_t condition_idx = current_block_index();
     const auto condition = peepExpression();
     if (not condition.type->isBool())
-      throw ValidationError("Non-boolean for-loop condition.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
+      throw ValidationError("While Loop condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
-    (void)peepExpression();
-    peepScopedStatement(nodes.pop_scoped());
+    brc_to_after( [=, this] mutable {
+      new_block();
+      peepScopedStatement(nodes.pop_scoped());
+      current_block().set_br(condition_idx);
+    });
   }
+
+  void peepForLoop() {assert(false and "Not sure about for loop form yet");}
 
   void peepIfStatement() {
     const auto condition = peepExpression();
     if (not condition.type->isBool())
       throw ValidationError("If statement condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
-    const u64_t brc_index = instructions.size(); terminate_block(brc_index);
-    instructions.emplace_back(Instruction::BRC, 0);
-    peepScopedStatement(nodes.pop_scoped());
-    if (not nodes.peek_is(ASTNode::EMPTY))
-      peepStatement();
-    instructions[brc_index].value = (instructions.size() - 1);
+    //this is less complicated than it looks
+    //only so layered because of the optional else
+    brc_to_after( [=, this] mutable {
+      new_block(); //true block
+      peepScopedStatement(nodes.pop_scoped());
+      br_to_after( [=, this] mutable {
+        new_block(); //else block if there is one, otherwise after block
+        if (not nodes.pop_if(ASTNode::EMPTY)) {
+          peepStatement();
+          blocks.back().set_br(blocks.size());
+          new_block(); //after block
+        }
+      });
+    });
   }
 
   void peepVarDeclaration() {
@@ -380,6 +441,7 @@ struct Peeper {
           std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
           name,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
       instructions.emplace_back(Instruction::LOCAL, locals.size());
+      instructions.emplace_back(Instruction::ASSIGN, 0);
       locals.emplace_back(declaration_type.type);
     }
   }
@@ -437,7 +499,7 @@ struct Peeper {
     assume_assert(locals.empty());
     assume_assert(instructions.empty());
     assume_assert(blocks.empty());
-    blocks.push_back({0, 0});
+    blocks.emplace_back(0);
 
     while (not nodes.empty())
       peepStatement();

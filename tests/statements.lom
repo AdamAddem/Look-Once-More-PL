@@ -18,8 +18,3 @@ fn while_statements() {
     while(condition eq false) {}
     while(condition not_eq true) { mut i32 scoped = junk; }
 }
-
-fn for_statements(bool condition) {
-    for(mut i32 i = 0; condition; ++i) {}
-    for(mut i32 i = 0; condition; ++i) ;
-}

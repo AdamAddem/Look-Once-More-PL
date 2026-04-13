@@ -29,16 +29,11 @@ struct Instruction {
     AND, OR, BITAND, BITOR, BITXOR, BITNOT,
     EQ, NEQ,
     ADDRESS_OF,
-
-    BR, //value = block idx
-    BRC, //value = false block idx
-    RET
   }type;
   u64_t value;
 
   constexpr Instruction(Type type, u64_t value) noexcept
   : type(type), value(value) {}
-
 
   [[nodiscard]] constexpr i64_t
   int_value() const noexcept
@@ -80,20 +75,42 @@ struct Instruction {
   function_idx() const noexcept
   {assume_assert(type == FUNCTION); return value;}
 
-  [[nodiscard]] constexpr u64_t
-  br_idx() const noexcept
-  {assume_assert(type == BR); return value;}
-
-  [[nodiscard]] constexpr u64_t
-  brc_false_idx() const noexcept
-  {assume_assert(type == BRC); return value;}
-
 };
 
 struct Function {
-  struct Block {
-    u64_t begin_idx;
-    u64_t terminator_idx;
+  class Block {
+    struct br_data {
+      u32_t next_block_idx;
+    };
+    struct brc_data {
+      u32_t true_block_idx; u32_t false_block_idx;
+    };
+  public:
+
+    u32_t first_instruction_idx;
+    enum class Terminator : u32_t {BR, BRC, RET}
+    terminator_type;
+
+    union {
+      br_data br;
+      brc_data brc;
+    };
+
+    constexpr void
+    set_brc(u32_t true_block_idx, u32_t false_block_idx) noexcept {
+      terminator_type = Terminator::BRC;
+      brc = {true_block_idx, false_block_idx};
+    }
+
+    constexpr void
+    set_br(u32_t next_block_idx) noexcept {
+      terminator_type = Terminator::BR;
+      br.next_block_idx = next_block_idx;
+    }
+
+    constexpr void
+    set_ret() noexcept
+    {terminator_type = Terminator::RET;}
   };
 
   released_string name;

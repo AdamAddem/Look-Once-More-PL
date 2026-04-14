@@ -20,10 +20,12 @@ using released_ptr = eden::releasing_vector<T>::released_ptr;
 struct Instruction {
   enum Type : u8_t {
     GLOBAL, LOCAL, FUNCTION, //value idx
+
+    //literals contain exactly what you think they would
     INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
 
     //value not determined yet for the operators
-    ADD, SUB, MULT, DIV,
+    ADD, SUB, MULT, DIV, MOD,
     ASSIGN,
     LESS, GTR, LEQ, GEQ,
     AND, OR, BITAND, BITOR, BITXOR, BITNOT,
@@ -91,7 +93,7 @@ class Block {
 public:
 
   u32_t first_instruction_idx;
-  enum class Terminator : u32_t {BR, BRC, RET}
+  enum class Terminator : u32_t {BR, BRC, RET} //when done peeping, there should be no ret
   terminator_type;
 
   union {
@@ -122,11 +124,6 @@ struct Function {
   released_span<const Type*> locals;
   released_ptr<Instruction> instructions;
   released_span<Block> blocks;
-
-  Function(
-    released_string name,
-    const FunctionType* function_type) noexcept
-  : name(std::move(name)), type(function_type) {}
 };
 
 struct TU {

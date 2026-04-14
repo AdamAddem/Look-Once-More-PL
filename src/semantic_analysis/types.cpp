@@ -46,8 +46,8 @@ std::string Type::toString() const noexcept {
     return static_cast<const PointerType*>(this)->toString();
   case VARIANT:
     return static_cast<const VariantType*>(this)->toString();
-
   case FUNCTION:
+    return static_cast<const FunctionType*>(this)->toString();
   case CUSTOM:
   default:
     std::unreachable();
@@ -190,6 +190,27 @@ bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, bool nullabl
 
   return true;
 }
+
+std::string FunctionType::toString() const noexcept {
+  std::string string_rep("(");
+  auto parameter_typesx = parameterTypes();
+  for (auto param_type : parameter_typesx) {
+    string_rep.append(param_type->toString());
+    string_rep.append(", ");
+  }
+  if (num_parameters not_eq 0) {
+    string_rep.pop_back();
+    string_rep.pop_back();
+  }
+  string_rep.push_back(')');
+  if (not return_type->isDevoid()) {
+    string_rep.append(" -> ");
+    string_rep.append(return_type->toString());
+  }
+
+  return string_rep;
+}
+
 
 bool FunctionType::isValidCall(std::span<InstantiatedType> parameters) const noexcept {
   assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);

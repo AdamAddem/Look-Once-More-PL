@@ -13,9 +13,6 @@ struct Function {
   eden::owned_stringview name;
   AST::SyntaxTree body;
   u64_t line_number{};
-
-  Function() = default;
-  ~Function() {assert(name == nullptr);}
 };
 
 struct TU {

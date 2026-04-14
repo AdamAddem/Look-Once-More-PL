@@ -102,7 +102,7 @@ public:
   takeTypeContext() noexcept
   {return std::move(types);}
 
-  void addFunction(
+  const FunctionType* addFunction(
     const eden::owned_stringview& name,
     std::span<Variable> parameters,
     const Type* return_type) noexcept;
@@ -190,7 +190,7 @@ public:
     return {typeOfFunction(name), {}};
   }
 
-  [[nodiscard]] auto
+  [[nodiscard]] std::span<const Variable>
   parametersOfFunction(const char* name) noexcept {
     assert(containsFunction(name));
     return std::get<Function>(globals[name]).parameters();

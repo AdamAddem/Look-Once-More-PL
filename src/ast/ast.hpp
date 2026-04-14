@@ -249,7 +249,6 @@ inline SyntaxTree::SyntaxTree(std::vector<ASTNode> nodes) : nodes(std::move(node
 inline SyntaxTree::~SyntaxTree() {
   using eden::releasing_string;
   for (auto& node: nodes) {
-
     if (node.type() not_eq ASTNode::IDENTIFIER and node.type() not_eq ASTNode::STRING_LITERAL)
       continue;
 

@@ -319,6 +319,9 @@ public:
   [[nodiscard]] constexpr const Type*
   returnType() const noexcept {return return_type;}
 
+  [[nodiscard]] std::string
+  toString() const noexcept;
+
   [[nodiscard]] constexpr bool
   sameAs(std::span<const Type*> parameters, const Type* ret_type) const noexcept {
     if (parameters.size() not_eq num_parameters or return_type not_eq ret_type)

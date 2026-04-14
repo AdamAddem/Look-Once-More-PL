@@ -191,7 +191,7 @@ bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, bool nullabl
   return true;
 }
 
-bool FunctionType::isValidCall(const std::vector<InstantiatedType>& parameters) const noexcept {
+bool FunctionType::isValidCall(std::span<InstantiatedType> parameters) const noexcept {
   assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
   const auto num_params = parameters.size();
   for (auto i{0uz}; i < num_params; ++i) {

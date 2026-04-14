@@ -132,15 +132,22 @@ public:
   containsVariable(const char* name) const noexcept {
     if (current_scope && current_scope->containsVariable(name))
       return true;
-    if (globals.contains(name))
-      return std::holds_alternative<InstantiatedType>(globals.at(name));
-    return false;
+    if (not globals.contains(name))
+      return false;
+    return std::holds_alternative<InstantiatedType>(globals.at(name));
   }
 
   [[nodiscard]] bool
   containsLocalVariable(const char* name) const noexcept {
-    assert(current_scope);
+    assume_assert(current_scope);
     return current_scope->containsVariable(name);
+  }
+
+  [[nodiscard]] bool
+  containsGlobalVariable(const char* name) const noexcept {
+    if (not globals.contains(name))
+      return false;
+    return std::holds_alternative<InstantiatedType>(globals.at(name));
   }
 
   [[nodiscard]] InstantiatedType
@@ -150,7 +157,19 @@ public:
 
     assert(globals.contains(name));
     assert(std::holds_alternative<InstantiatedType>(globals[name]));
-    return std::get<InstantiatedType>(globals.at(name));
+    return std::get<InstantiatedType>(globals[name]);
+  }
+
+  [[nodiscard]] InstantiatedType
+  localVariable(const char* name) noexcept {
+    assume_assert(current_scope);
+    return current_scope->getVariable(name);
+  }
+
+  [[nodiscard]] InstantiatedType
+  globalVariable(const char* name) noexcept {
+    assert(containsGlobalVariable(name));
+    return std::get<InstantiatedType>(globals[name]);
   }
 
   [[nodiscard]] bool
@@ -158,6 +177,17 @@ public:
     if (globals.contains(name))
       return std::holds_alternative<Function>(globals[name]);
     return false;
+  }
+
+  [[nodiscard]] const FunctionType*
+  typeOfFunction(const char* name) noexcept {
+    assert(containsFunction(name));
+    return std::get<Function>(globals[name]).type;
+  }
+
+  [[nodiscard]] InstantiatedType
+  instanceTypeOfFunction(const char* name) noexcept {
+    return {typeOfFunction(name), {}};
   }
 
   [[nodiscard]] auto

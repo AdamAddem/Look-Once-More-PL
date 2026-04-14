@@ -49,7 +49,7 @@ public:
 
   [[nodiscard]] constexpr u64_t
   pop_scoped() noexcept
-  {assume_assert(begin->type() == ASTNode::SCOPED); return (begin++)->sub_statements();}
+  {assert(begin->type() == ASTNode::SCOPED); return (begin++)->sub_statements();}
 
   constexpr void
   put_back() noexcept
@@ -61,17 +61,25 @@ public:
 };
 
 struct Peeper {
+  std::vector<TU::Global>& globals;
+  std::vector<Function>& functions;
   eden::releasing_vector<const Type*> locals;
   eden::releasing_vector<Instruction> instructions;
-  eden::releasing_vector<Function::Block> blocks;
+  eden::releasing_vector<Block> blocks;
+
   TreeView nodes;
   SymbolTable& table;
   u64_t current_line_number{};
 
-  Peeper(SyntaxTree& tree, SymbolTable& table)
-  : nodes{tree.nodes.begin(), tree.nodes.end()}, table(table) {}
+  Peeper(
+    std::vector<TU::Global>& globals,
+    std::vector<Function>& functions,
+    SyntaxTree& tree,
+    SymbolTable& table)
+  : globals(globals), functions(functions),
+    nodes{tree.nodes.begin(), tree.nodes.end()}, table(table) {}
 
-  [[nodiscard]] constexpr Function::Block&
+  [[nodiscard]] constexpr Block&
   current_block() noexcept {return blocks.back();}
 
   [[nodiscard]] constexpr u32_t
@@ -140,196 +148,216 @@ struct Peeper {
     }
   }
 
-  InstantiatedType peepVariableExpression(const char* identifier) const {
-    if (not table.containsVariable(identifier)) {
-      if (table.containsFunction(identifier))
-        throw ValidationError("Function name where variable name expected.", identifier, current_line_number);
-
-      throw ValidationError("Undeclared Identifier.", identifier, current_line_number);
+  InstantiatedType peepIdentifier(const char* identifier) {
+    if (table.containsFunction(identifier)) {
+      instructions.emplace_back(Instruction::FUNCTION, 0);
+      return table.instanceTypeOfFunction(identifier);
     }
 
-    return table.closestVariable(identifier);
+    if (table.containsLocalVariable(identifier)) {
+      auto variable = table.localVariable(identifier);
+      locals.emplace_back(variable.type);
+      instructions.emplace_back(Instruction::LOCAL, 0);
+      return variable;
+    }
+
+    if (table.containsGlobalVariable(identifier)) {
+      auto variable = table.globalVariable(identifier);
+      globals.emplace_back(variable.type);
+      instructions.emplace_back(Instruction::GLOBAL, 0);
+      return variable;
+    }
+
+    throw ValidationError("Undeclared Identifier.", identifier, current_line_number);
   }
 
   InstantiatedType peepSubscriptExpression() {assert(false);}
 
   InstantiatedType peepCallingExpression(u64_t parameter_count) {
-    if (not std::holds_alternative<IdentifierExpression>(*calling.called))
-      throw ValidationError("Callable non-functions unfortunately not supported :(", std::visit(ExpressionToStringVisitor{}, *calling.called), calling.line_number);
+    assert(parameter_count <= Settings::MAX_FUNCTION_PARAMETERS);
+    const auto called = peepExpression();
+    if (not called.type->isCallable())
+      throw ValidationError("Call operator used on non-callable.", std::format("Expression has type '{}'", called.toString()), current_line_number);
+    if (not called.type->isFunction())
+      throw ValidationError("Callable non-functions not implemented.", "Woopsie", current_line_number);
 
-    const auto& identifier = std::get<IdentifierExpression>(*calling.called);
-    if (not table.containsFunction(identifier.ident))
-      throw ValidationError("Callable non-functions unfortunately not supported :(", identifier.ident, calling.line_number);
-
-    std::vector<InstantiatedType> provided_params;
-    for (const auto& param : calling.parameters)
-      provided_params.emplace_back(peepExpression(*param));
-
-    const auto result = table.returnTypeOfCall(identifier.ident, provided_params);
-    if (result)
-      return {result.value(), {}};
-
-    const auto error = result.error();
-    std::string context{"Types of parameters used in call: "};
-    for (const auto& t : provided_params) {
-      context.append(t.toString());
-      context.append(", ");
-    }
-    if (provided_params.empty())
-      context = "Called with no parameters";
-    else {
-      context.pop_back();
-      context.pop_back();
+    const FunctionType* function_type = called.type->castToFunction();
+    auto parameter_types = function_type->parameterTypes();
+    for (auto i{0uz}; i<parameter_count; ++i) {
+      const auto parameter = peepExpression();
+      if (not parameter.type->convertibleTo(parameter_types[i]))
+        throw ValidationError("Cannot convert parameter to parameter type.",
+          std::format("Parameter of type '{}' cannot convert to type '{}'", parameter.toString(), parameter_types[i]->toString()),
+          current_line_number);
     }
 
-    if (error == SymbolTable::CallError::NO_SUITABLE_FUNCTION)
-      throw ValidationError("No suitable function found for call.", context, calling.line_number);
-
-    throw ValidationError("Ambiguous function call.", context, calling.line_number);
+    instructions.emplace_back(Instruction::CALL, parameter_count);
+    const auto result = function_type->returnType();
+    return {result, {}};
   }
 
   InstantiatedType peepBinaryExpression(Operator opr) {
-    InstantiatedType left_instance = peepExpression(*binary.expr_left);
-    const bool left_is_mutable = left_instance.details.is_mutable;
-    const InstantiatedType right_instance = peepExpression(*binary.expr_right);
+    auto left = peepExpression();
+    const bool left_mutable = left.details.is_mutable;
+    auto right = peepExpression();
 
-    const auto left_type = left_instance.type;
-    const auto right_type = right_instance.type;
+    if (not left.type->convertibleTo(right.type) and not right.type->convertibleTo(left.type))
+      throw ValidationError("Binary operator used on differing types.", std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
 
+    if (left.type->isVariant()) //types should be same, so checking just one is sufficient
+      throw ValidationError("Binary operator used on variant types.", std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
 
-    if (not left_type->convertibleTo(right_type) && not right_type->convertibleTo(left_type))
-      throw ValidationError("Binary operator used on differing types.", std::format("'{}' and '{}'", left_type->toString(), right_type->toString()), binary.line_number);
-
-
-    if (left_type->isVariant()) //types should be same, so checking just one is sufficient
-      throw ValidationError("Binary operator used on variant types.", std::format("'{}' and '{}'", left_type->toString(), right_type->toString()), binary.line_number);
-
-
-    const bool arithmetic = left_type->isArithmetic();
-    switch (binary.opr) {
+    const bool arithmetic = left.type->isArithmetic();
+    switch (opr) {
     case Operator::ADD:
     case Operator::SUBTRACT:
     case Operator::MULTIPLY:
     case Operator::DIVIDE:
-    case Operator::POWER:
     case Operator::MODULUS:
     case Operator::LESS:
     case Operator::GREATER:
     case Operator::LESS_EQUAL:
     case Operator::GREATER_EQUAL:
       if (not arithmetic)
-        throw ValidationError("Non-arithmetic expression in arithmetic binary operation.", std::format("'{}' and '{}'", left_type->toString(), right_type->toString()), binary.line_number);
+        throw ValidationError("Non-arithmetic expression in arithmetic binary operation.",
+          std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
+      left.details.is_mutable = false;
       break;
 
     case Operator::AND:
     case Operator::OR:
     case Operator::XOR:
-      if (not left_type->isBool())
-        throw ValidationError("Non-boolean expressions in boolean binary operation.", std::format("'{}' and '{}'", left_type->toString(), right_type->toString()), binary.line_number);
+      if (not left.type->isBool())
+        throw ValidationError("Non-boolean expressions in boolean binary operation.",
+          std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
+      left.details.is_mutable = false;
       break;
 
     case Operator::BITAND:
     case Operator::BITOR:
     case Operator::BITXOR:
       if (not arithmetic)
-        throw ValidationError("Non-arithmetic expression(s) in bitwise operation.", std::format("'{}' and '{}'", left_type->toString(), right_type->toString()), binary.line_number);
+        throw ValidationError("Non-arithmetic expression(s) in bitwise operation.",
+          std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
+      left.details.is_mutable = false;
       break;
 
     case Operator::ASSIGN:
-      if (not left_is_mutable)
-        throw ValidationError("Left expression in assignment non-mutable.", std::format("Type of expression is '{}'", left_type->toString()), binary.line_number);
+      if (not left_mutable)
+        throw ValidationError("Left expression in assignment non-mutable.",
+          std::format("Type of expression is '{}'", left.type->toString()), current_line_number);
       break;
 
     case Operator::EQUAL:
     case Operator::NOT_EQUAL:
+      left.details.is_mutable = false;
       break;
 
     default:
       assert(false);
     }
 
-    switch (binary.opr) {
+    switch (opr) {
     case Operator::ADD:
+      return instructions.emplace_back(Instruction::ADD, 0), left;
     case Operator::SUBTRACT:
+      return instructions.emplace_back(Instruction::SUB, 0), left;
     case Operator::MULTIPLY:
+      return instructions.emplace_back(Instruction::MULT, 0), left;
     case Operator::DIVIDE:
-    case Operator::POWER:
+      return instructions.emplace_back(Instruction::DIV, 0), left;
     case Operator::MODULUS:
-      return left_instance;
+      return instructions.emplace_back(Instruction::ADD, 0), left;
 
     case Operator::LESS:
+      return instructions.emplace_back(Instruction::LESS, 0), bool_literal;
     case Operator::GREATER:
+      return instructions.emplace_back(Instruction::GTR, 0), bool_literal;
     case Operator::LESS_EQUAL:
+      return instructions.emplace_back(Instruction::LEQ, 0), bool_literal;
     case Operator::GREATER_EQUAL:
+      return instructions.emplace_back(Instruction::GEQ, 0), bool_literal;
     case Operator::AND:
+      return instructions.emplace_back(Instruction::AND, 0), bool_literal;
     case Operator::OR:
-      return bool_instance;
+      return instructions.emplace_back(Instruction::OR, 0), bool_literal;
     case Operator::XOR:
-      binary.opr = Operator::NOT_EQUAL;
-      return bool_instance;
+      return instructions.emplace_back(Instruction::NEQ, 0), bool_literal;
 
     case Operator::BITAND:
+      return instructions.emplace_back(Instruction::BITAND, 0), bool_literal;
     case Operator::BITOR:
+      return instructions.emplace_back(Instruction::BITOR, 0), bool_literal;
     case Operator::BITXOR:
-    case Operator::BITNOT:
+      return instructions.emplace_back(Instruction::BITXOR, 0), bool_literal;
+
     case Operator::ASSIGN:
-      left_instance.details.is_mutable = false;
-      return left_instance;
+      return instructions.emplace_back(Instruction::ASSIGN, 0), left;
 
     case Operator::EQUAL:
+      return instructions.emplace_back(Instruction::EQ, 0), bool_literal;
     case Operator::NOT_EQUAL:
-      return bool_instance;
+      return instructions.emplace_back(Instruction::NEQ, 0), bool_literal;
 
     default:
-      assert(false);
+      std::unreachable();
     }
   }
 
   InstantiatedType peepUnaryExpression(Operator opr) {
-    InstantiatedType instance = peepExpression(*unary.expr);
-    if (instance.type->isVariant())
-      throw ValidationError("Unary operator used on variant type.", instance.toString(), unary.line_number);
+    auto expression = peepExpression();
+    if (expression.type->isVariant())
+      throw ValidationError("Unary operator used on variant type.", expression.toString(), current_line_number);
 
+    const bool arithmetic = expression.type->isArithmetic();
+    switch (opr) {
+    case Operator::PRE_INCREMENT:
+      if (not expression.details.is_mutable)
+        throw ValidationError("Prefix operator used on non-mutable expression.", expression.toString(), current_line_number);
+      return instructions.emplace_back(Instruction::PRE_INC, 0), expression;
+    case Operator::PRE_DECREMENT:
+      if (not expression.details.is_mutable)
+        throw ValidationError("Prefix operator used on non-mutable expression.", expression.toString(), current_line_number);
+      return instructions.emplace_back(Instruction::PRE_DEC, 0), expression;
 
-    const bool arithmetic = instance.type->isArithmetic();
-    if (unary.opr == Operator::UNARY_MINUS) {
+    case Operator::UNARY_MINUS:
       if (not arithmetic)
-        throw ValidationError("Unary minus used on non-arithmetic expression.", instance.toString(), unary.line_number);
-      instance.details.is_mutable = false;
-      return instance;
-    }
+        throw ValidationError("Unary minus used on non-arithmetic expression.", expression.toString(), current_line_number);
+      instructions.emplace_back(Instruction::NEGATE, 0);
+      return expression.details.is_mutable = false, expression;
 
-    if (unary.opr == Operator::BITNOT) {
+    case Operator::ADDRESS_OF:
+      instructions.emplace_back(Instruction::ADDRESS_OF, 0);
+      return {table.addRawPointer(expression), {}};
+
+    case Operator::BITNOT:
       if (not arithmetic)
-        throw ValidationError("bitnot operator used non-arithmetic expression", instance.toString(), unary.line_number);
-      instance.details.is_mutable = false;
-      return instance;
+        throw ValidationError("bitnot operator used non-arithmetic expression", expression.toString(), current_line_number);
+      instructions.emplace_back(Instruction::BITNOT, 0);
+      return expression.details.is_mutable = false, expression;
+
+    case Operator::NOT:
+      if (not expression.type->isBool())
+        throw ValidationError("not operator used non-boolean expression", expression.toString(), current_line_number);
+      instructions.emplace_back(Instruction::BITNOT, 0);
+      return expression.details.is_mutable = false, expression;
+
+    case Operator::POST_INCREMENT:
+      if (not expression.details.is_mutable)
+        throw ValidationError("Postfix increment operator used on non-mutable expression.", expression.toString(), current_line_number);
+      instructions.emplace_back(Instruction::POST_INC, 0);
+      return expression.details.is_mutable = false, expression;
+    case Operator::POST_DECREMENT:
+      if (not expression.details.is_mutable)
+        throw ValidationError("Postfix decrement operator used on non-mutable expression.", expression.toString(), current_line_number);
+      instructions.emplace_back(Instruction::POST_DEC, 0);
+      return expression.details.is_mutable = false, expression;
+
+    default:
+      std::unreachable();
     }
 
-    if (unary.opr == Operator::NOT) {
-      if (not instance.type->isBool())
-        throw ValidationError("not operator used non-boolean expression", instance.toString(), unary.line_number);
-      unary.opr = Operator::BITNOT;
-      instance.details.is_mutable = false;
-      return instance;
-    }
 
-    if (unary.opr == Operator::ADDRESS_OF)
-      return {table.addRawPointer(instance.type, instance.details.is_mutable), {}};
-
-    if (not instance.details.is_mutable)
-      throw ValidationError("Pre/Postfix operator used on non-mutable expression.", instance.toString(), unary.line_number);
-
-
-
-    if (unary.opr == Operator::POST_INCREMENT ||
-        unary.opr == Operator::POST_DECREMENT) {
-      instance.details.is_mutable = false;
-      return instance;
-        }
-
-
-    return instance;
   }
 
   [[nodiscard]] InstantiatedType
@@ -352,11 +380,6 @@ struct Peeper {
     }
   }
 
-  void peepExpressionStatement() {
-    if (expression_statement.expr)
-      peepExpression(*expression_statement.expr);
-  }
-
   void peepReturnStatement() {
     const auto function_return_type = table.returnTypeOfCurrentFunction();
     if (nodes.pop_if(ASTNode::EMPTY)) {
@@ -375,7 +398,7 @@ struct Peeper {
 
     if (not return_expression.type->convertibleTo(table.returnTypeOfCurrentFunction()))
       throw ValidationError("Return statement's type is not compatible with return type of scope.",
-       std::format("Scope return type is '{}' and expression '{}' returns type '{}'", function_return_type->toString(), "PLACEHOLDER"),
+       std::format("Scope return type is '{}' and expression type is '{}'", function_return_type->toString(), return_expression.toString()),
        current_line_number);
 
     current_block().set_ret();
@@ -470,7 +493,7 @@ struct Peeper {
       return peepReturnStatement();
     case ASTNode::EXPR_STMT:
       current_line_number = node.line_number();
-      return peepExpressionStatement();
+      return (void)peepExpression();
 
     case ASTNode::UNARY:
     case ASTNode::BINARY:
@@ -496,9 +519,9 @@ struct Peeper {
   }
 
   void peepUntilEmpty() {
-    assume_assert(locals.empty());
-    assume_assert(instructions.empty());
-    assume_assert(blocks.empty());
+    assert(locals.empty());
+    assert(instructions.empty());
+    assert(blocks.empty());
     blocks.emplace_back(0);
 
     while (not nodes.empty())
@@ -507,8 +530,8 @@ struct Peeper {
 };
 
 void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table) {
-  auto function_type = table.enterFunctionScope(func.name.get());
-  Peeper test{func.body, table};
+  table.enterFunctionScope(func.name.get());
+  Peeper test(tu.globals, tu.functions, func.body, table);
   test.peepUntilEmpty();
   table.leaveFunctionScope();
 }
@@ -518,6 +541,8 @@ void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table) {
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   SymbolTable& table = parsed_tu.table;
   TU tu(table.takeTypeContext());
+  std::vector<const Type*> globals;
+  std::vector<Function> functions;
   for (auto &func : parsed_tu.functions)
     peepFunction(tu, func, table);
 

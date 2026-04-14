@@ -17,7 +17,6 @@ enum class Operator : u8_t {
   SUBTRACT,
   MULTIPLY,
   DIVIDE,
-  POWER,
   MODULUS,
   ASSIGN,
   LESS,
@@ -51,7 +50,6 @@ inline const std::unordered_map<std::string, Operator> stringToOperator{
       {"-", Operator::SUBTRACT},
       {"*", Operator::MULTIPLY},
       {"/", Operator::DIVIDE},
-      {"^", Operator::POWER},
       {"%", Operator::MODULUS},
       {"=", Operator::ASSIGN},
       {"<", Operator::LESS},
@@ -82,7 +80,7 @@ inline const std::unordered_map<std::string, Operator> stringToOperator{
 constexpr const char *operatorToString(const Operator e) {
   constexpr const char *toString[] = {
 
-    "+",      "-",    "*",       "/",           "^",      "%",
+    "+",      "-",    "*",       "/",            "%",
     "=",      "<",    ">",       "<=",          ">=",     "and",
     "or",     "xor",  "bitand",  "bitor",       "bitxor", "eq",
     "not_eq", "cast", "cast_if", "unsafe_cast", "++",     "--",
@@ -90,10 +88,11 @@ constexpr const char *operatorToString(const Operator e) {
 };
   return toString[std::to_underlying(e)];
 }
-constexpr bool isCategoryBINARY_OPS(const Operator e) {return std::to_underlying(e) < 19;}
-constexpr bool isCategoryCASTS(const Operator e) {return std::to_underlying(e) >= 19 && std::to_underlying(e) < 22;}
-constexpr bool isCategoryPREFIX_OPS(const Operator e) {return std::to_underlying(e) >= 19 && std::to_underlying(e) < 28;}
-constexpr bool isCategoryUNARY_OPS(const Operator e) {return std::to_underlying(e) >= 22 && std::to_underlying(e) < 30;}
+
+constexpr bool isCategoryBINARY_OPS(const Operator e) {return std::to_underlying(e) < 18;}
+constexpr bool isCategoryCASTS(const Operator e) {return std::to_underlying(e) >= 18 && std::to_underlying(e) < 21;}
+constexpr bool isCategoryPREFIX_OPS(const Operator e) {return std::to_underlying(e) >= 18 && std::to_underlying(e) < 27;}
+constexpr bool isCategoryUNARY_OPS(const Operator e) {return std::to_underlying(e) >= 21;}
 
 class ASTNode;
 struct SyntaxTree {

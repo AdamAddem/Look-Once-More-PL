@@ -25,10 +25,14 @@ struct Instruction {
     //value not determined yet for the operators
     ADD, SUB, MULT, DIV,
     ASSIGN,
-    CMP_LESS, CMP_GTR, CMP_LEQ, CMP_GEQ,
+    LESS, GTR, LEQ, GEQ,
     AND, OR, BITAND, BITOR, BITXOR, BITNOT,
     EQ, NEQ,
-    ADDRESS_OF,
+
+    PRE_INC, PRE_DEC, ADDRESS_OF, NEGATE,
+    POST_INC, POST_DEC,
+
+    CALL // value equals number of parameters
   }type;
   u64_t value;
 
@@ -77,42 +81,42 @@ struct Instruction {
 
 };
 
-struct Function {
-  class Block {
-    struct br_data {
-      u32_t next_block_idx;
-    };
-    struct brc_data {
-      u32_t true_block_idx; u32_t false_block_idx;
-    };
-  public:
+class Block {
+  struct br_data {
+    u32_t next_block_idx;
+  };
+  struct brc_data {
+    u32_t true_block_idx; u32_t false_block_idx;
+  };
+public:
 
-    u32_t first_instruction_idx;
-    enum class Terminator : u32_t {BR, BRC, RET}
-    terminator_type;
+  u32_t first_instruction_idx;
+  enum class Terminator : u32_t {BR, BRC, RET}
+  terminator_type;
 
-    union {
-      br_data br;
-      brc_data brc;
-    };
-
-    constexpr void
-    set_brc(u32_t true_block_idx, u32_t false_block_idx) noexcept {
-      terminator_type = Terminator::BRC;
-      brc = {true_block_idx, false_block_idx};
-    }
-
-    constexpr void
-    set_br(u32_t next_block_idx) noexcept {
-      terminator_type = Terminator::BR;
-      br.next_block_idx = next_block_idx;
-    }
-
-    constexpr void
-    set_ret() noexcept
-    {terminator_type = Terminator::RET;}
+  union {
+    br_data br;
+    brc_data brc;
   };
 
+  constexpr void
+  set_brc(u32_t true_block_idx, u32_t false_block_idx) noexcept {
+    terminator_type = Terminator::BRC;
+    brc = {true_block_idx, false_block_idx};
+  }
+
+  constexpr void
+  set_br(u32_t next_block_idx) noexcept {
+    terminator_type = Terminator::BR;
+    br.next_block_idx = next_block_idx;
+  }
+
+  constexpr void
+  set_ret() noexcept
+  {terminator_type = Terminator::RET;}
+};
+
+struct Function {
   released_string name;
   const FunctionType* type;
   released_span<const Type*> locals;

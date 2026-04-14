@@ -331,7 +331,7 @@ public:
     return true;
   }
 
-  [[nodiscard]] bool isValidCall(const std::vector<InstantiatedType>& parameters) const noexcept;
+  [[nodiscard]] bool isValidCall(std::span<InstantiatedType> parameters) const noexcept;
 
 };
 

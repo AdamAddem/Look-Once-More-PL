@@ -313,19 +313,8 @@ struct Body {
       generatePrefixExpression(), 0);
   }
 
-  u16_t generateExponentExpression() {
-    auto left = generatePrefixExpression();
-    while (tokens.pop_if(TokenType::POW)) {
-      left = expression_tree.create(
-        ASTNode::BINARY, static_cast<u64_t>(Operator::POWER),
-        left, generatePrefixExpression());
-    }
-
-    return left;
-  }
-
   u16_t generateFactorExpression() {
-    auto left = generateExponentExpression();
+    auto left = generatePrefixExpression();
     while (true) {
       u64_t value;
       switch (tokens.peek().getType()) {
@@ -344,7 +333,7 @@ struct Body {
       tokens.pop();
       left = expression_tree.create(
         ASTNode::BINARY, value,
-        left, generateExponentExpression());
+        left, generatePrefixExpression());
     }
   }
 

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.31)
 project(LookOnceMore)
 
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic")
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -Wnrvo")
 
 find_package(LLVM 21.1.8 REQUIRED CONFIG)
 

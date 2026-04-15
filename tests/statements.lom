@@ -1,26 +1,12 @@
-fn collatz(i32 num) -> i32 {
-    if(num % 2 eq 0)
-        return num / 2;
-
-    return num * 3 + 1;
-}
-
 fn if_statements() {
     mut bool condition = true;
     if(condition) ;
-
-    mut bool test = false;
-    //if(true) {}
-
-    //if(false) {}
-
-    //if(condition) { condition = false; }
-
-    //else if(condition) { condition = true; }
-
-    //elif(true) { condition = false; }
-
-    //else mut i32 scoped = junk;
+    if(true) {}
+    if(false) {}
+    if(condition) { condition = false; }
+    else if(condition) { condition = true; }
+    elif(true) { condition = false; }
+    else mut i32 scoped = junk;
 
     return;
 }

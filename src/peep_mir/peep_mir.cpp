@@ -434,8 +434,8 @@ class Peeper {
       new_block();
       peepScopedStatement(nodes.pop_scoped());
       current_block().set_br(condition_idx);
+      new_block();
     });
-    new_block();
   }
 
   void peepForLoop() {assert(false and "Not sure about for loop form yet");}
@@ -445,20 +445,23 @@ class Peeper {
     if (not condition.type->isBool())
       throw ValidationError("If statement condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
-    //this is less complicated than it looks
-    //only layered because of the optional else
-    brc_to_after( [=, this] mutable {
-      new_block(); //true block
-      peepScopedStatement(nodes.pop_scoped());
-      br_to_after( [=, this] mutable {
-        new_block(); //else block if there is one, otherwise after block
-        if (not nodes.pop_if(ASTNode::EMPTY)) {
-          peepStatement();
-          blocks.back().set_br(blocks.size());
-          new_block(); //after block
-        }
-      });
-    });
+    const u32_t condition_block_idx = current_block_index();
+    const u32_t true_block_idx = condition_block_idx + 1;
+
+    new_block(); //true block
+    peepScopedStatement(nodes.pop_scoped()); //true statement(s)
+
+    new_block(); //false block
+    const u32_t false_block_idx = current_block_index();
+    u32_t after_block_idx = false_block_idx;
+    if (not nodes.pop_if(ASTNode::EMPTY)) {
+      peepStatement();
+      blocks.back().set_br(blocks.size());
+      new_block();
+      after_block_idx = current_block_index();
+    }
+    blocks[true_block_idx].set_br(after_block_idx);
+    blocks[condition_block_idx].set_brc(true_block_idx, false_block_idx);
   }
 
   void peepVarDeclaration() {
@@ -507,7 +510,11 @@ class Peeper {
       return peepReturnStatement();
     case ASTNode::EXPR_STMT:
       current_line_number = node.line_number();
-      return (void)peepExpression();
+      if (nodes.pop_if(ASTNode::EMPTY))
+        instructions.emplace_back(Instruction::NOOP, current_line_number);
+      else
+        (void)peepExpression();
+      return;
 
     case ASTNode::UNARY:
     case ASTNode::BINARY:
@@ -542,20 +549,30 @@ class Peeper {
 
     //final block is always the return
     new_block();
-    if (not return_type->isDevoid()) {
-      instructions.emplace_back(Instruction::LOCAL, 0);
-    }
-    else
-      instructions.emplace_back(Instruction::NOOP, 0);
+    if (not return_type->isDevoid()) instructions.emplace_back(Instruction::LOCAL, 0);
+    else instructions.emplace_back(Instruction::NOOP, 0);
     current_block().set_ret();
 
     //turn ret into a br to the return block
+    //turn brc with identical branches into a br
     for (auto i{0uz}; i<blocks.size()-1; ++i) {
       auto& block = blocks[i];
-      if (block.terminator_type == Block::Terminator::RET) {
-        block.terminator_type = Block::Terminator::BR;
-        block.br.next_block_idx = current_block_index();
+      switch (block.terminator_type) {
+      case Block::Terminator::BR:
+        break;
+      case Block::Terminator::BRC: //turn brc with identical branches into a br
+        if (block.brc.true_block_idx == block.brc.false_block_idx) {
+          block.terminator_type = Block::Terminator::BR;
+          block.br.next_block_idx = block.brc.true_block_idx;
+        }
+        break;
+      case Block::Terminator::RET:
+        block.terminator_type = Block::Terminator::BR; block.br.next_block_idx = current_block_index();
+        break;
+      default:
+        std::unreachable();
       }
+
     }
   }
 

@@ -129,7 +129,7 @@ public:
     WHILE,       // HAS LN         | CONDITION_EXPR, SCOPED
     SCOPED,      // HAS NUM        | SUB_STATEMENTS... * NUM
     RETURN,      // HAS LN         | EMPTY or EXPRESSION
-    EXPR_STMT,   // HAS LN         | EXPRESSION
+    EXPR_STMT,   // HAS LN         | EMPTY or EXPRESSION
 
     //Expressions:
     UNARY,       // HAS OPERATOR   | EXPRESSION

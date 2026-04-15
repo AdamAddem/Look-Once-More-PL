@@ -545,7 +545,10 @@ struct Body {
 
   void parseExpressionStatement() {
     tree.emplace_back(ASTNode::EXPR_STMT, tokens.current_line_number());
-    parseExpressionUntil(TokenType::SEMI_COLON);
+    if (tokens.pop_if(TokenType::SEMI_COLON)) [[unlikely]]
+      tree.emplace_back(ASTNode::EMPTY, tokens.current_line_number());
+    else
+      parseExpressionUntil(TokenType::SEMI_COLON);
   }
 
   void parseVarDecl() {

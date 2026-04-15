@@ -33,7 +33,6 @@ struct Instruction {
     LESS, GTR, LEQ, GEQ,
     AND, OR, BITAND, BITOR, BITXOR, BITNOT,
     EQ, NEQ,
-
     PRE_INC, PRE_DEC, ADDRESS_OF, NEGATE,
     POST_INC, POST_DEC,
 

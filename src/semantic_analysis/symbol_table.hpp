@@ -21,7 +21,6 @@ public:
     Variable(InstantiatedType type, eden::releasing_string::released_ptr name) noexcept
     : type(type), name(std::move(name)) {}
     Variable(Variable&& other) noexcept = default;
-    Variable& operator=(Variable&& other) noexcept = default;
     ~Variable() {
       eden::releasing_string::destroy_and_deallocate(
         eden::releasing_string::released_ptr(name.release()));
@@ -70,14 +69,15 @@ public:
       locals.emplace_back(variable_type, std::move(name));
     }
 
-    [[nodiscard]] InstantiatedType
+    [[nodiscard]] std::pair<InstantiatedType, u32_t>
     getVariable(const char* name) const noexcept {
       assert(containsVariable(name));
-      auto curr = locals.crbegin();
+      const auto begin = locals.crbegin();
+      auto curr = begin;
       const auto end = locals.crend();
       while (curr not_eq end) {
         if (std::strcmp(curr->name.get(), name) == 0)
-          return curr->type;
+          return {curr->type, (curr - begin)};
         ++curr;
       }
 
@@ -150,17 +150,7 @@ public:
     return std::holds_alternative<InstantiatedType>(globals.at(name));
   }
 
-  [[nodiscard]] InstantiatedType
-  closestVariable(const char* name) noexcept {
-    if (current_scope and current_scope->containsVariable(name))
-      return current_scope->getVariable(name);
-
-    assert(globals.contains(name));
-    assert(std::holds_alternative<InstantiatedType>(globals[name]));
-    return std::get<InstantiatedType>(globals[name]);
-  }
-
-  [[nodiscard]] InstantiatedType
+  [[nodiscard]] auto
   localVariable(const char* name) noexcept {
     assume_assert(current_scope);
     return current_scope->getVariable(name);

@@ -107,9 +107,10 @@ class TokenView {
   TokenIter end;
 
 public:
-  explicit TokenView(std::vector<Token>& tokens) : begin(tokens.begin()) {
+  explicit TokenView(std::vector<Token>& tokens) {
     if (tokens.back().type not_eq TokenType::INVALID_TOKEN)
       tokens.emplace_back(TokenType::INVALID_TOKEN, 0);
+    begin = tokens.begin();
     end = tokens.end() - 1;
   }
   TokenView(TokenIter begin, TokenIter end) : begin(begin), end(end) {}

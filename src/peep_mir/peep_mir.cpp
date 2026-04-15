@@ -1,6 +1,4 @@
 #include "peep_mir.hpp"
-#include "peep_mir/peep_mir.hpp"
-
 #include "ast/ast.hpp"
 #include "edenlib/typedefs.hpp"
 #include "error.hpp"
@@ -11,7 +9,6 @@
 #include <cassert>
 #include <format>
 #include <iostream>
-#include <variant>
 
 using namespace LOM;
 using namespace LOM::PeepMIR;
@@ -60,25 +57,18 @@ public:
   {return begin == end;}
 };
 
-struct Peeper {
+class Peeper {
   static constexpr u32_t return_block_first_instruction_idx = std::numeric_limits<u32_t>::max();
-  std::vector<TU::Global>& globals;
-  std::vector<Function>& functions;
+  TU& tu;
+  SymbolTable& table;
+
   eden::releasing_vector<const Type*> locals;
   eden::releasing_vector<Instruction> instructions;
   eden::releasing_vector<Block> blocks;
 
   TreeView nodes;
-  SymbolTable& table;
+  const FunctionType* current_function_type;
   u64_t current_line_number{};
-
-  Peeper(
-    std::vector<TU::Global>& globals,
-    std::vector<Function>& functions,
-    SyntaxTree& tree,
-    SymbolTable& table)
-  : globals(globals), functions(functions),
-    nodes{tree.nodes.begin(), tree.nodes.end()}, table(table) {}
 
   [[nodiscard]] constexpr Block&
   current_block() noexcept {return blocks.back();}
@@ -91,14 +81,14 @@ struct Peeper {
   {return blocks.back().first_instruction_idx == instructions.size();}
 
   //creates a brc
-  //true index will be the block represented by body
+  //true index will be the first block created by body
   //false index will be the block after body executes
   constexpr void
   brc_to_after(auto&& body) {
     const u32_t current_block_idx = current_block_index();
     const u32_t true_block_idx = current_block_idx + 1;
     body();
-    const u32_t false_block_idx = blocks.size();
+    const u32_t false_block_idx = blocks.size() - 1;
     blocks[current_block_idx].set_brc(true_block_idx, false_block_idx);
   }
 
@@ -107,7 +97,7 @@ struct Peeper {
   br_to_after(auto&& body) {
     const u32_t current_block_idx = current_block_index();
     body();
-    blocks[current_block_idx].set_br(blocks.size());
+    blocks[current_block_idx].set_br(blocks.size() - 1);
   }
 
   //creates a br that goes to the next block, as if it had fallen through
@@ -156,27 +146,27 @@ struct Peeper {
     }
   }
 
-  InstantiatedType peepIdentifier(const char* identifier) {
-    if (table.containsFunction(identifier)) {
-      instructions.emplace_back(Instruction::FUNCTION, 0);
-      return table.instanceTypeOfFunction(identifier);
+  InstantiatedType peepIdentifier(released_ptr<char> identifier) {
+    if (table.containsFunction(identifier.get())) {
+      instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier.get()));
+      auto function_instance_type = table.instanceTypeOfFunction(identifier.get());
+      return function_instance_type;
     }
 
-    if (table.containsLocalVariable(identifier)) {
-      auto variable = table.localVariable(identifier);
-      locals.emplace_back(variable.type);
-      instructions.emplace_back(Instruction::LOCAL, 0);
+    if (table.containsLocalVariable(identifier.get())) {
+      auto variable = table.localVariable(identifier.get());
+      instructions.emplace_back(Instruction::LOCAL, variable.second + 1);
+      eden::releasing_string::destroy_and_deallocate(std::move(identifier));
+      return variable.first;
+    }
+
+    if (table.containsGlobalVariable(identifier.get())) {
+      auto variable = table.globalVariable(identifier.get());
+      instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(identifier.get()));
       return variable;
     }
 
-    if (table.containsGlobalVariable(identifier)) {
-      auto variable = table.globalVariable(identifier);
-      globals.emplace_back(variable.type);
-      instructions.emplace_back(Instruction::GLOBAL, 0);
-      return variable;
-    }
-
-    throw ValidationError("Undeclared Identifier.", identifier, current_line_number);
+    throw ValidationError("Undeclared Identifier.", identifier.get(), current_line_number);
   }
 
   InstantiatedType peepSubscriptExpression() {assert(false);}
@@ -365,7 +355,6 @@ struct Peeper {
       std::unreachable();
     }
 
-
   }
 
   [[nodiscard]] InstantiatedType
@@ -382,7 +371,7 @@ struct Peeper {
     case SUBSCRIPT:
       assert(false);
     case IDENTIFIER:
-      return peepIdentifier(node.identifier());
+      return peepIdentifier(node.take_identifier());
     case INT_LITERAL:
     case UINT_LITERAL:
     case FLOAT_LITERAL:
@@ -399,36 +388,38 @@ struct Peeper {
   }
 
   void peepReturnStatement() {
-    const auto function_return_type = table.returnTypeOfCurrentFunction();
+    const auto return_type = current_function_type->returnType();
     if (nodes.pop_if(ASTNode::EMPTY)) {
-      if (not function_return_type->isDevoid())
+      if (not return_type->isDevoid())
         throw ValidationError("Non-devoid function expects return value",
-        std::format("Scope return type is '{}'", table.returnTypeOfCurrentFunction()->toString()), current_line_number);
+        std::format("Scope return type is '{}'", return_type->toString()), current_line_number);
 
       current_block().set_ret();
       new_block();
       return;
     }
 
-    instructions.emplace_back(Instruction::LOCAL, 0);
     const auto return_expression = peepExpression();
+    instructions.emplace_back(Instruction::LOCAL, 0);
     instructions.emplace_back(Instruction::ASSIGN, 0);
-    if (function_return_type->isDevoid())
+    if (return_type->isDevoid())
       throw ValidationError("Cannot return value from devoid function",
       std::format("Return value type is '{}'", return_expression.toString()), current_line_number);
 
-    if (not return_expression.type->convertibleTo(table.returnTypeOfCurrentFunction()))
+    if (not return_expression.type->convertibleTo(return_type))
       throw ValidationError("Return statement's type is not compatible with return type of scope.",
-       std::format("Scope return type is '{}' and expression type is '{}'", function_return_type->toString(), return_expression.toString()),
+       std::format("Scope return type is '{}' and expression type is '{}'", return_type->toString(), return_expression.toString()),
        current_line_number);
 
     current_block().set_ret();
   }
 
   void peepScopedStatement(u64_t num_children) {
-    while (num_children-- not_eq 0) {
+    if (num_children == 0)
+      return (void)instructions.emplace_back(Instruction::NOOP, current_line_number);
+
+    while (num_children-- not_eq 0)
       peepStatement();
-    }
   }
 
   void peepWhileLoop() {
@@ -472,20 +463,22 @@ struct Peeper {
 
   void peepVarDeclaration() {
     const auto declaration_type = nodes.pop().instance_type();
-    char* name = nodes.pop().identifier();
-    if (table.containsLocalVariable(name))
-      throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name), current_line_number);
+    auto name = nodes.pop().take_identifier();
+    char* name_cstr = name.get();
+    if (table.containsLocalVariable(name_cstr))
+      throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
 
-    table.addLocalVariable(eden::releasing_string::released_ptr(name), declaration_type);
+    table.addLocalVariable(std::move(name), declaration_type);
 
-    if (not nodes.peek_is(ASTNode::EMPTY)) {
-      instructions.emplace_back(Instruction::LOCAL, locals.size());
-      locals.emplace_back(declaration_type.type);
+    if (not nodes.pop_if(ASTNode::EMPTY)) {
       const auto initialization_type = peepExpression();
       if (not initialization_type.type->convertibleTo(declaration_type.type))
         throw ValidationError("Variable initialization's type is not compatible with variable type.",
           std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
-          name,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
+          name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
+
+      instructions.emplace_back(Instruction::LOCAL, locals.size());
+      locals.emplace_back(declaration_type.type);
       instructions.emplace_back(Instruction::ASSIGN, 0);
     }
   }
@@ -540,12 +533,9 @@ struct Peeper {
   }
 
   void peepUntilEmpty() {
-    assert(locals.empty());
     assert(instructions.empty());
     assert(blocks.empty());
-    auto return_type = table.returnTypeOfCurrentFunction();
-    if (not return_type->isDevoid())
-      locals.emplace_back(table.returnTypeOfCurrentFunction());
+    const auto return_type = current_function_type->returnType();
     blocks.emplace_back(0);
     while (not nodes.empty())
       peepStatement();
@@ -555,6 +545,8 @@ struct Peeper {
     if (not return_type->isDevoid()) {
       instructions.emplace_back(Instruction::LOCAL, 0);
     }
+    else
+      instructions.emplace_back(Instruction::NOOP, 0);
     current_block().set_ret();
 
     //turn ret into a br to the return block
@@ -566,20 +558,29 @@ struct Peeper {
       }
     }
   }
+
+  Peeper(TU& tu, SyntaxTree& tree, SymbolTable& table, const FunctionType* function_type)
+  : tu(tu), table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(function_type) {
+    locals.emplace_back(function_type->returnType());
+    for (auto parameter_type : function_type->parameterTypes())
+      locals.emplace_back(parameter_type);
+  }
+public:
+
+  static void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table) {
+    const auto function_type = table.enterFunctionScope(func.name.get());
+    Peeper function_peeper(tu, func.body, table, function_type);
+    function_peeper.peepUntilEmpty();
+    tu.functions.emplace_back(
+      std::move(func.name), function_type,
+      function_peeper.locals.release_span(),
+      function_peeper.instructions.release(),
+      function_peeper.blocks.release_span());
+
+    table.leaveFunctionScope();
+  }
+
 };
-
-void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table) {
-  const auto function_type = table.enterFunctionScope(func.name.get());
-  Peeper function_peeper(tu.globals, tu.functions, func.body, table);
-  function_peeper.peepUntilEmpty();
-  tu.functions.emplace_back(
-    std::move(func.name), function_type,
-    function_peeper.locals.release_span(),
-    function_peeper.instructions.release(),
-    function_peeper.blocks.release_span());
-
-  table.leaveFunctionScope();
-}
 
 }
 
@@ -590,26 +591,28 @@ namespace {
 void printPeepInstruction(Instruction instruction) {
   switch (instruction.type) {
     using enum Instruction::Type;
+  case NOOP:
+    return std::println("NOOP");
   case GLOBAL:
-    return std::println("GLOBAL");
+    return std::println("GLOBAL {}", instruction.global_name());
   case LOCAL:
-    return std::println("LOCAL");
+    return std::println("LOCAL {}", instruction.local_idx());
   case FUNCTION:
-    return std::println("FUNCTION");
+    return std::println("FUNCTION {}", instruction.function_name());
   case INT_LITERAL:
-    return std::println("INT_LITERAL");
+    return std::println("INT_LITERAL {}", instruction.int_value());
   case UINT_LITERAL:
-    return std::println("UINT_LITERAL");
+    return std::println("UINT_LITERAL {}", instruction.uint_value());
   case FLOAT_LITERAL:
-    return std::println("FLOAT_LITERAL");
+    return std::println("FLOAT_LITERAL {}", instruction.float_value());
   case DOUBLE_LITERAL:
-    return std::println("DOUBLE_LITERAL");
+    return std::println("DOUBLE_LITERAL {}", instruction.double_value());
   case BOOL_LITERAL:
-    return std::println("BOOL_LITERAL");
+    return std::println("BOOL_LITERAL {}", instruction.bool_value() ? "true" : "false");
   case CHAR_LITERAL:
-    return std::println("CHAR_LITERAL");
+    return std::println("CHAR_LITERAL {}", instruction.char_value());
   case STRING_LITERAL:
-    return std::println("STRING_LITERAL");
+    return std::println("STRING_LITERAL {}", instruction.string_value());
   case ADD:
     return std::println("ADD");
   case SUB:
@@ -698,7 +701,7 @@ void printPeepBlocks(released_span<Block>& blocks, released_ptr<Instruction>& in
     ++current_instruction;
   }
 
-  std::println("Return Block (Index {}):", current_block);
+  std::println("Return Block {}:", current_block);
   std::cout << "\t";
   printPeepInstruction(instructions[current_instruction++]);
   printPeepBlockTerminator(blocks[current_block]);
@@ -707,6 +710,14 @@ void printPeepBlocks(released_span<Block>& blocks, released_ptr<Instruction>& in
 void printPeepFunction(Function& func) {
   std::println("{} Block(s).", func.blocks.size() - 1);
   std::println("fn {}{} {{", func.name.get(), func.type->toString());
+
+  std::cout << "| Locals: | ";
+  auto num_locals = func.locals.size() - 1;
+  for (auto i{0uz}; i<num_locals; ++i) {
+    std::print("{}: {} | ", i + 1, func.locals[i + 1]->toString());
+  }
+  std::cout << std::endl;
+
   printPeepBlocks(func.blocks, func.instructions);
   std::cout << "\n}" << std::endl;
 }
@@ -724,7 +735,7 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   std::vector<const Type*> globals;
   std::vector<Function> functions;
   for (auto &func : parsed_tu.functions)
-    peepFunction(tu, func, table);
+    Peeper::peepFunction(tu, func, table);
 
   if (Settings::doOutputValidation()) {
     std::cout << "--- Validation Passed ---\n\n";

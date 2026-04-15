@@ -129,7 +129,6 @@ void grabSymbol(FileInAnalysis &file) {
     [[fallthrough]];
   case '/':
   case '*':
-  case '^':
   case '%':
     if (file.stream.peek() == '=') {
       // desugaring for x _= (...) -> x = x _ (...)
@@ -279,7 +278,7 @@ void grabIdentOrKeyword(FileInAnalysis &file) {
     file.token_list.emplace_back(stringToTokenType.at(word), file.line_number);
     return;
   }
-  if (word == "elif") {
+  if (word == "elif") [[unlikely]] {
     file.token_list.emplace_back(TokenType::KEYWORD_ELSE, file.line_number);
     file.token_list.emplace_back(TokenType::KEYWORD_IF, file.line_number);
     return;

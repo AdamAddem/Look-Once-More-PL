@@ -19,7 +19,10 @@ using released_ptr = eden::releasing_vector<T>::released_ptr;
 
 struct Instruction {
   enum Type : u8_t {
-    GLOBAL, LOCAL, FUNCTION, //value idx
+    NOOP,
+    GLOBAL, //value is char*
+    LOCAL, //value is local idx
+    FUNCTION, //value is char*
 
     //literals contain exactly what you think they would
     INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
@@ -69,17 +72,17 @@ struct Instruction {
   string_value() const noexcept
   {assume_assert(type == STRING_LITERAL); return std::bit_cast<char*>(value);}
 
-  [[nodiscard]] constexpr u64_t
-  global_idx() const noexcept
-  {assume_assert(type == GLOBAL); return value;}
+  [[nodiscard]] constexpr char*
+  global_name() const noexcept
+  {assume_assert(type == GLOBAL); return std::bit_cast<char*>(value);}
 
   [[nodiscard]] constexpr u64_t
   local_idx() const noexcept
   {assume_assert(type == LOCAL); return value;}
 
-  [[nodiscard]] constexpr u64_t
-  function_idx() const noexcept
-  {assume_assert(type == FUNCTION); return value;}
+  [[nodiscard]] constexpr char*
+  function_name() const noexcept
+  {assume_assert(type == FUNCTION); return std::bit_cast<char*>(value);}
 
 };
 
@@ -93,7 +96,7 @@ class Block {
 public:
 
   u32_t first_instruction_idx;
-  enum class Terminator : u32_t {BR, BRC, RET} //when done peeping, there should be no ret
+  enum class Terminator : u32_t {BR, BRC, RET} //when done peeping, there should be no ret besides the last block
   terminator_type;
 
   union {

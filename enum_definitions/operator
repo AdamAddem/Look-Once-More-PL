@@ -5,7 +5,6 @@ Operator Expressions
     SUBTRACT --
     MULTIPLY *
     DIVIDE /
-    POWER ^
     MODULUS %
     ASSIGN =
     LESS <

@@ -100,7 +100,6 @@ struct SyntaxTree {
   SyntaxTree() = default;
   SyntaxTree(const SyntaxTree&) = delete;
   SyntaxTree(SyntaxTree&&) noexcept = default;
-  ~SyntaxTree();
 
   std::vector<ASTNode> nodes;
   void print(u64_t starting_line_number) const noexcept;
@@ -178,12 +177,6 @@ public:
   [[nodiscard]] constexpr InstantiatedType
   instance_type() const noexcept {return *std::launder(reinterpret_cast<const InstantiatedType*>(data));}
 
-  [[nodiscard]] constexpr char*
-  string_ptr() const noexcept {
-    assert(type() == IDENTIFIER or type() == STRING_LITERAL);
-    return std::bit_cast<char*>(value());
-  }
-
   static_assert(sizeof(u64_t) >= sizeof(Operator));
   static_assert(std::unsigned_integral<std::underlying_type_t<Operator>>);
   [[nodiscard]] constexpr Operator
@@ -196,6 +189,14 @@ public:
   identifier() const noexcept {
     assert(type() == IDENTIFIER);
     return std::bit_cast<char*>(value());
+  }
+
+  [[nodiscard]] constexpr eden::releasing_string::released_ptr
+  take_identifier() noexcept {
+    assert(type() == IDENTIFIER);
+    char* name = std::bit_cast<char*>(value());
+    value() = 0;
+    return eden::releasing_string::released_ptr(name);
   }
 
   [[nodiscard]] constexpr i64_t
@@ -243,18 +244,15 @@ public:
     return std::bit_cast<char*>(value());
   }
 
+  [[nodiscard]] constexpr eden::releasing_string::released_ptr
+  take_string_val() noexcept {
+    assert(type() == STRING_LITERAL);
+    char* str = std::bit_cast<char*>(value());
+    value() = 0;
+    return eden::releasing_string::released_ptr(str);
+  }
+
 };
 
 inline SyntaxTree::SyntaxTree(std::vector<ASTNode> nodes) : nodes(std::move(nodes)) {}
-inline SyntaxTree::~SyntaxTree() {
-  using eden::releasing_string;
-  for (auto& node: nodes) {
-    if (node.type() not_eq ASTNode::IDENTIFIER and node.type() not_eq ASTNode::STRING_LITERAL)
-      continue;
-
-    releasing_string::destroy_and_deallocate(
-      releasing_string::released_ptr(node.string_ptr()));
-  }
-
-}
 }

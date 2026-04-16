@@ -132,11 +132,22 @@ struct Function {
 struct TU {
   explicit TU(TypeContext&& types) noexcept
   : types(std::move(types)) {}
+  TU(TU&& other) noexcept = default;
 
   TypeContext types;
   released_ptr<const Type*> globals;
   released_span<Instruction> global_instructions;
   std::vector<Function> functions;
+
+  ~TU() {
+    globals.destroy_and_deallocate();
+    global_instructions.destroy_and_deallocate();
+    for (auto& f : functions) {
+      f.locals.destroy_and_deallocate();
+      f.instructions.destroy_and_deallocate();
+      f.blocks.destroy_and_deallocate();
+    }
+  }
 };
 
 TU lowerToPeep(Parser::TU &&);

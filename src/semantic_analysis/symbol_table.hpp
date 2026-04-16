@@ -15,16 +15,13 @@ class SymbolTable final {
 public:
   struct Variable {
     InstantiatedType type;
-    eden::owned_stringview name;
+    eden::releasing_string::released_span name;
 
     Variable() = default;
-    Variable(InstantiatedType type, eden::releasing_string::released_ptr name) noexcept
+    Variable(InstantiatedType type, eden::releasing_string::released_span name) noexcept
     : type(type), name(std::move(name)) {}
     Variable(Variable&& other) noexcept = default;
-    ~Variable() {
-      eden::releasing_string::destroy_and_deallocate(
-        eden::releasing_string::released_ptr(name.release()));
-    }
+    ~Variable() {name.destroy_and_deallocate();}
   };
 
   class Function {

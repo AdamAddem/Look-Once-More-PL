@@ -10,7 +10,7 @@ struct Token;
 namespace LOM::Parser {
 
 struct Function {
-  eden::owned_stringview name;
+  eden::releasing_string::released_span name;
   AST::SyntaxTree body;
   u64_t line_number{};
 };

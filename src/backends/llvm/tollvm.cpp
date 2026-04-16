@@ -1,10 +1,8 @@
 #include "tollvm.hpp"
-/*
 #include "ast/ast.hpp"
 #include "error.hpp"
 #include "peep_mir/peep_mir.hpp"
 #include "settings.hpp"
-#include "utilities/variant_overload.hpp"
 
 #include <filesystem>
 #include <llvm/IR/BasicBlock.h>
@@ -19,36 +17,40 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
 
-using namespace llvm;
+using namespace LOM;
 
 namespace {
+/*
 struct FunctionBuilder {
   static constexpr std::string retval_location_name = "__retval";
-  using LocalsMap = std::unordered_map<std::string, AllocaInst*>;
-  Type* return_type;
-  Function* func;
-  BasicBlock* return_block;
+  llvm::Type* return_type;
+  llvm::Function* func;
+  llvm::BasicBlock* return_block;
 
-  IRBuilder<> builder;
-  LocalsMap locals;
+  llvm::IRBuilder<> builder;
 
-  FunctionBuilder(Type* ret_type, Function* function, BasicBlock* entry, BasicBlock* ret_block, LocalsMap locals_map) :
-  return_type(ret_type), func(function), return_block(ret_block), builder(entry), locals(std::move(locals_map)) {}
+  FunctionBuilder(
+    llvm::Type* ret_type,
+    llvm::Function* function,
+    llvm::BasicBlock* entry,
+    llvm::BasicBlock* ret_block
+    ) :
+  return_type(ret_type), func(function), return_block(ret_block), builder(entry) {}
 
   void finalizeFunction() {
-    if (!builder.GetInsertBlock()->back().isTerminator())
+    if (not builder.GetInsertBlock()->back().isTerminator())
       builder.CreateBr(return_block);
     func->insert(func->end(), return_block);
     builder.SetInsertPoint(return_block);
-    if (!return_type->isVoidTy()) {
-      Value* v = builder.CreateLoad(return_type, locals[retval_location_name]);
+    if (not return_type->isVoidTy()) {
+      llvm::Value* v = builder.CreateLoad(return_type, locals[retval_location_name]);
       builder.CreateRet(v);
     }
     else
       builder.CreateRetVoid();
 
-    if (verifyFunction(*func, &errs())) {
-      return_block->getModule()->print(outs(), nullptr);
+    if (verifyFunction(*func, &llvm::errs())) {
+      return_block->getModule()->print(llvm::outs(), nullptr);
       throw BackendError("Failed to verify Function!", func->getName().str(), 0);
     }
   }
@@ -57,82 +59,95 @@ struct FunctionBuilder {
 
 //shes big but shes a beauty
 class TU final : public Backend {
-  LLVMContext context;
-  Module module;
+  llvm::LLVMContext context;
+  llvm::Module module;
 
-  IntegerType* i1; ConstantInt* i1_0; ConstantInt* i1_1;
-  IntegerType* i8; ConstantInt* i8_0; ConstantInt* i8_1;
-  IntegerType* i16; ConstantInt* i16_0; ConstantInt* i16_1;
-  IntegerType* i32; ConstantInt* i32_0; ConstantInt* i32_1;
-  IntegerType* i64; ConstantInt* i64_0; ConstantInt* i64_1;
-  Type* f32;  Constant* f32_0; Constant* f32_1;
-  Type* f64; Constant* f64_0; Constant* f64_1;
-  Type* devoid;
+  llvm::IntegerType* i1; llvm::ConstantInt* i1_0; llvm::ConstantInt* i1_1;
+  llvm::IntegerType* i8; llvm::ConstantInt* i8_0; llvm::ConstantInt* i8_1;
+  llvm::IntegerType* i16; llvm::ConstantInt* i16_0; llvm::ConstantInt* i16_1;
+  llvm::IntegerType* i32; llvm::ConstantInt* i32_0; llvm::ConstantInt* i32_1;
+  llvm::IntegerType* i64; llvm::ConstantInt* i64_0; llvm::ConstantInt* i64_1;
+  llvm::Type* f32;  llvm::Constant* f32_0; llvm::Constant* f32_1;
+  llvm::Type* f64; llvm::Constant* f64_0; llvm::Constant* f64_1;
+  llvm::Type* devoid;
 
 
 public:
   explicit TU(const std::string& filename) : module(filename, context)  {
-    i1 = Type::getInt1Ty(context); i1_0 = ConstantInt::get(i1, 0); i1_1 = ConstantInt::get(i1, 1);
-    i8 = Type::getInt8Ty(context); i8_0 = ConstantInt::get(i8, 0); i8_1 = ConstantInt::get(i8, 1);
-    i16 = Type::getInt16Ty(context); i16_0 = ConstantInt::get(i16, 0); i16_1 = ConstantInt::get(i16, 1);
-    i32 = Type::getInt32Ty(context); i32_0 = ConstantInt::get(i32, 0); i32_1 = ConstantInt::get(i32, 1);
-    i64 = Type::getInt64Ty(context); i64_0 = ConstantInt::get(i64, 0); i64_1 = ConstantInt::get(i64, 1);
+    i1 = llvm::Type::getInt1Ty(context); i1_0 = llvm::ConstantInt::get(i1, 0); i1_1 = llvm::ConstantInt::get(i1, 1);
+    i8 = llvm::Type::getInt8Ty(context); i8_0 = llvm::ConstantInt::get(i8, 0); i8_1 = llvm::ConstantInt::get(i8, 1);
+    i16 = llvm::Type::getInt16Ty(context); i16_0 = llvm::ConstantInt::get(i16, 0); i16_1 = llvm::ConstantInt::get(i16, 1);
+    i32 = llvm::Type::getInt32Ty(context); i32_0 = llvm::ConstantInt::get(i32, 0); i32_1 = llvm::ConstantInt::get(i32, 1);
+    i64 = llvm::Type::getInt64Ty(context); i64_0 = llvm::ConstantInt::get(i64, 0); i64_1 = llvm::ConstantInt::get(i64, 1);
 
-    f32 = Type::getFloatTy(context); f32_0 = ConstantFP::get(f32, 0); f32_1 = ConstantFP::get(f32, 1);
-    f64 = Type::getDoubleTy(context); f64_0 = ConstantFP::get(f64, 0); f64_1 = ConstantFP::get(f64, 1);
-    devoid = Type::getVoidTy(context);
+    f32 = llvm::Type::getFloatTy(context); f32_0 = llvm::ConstantFP::get(f32, 0); f32_1 = llvm::ConstantFP::get(f32, 1);
+    f64 = llvm::Type::getDoubleTy(context); f64_0 = llvm::ConstantFP::get(f64, 0); f64_1 = llvm::ConstantFP::get(f64, 1);
+    devoid = llvm::Type::getVoidTy(context);
   }
 
-  [[nodiscard]] Type* getType(const AST::Type* t) const {
+  [[nodiscard]] llvm::Type* translateType(const Type* t) const {
     assert(not t->isCustom());
     assert(not t->isVariant());
     assert(not t->isPointer());
-    assert(t not_eq &AST::string_type);
+    assert(t not_eq PrimitiveType::string());
 
-    if (t == &AST::i32_type || t == &AST::u32_type)
-      return i32;
-    if (t == AST::devoid_type)
+    if (t->isIntegral()) {
+      if (t == PrimitiveType::i32() or t == PrimitiveType::u32())
+        return i32;
+      if (t == PrimitiveType::i64() or t == PrimitiveType::u64())
+        return i64;
+      if (t == PrimitiveType::i8() or t == PrimitiveType::u8())
+        return i8;
+      if (t == PrimitiveType::i16() or t == PrimitiveType::u16())
+        return i16;
+      std::unreachable();
+    }
+
+    if (t->isFloating()) {
+      if (t == PrimitiveType::f32())
+        return f32;
+      if (t == PrimitiveType::f64())
+        return f64;
+      std::unreachable();
+    }
+
+    if (t == Type::devoid())
       return devoid;
-    if (t == &AST::i64_type || t == &AST::u64_type)
-      return i64;
 
-    if (t == &AST::f32_type)
-      return f32;
-    if (t == &AST::f64_type)
-      return f64;
-
-    if (t == &AST::bool_type || t == &AST::char_type || t == &AST::i8_type || t == &AST::u8_type)
+    if (t == PrimitiveType::bool_() or t == PrimitiveType::char_())
       return i8;
-    if (t == &AST::i16_type || t == &AST::u16_type)
-      return i16;
 
-    assert(false && "invalid type idfk");
+    std::unreachable();
   }
-  void genGlobal(const AST::VarDeclaration& var) {
-    Constant* v = var.expr ?  genConstant(*var.expr) : Constant::getNullValue(getType(var.type.type));
+  void genGlobals() {
+    llvm::Constant* v = var.expr ?  genConstant(*var.expr) : llvm::Constant::getNullValue(translateType(var.type.type));
     module.insertGlobalVariable(
-      new GlobalVariable(
-       getType(var.type.type),
+      new llvm::GlobalVariable(
+       translateType(var.type.type),
        not var.type.details.is_mutable,
-       GlobalValue::LinkageTypes::ExternalLinkage,
+       llvm::GlobalValue::LinkageTypes::ExternalLinkage,
        v,
        var.ident
        )
      );
   }
   [[nodiscard]] FunctionBuilder createFunction(const PeepMIR::Function& func) {
-    std::vector<Type*> arg_types;
-    arg_types.reserve(func.parameter_list.size());
-    for (const auto& v : func.parameter_list)
-      arg_types.push_back(getType(v.type.type));
+    llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
+    auto function_type = func.type;
+    auto num_params{0uz};
+    for (auto t : function_type->parameterTypes()) {
+      arg_types[num_params] = translateType(t);
+      ++num_params;
+    }
 
     //hack
-    Type* ret_type = func.return_type->isBool() ? i1 : getType(func.return_type);
-    const auto func_type = FunctionType::get(ret_type, {arg_types.data(), arg_types.size()}, false);
-    const auto llvmfunc = Function::Create(func_type, Function::ExternalLinkage, 0, func.name, &module);
-    const auto entry = BasicBlock::Create(context, "__entry", llvmfunc);
-    const auto ending = BasicBlock::Create(context, "__return");
-    IRBuilder<> init(entry);
+    llvm::Type* ret_type = function_type->returnType()->isBool() ? i1 : translateType(function_type->returnType());
+
+    const auto func_type = llvm::FunctionType::get(ret_type, {arg_types, num_params}, false);
+    const auto llvmfunc = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, 0, std::string_view(func.name), &module);
+    const auto entry = llvm::BasicBlock::Create(context, "__entry", llvmfunc);
+    const auto ending = llvm::BasicBlock::Create(context, "__return");
+    llvm::IRBuilder<> init(entry);
 
     auto arg = llvmfunc->arg_begin();
     FunctionBuilder::LocalsMap locals;
@@ -140,9 +155,8 @@ public:
       locals.emplace(FunctionBuilder::retval_location_name, init.CreateAlloca(ret_type, nullptr, FunctionBuilder::retval_location_name));
 
     auto i{0uz};
-    for (const auto& v : func.parameter_list) {
+    for (const auto& v : function_type->parameterTypes()) {
       assert(!locals.contains(arg->getName().str()));
-      arg->setName(v.ident);
 
       AllocaInst* param_alloca = init.CreateAlloca(arg_types[i], nullptr);
       locals.emplace(arg->getName().str(), param_alloca);
@@ -378,14 +392,14 @@ public:
   }
 
 
-  bool genVarDeclaration(const AST::VarDeclaration& declaration, FunctionBuilder& f) {
+  void genVarDeclaration(FunctionBuilder& f) {
     IRBuilder<> func_entry(&f.func->getEntryBlock());
     AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type.type), nullptr);
     f.locals.emplace(declaration.ident, i);
     if (declaration.expr) f.builder.CreateStore(genExpression(*declaration.expr, f), i);
     return false;
   }
-  bool genIfStatement(const AST::IfStatement& ifstmt, FunctionBuilder& f) {
+  void genIfStatement(FunctionBuilder& f) {
     IRBuilder<>& builder = f.builder;
     Value* condition_val = genExpression(*ifstmt.condition, f);
     condition_val = builder.CreateZExtOrTrunc(condition_val, i1);
@@ -413,9 +427,9 @@ public:
 
     return false;
   }
-  bool genForLoop(const AST::ForLoop& , FunctionBuilder& ) const { assert(false); }
-  bool genWhileLoop(const AST::WhileLoop& , FunctionBuilder& ) const { assert(false); }
-  bool genScoped(const AST::ScopedStatement& scoped, FunctionBuilder& f) {
+  void genForLoop(FunctionBuilder& ) const { assert(false); }
+  void genWhileLoop(FunctionBuilder& ) const { assert(false); }
+  void genScoped(FunctionBuilder& f) {
     auto curr = scoped.scope_body.begin();
     const auto end = scoped.scope_body.end();
     bool jumps_at_end{false};
@@ -425,7 +439,7 @@ public:
     }
     return jumps_at_end;
   }
-  bool genReturn(const AST::ReturnStatement& ret, FunctionBuilder& f) {
+  void genReturn(FunctionBuilder& f) {
     if (ret.return_value) {
       Value* retval = genExpression(*ret.return_value, f);
       f.builder.CreateStore(retval, f.locals[FunctionBuilder::retval_location_name]);
@@ -433,52 +447,46 @@ public:
     f.builder.CreateBr(f.return_block);
     return true;
   }
-  bool genExpressionStatement(const AST::ExpressionStatement& expr_stmt, FunctionBuilder& f) { if (expr_stmt.expr) genExpression(*expr_stmt.expr, f); return false; }
-  bool genStatement(const AST::Statement& stmt, FunctionBuilder& f) {
-    return utils_match(stmt,
-      utils_callon(const AST::VarDeclaration&, genVarDeclaration, f),
-      utils_callon(const AST::IfStatement&, genIfStatement, f),
-      utils_callon(const AST::ForLoop&, genForLoop, f),
-      utils_callon(const AST::WhileLoop&, genWhileLoop, f),
-      utils_callon(const AST::ScopedStatement&, genScoped, f),
-      utils_callon(const AST::ReturnStatement&, genReturn, f),
-      utils_callon(const AST::ExpressionStatement&, genExpressionStatement, f)
-    );
+  void genExpressionStatement(FunctionBuilder& f) {
+    if (expr_stmt.expr)
+      genExpression(*expr_stmt.expr, f);
+    return false;
   }
+  void genStatement(FunctionBuilder& f) {}
 
-  void createFile(const std::filesystem::path& obj_path, const CodeGenFileType filetype) {
-    InitializeAllTargetInfos();
-    InitializeAllTargets();
-    InitializeAllTargetMCs();
-    InitializeAllAsmParsers();
-    InitializeAllAsmPrinters();
+  void createFile(const std::filesystem::path& obj_path, const llvm::CodeGenFileType filetype) {
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
 
-    static const auto target_triple = sys::getDefaultTargetTriple();
+    static const auto target_triple = llvm::sys::getDefaultTargetTriple();
     module.setTargetTriple(target_triple);
     std::string err;
-    const auto target = TargetRegistry::lookupTarget(module.getTargetTriple(), err);
+    const auto target = llvm::TargetRegistry::lookupTarget(module.getTargetTriple(), err);
     if (!target) {
-      errs() << err;
+      llvm::errs() << err;
       assert(false);
     }
 
     static constexpr auto CPU = "generic";
     static constexpr auto Features = "";
-    static const TargetOptions opt;
+    static const llvm::TargetOptions opt;
     auto target_machine = target->createTargetMachine(
-      target_triple, CPU, Features, opt, Reloc::PIC_);
+      target_triple, CPU, Features, opt, llvm::Reloc::PIC_);
     module.setDataLayout(target_machine->createDataLayout());
 
     std::error_code EC;
-    raw_fd_ostream dest(obj_path.string(), EC, sys::fs::OF_None);
+    llvm::raw_fd_ostream dest(obj_path.string(), EC, llvm::sys::fs::OF_None);
     if (EC) {
-      errs() << "Could not open file: " << obj_path.string() << " | " << EC.message() << '\n';
+      llvm::errs() << "Could not open file: " << obj_path.string() << " | " << EC.message() << '\n';
       assert(false);
     }
 
-    legacy::PassManager pass;
+    llvm::legacy::PassManager pass;
     if (target_machine->addPassesToEmitFile(pass, dest, nullptr, filetype)) {
-      errs() << "Target machine can't emit a file of this type";
+      llvm::errs() << "Target machine can't emit a file of this type";
       assert(false);
     }
 
@@ -487,9 +495,11 @@ public:
     delete target_machine;
   }
 
-  void printModule(raw_ostream& out = outs()) const { module.print(out, nullptr); }
+  void printModule(llvm::raw_ostream& out = llvm::outs()) const
+  { module.print(out, nullptr); }
 
-  virtual std::filesystem::path createASMFile (const std::filesystem::path &file) override {
+  [[nodiscard]] std::filesystem::path
+  createASMFile(const std::filesystem::path &file) override {
     static const std::filesystem::path asm_folder = Settings::getBuildLocation() + "asm/";
     std::filesystem::path asm_path = asm_folder;
     asm_path.append(file.string());
@@ -500,11 +510,12 @@ public:
     asm_path.replace_extension(".s");
 #endif
 
-    createFile(asm_path, CodeGenFileType::AssemblyFile);
+    createFile(asm_path, llvm::CodeGenFileType::AssemblyFile);
     return asm_path;
   }
 
-  virtual std::filesystem::path createIRFile (const std::filesystem::path &file) override {
+  [[nodiscard]] std::filesystem::path
+  createIRFile(const std::filesystem::path &file) override {
     static const std::filesystem::path ir_path = Settings::getBuildLocation() + "llvm_ir/";
     std::filesystem::path file_path = ir_path;
     file_path.append(file.string());
@@ -512,9 +523,9 @@ public:
     file_path.replace_extension(".ll");
 
     std::error_code EC;
-    raw_fd_ostream dest(file_path.string(), EC, sys::fs::OF_None);
+    llvm::raw_fd_ostream dest(file_path.string(), EC, llvm::sys::fs::OF_None);
     if (EC) {
-      errs() << "Could not open file: " << file_path.string() << " | " << EC.message() << '\n';
+      llvm::errs() << "Could not open file: " << file_path.string() << " | " << EC.message() << '\n';
       std::quick_exit(1);
     }
 
@@ -522,7 +533,8 @@ public:
     return file_path;
   }
 
-  virtual std::filesystem::path createObjectFile(const std::filesystem::path &file) override {
+  [[nodiscard]] std::filesystem::path
+  createObjectFile(const std::filesystem::path &file) override {
     static const std::filesystem::path object_folder = Settings::getBuildLocation() + "obj/";
     std::filesystem::path obj_path = object_folder;
     obj_path.append(file.string());
@@ -533,15 +545,18 @@ public:
     obj_path.replace_extension(".o");
 #endif
 
-    createFile(obj_path, CodeGenFileType::ObjectFile);
+    createFile(obj_path, llvm::CodeGenFileType::ObjectFile);
     return obj_path;
   }
 };
 }
-
-std::unique_ptr<Backend> ToLLVM::codegen(const PeepMIR::PeepTU& vtu, const std::filesystem::path &file) {
-  auto ptr = std::make_unique<TU>(file.string());
-  ptr->lowerToLLVM(vtu);
-  return ptr;
-}
 */
+}
+
+std::unique_ptr<Backend> ToLLVM::codegen(
+  [[maybe_unused]] PeepMIR::TU&& peeped_tu,
+  [[maybe_unused]] const std::filesystem::path &file) {
+  //auto ptr = std::make_unique<TU>(file.string());
+  //ptr->lowerToLLVM(peeped_tu);
+  return nullptr;
+}

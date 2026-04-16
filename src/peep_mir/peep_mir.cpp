@@ -16,6 +16,7 @@ using namespace LOM::AST;
 
 namespace {
 
+
 class TreeView {
   std::vector<ASTNode>::iterator begin;
   std::vector<ASTNode>::iterator end;
@@ -145,12 +146,12 @@ class Peeper {
     }
   }
 
-  InstantiatedType peepIdentifier(released_ptr<char> identifier) {
+  InstantiatedType peepIdentifier(eden::releasing_string::released_ptr identifier) {
     if constexpr(not global_peeping) {
       if (table.containsLocalVariable(identifier.get())) {
         auto variable = table.localVariable(identifier.get());
         instructions.emplace_back(Instruction::LOCAL, variable.second + 1);
-        eden::releasing_string::destroy_and_deallocate(std::move(identifier));
+        identifier.destroy_and_deallocate();
         return variable.first;
       }
 
@@ -799,6 +800,8 @@ using FunctionPeeper = Peeper<false>;
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   SymbolTable& table = parsed_tu.table;
   TU tu(table.takeTypeContext());
+  tu.functions.reserve(parsed_tu.functions.size());
+
   GlobalPeeper::peepGlobals(tu, parsed_tu.global_tree, table);
 
   for (auto &func : parsed_tu.functions)

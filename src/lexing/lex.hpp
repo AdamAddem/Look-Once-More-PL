@@ -24,7 +24,9 @@ class Token {
     return
     eden::releasing_string::copy_data(
       eden::releasing_string::released_ptr(
-        std::bit_cast<char*>(value))).get();
+        std::bit_cast<char*>(value)
+        )
+        ).get();
   }
 
   [[nodiscard]] constexpr std::string

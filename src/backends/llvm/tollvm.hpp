@@ -6,14 +6,10 @@
 
 namespace LOM::PeepMIR {
   struct TU;
-  struct Function;
 }
 
 namespace LOM::ToLLVM {
 
-inline std::unique_ptr<Backend> codegen(const PeepMIR::TU&, const std::filesystem::path &) {
-  assert(false);
-  return nullptr;
-}
+std::unique_ptr<Backend> codegen(PeepMIR::TU&&, const std::filesystem::path &);
 
 }

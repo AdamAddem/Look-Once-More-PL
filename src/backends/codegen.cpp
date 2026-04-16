@@ -4,30 +4,29 @@
 
 #include <cassert>
 #include <iostream>
+#include <utility>
 
 using namespace LOM;
 
-std::unique_ptr<Backend> Backend::codegen(const PeepMIR::TU& vtu, const std::filesystem::path& file) {
-  assert(false);
+std::unique_ptr<Backend> Backend::codegen(PeepMIR::TU&& vtu, const std::filesystem::path& file) {
   switch (Settings::chosenBackend()) {
   case Settings::Backend::LLVM:
-    return ToLLVM::codegen(vtu, file);
+    return ToLLVM::codegen(std::move(vtu), file);
 
   default:
-    assert(false && "Unknown backend type in codegen.cpp");
+    std::unreachable();
   }
 }
 
 
 //i mean.... it works?
 void Backend::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
-  assert(false);
 #ifdef __clang__
   std::string compiler{"clang"};
 #elif defined(__GNUC__)
   std::string compiler{"gcc"};
 #else
-  throw std::runtime_error("Linking objects is currently not supported without clang or gcc. You're probably on windows, in which case, godspeed.");
+  throw std::runtime_error("Linking objects is currently not supported without clang or gcc. You're probably on windows, in which case, godspeed soldier.");
 #endif
 
   for (const auto& file : obj_paths) {

@@ -24,6 +24,7 @@ struct Instruction {
     LOCAL, //value is local idx
     FUNCTION, //value is char*
 
+
     //literals contain exactly what you think they would
     INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
 
@@ -129,16 +130,12 @@ struct Function {
 };
 
 struct TU {
-  struct Global {
-    const Type* type;
-    released_string name;
-  };
-
   explicit TU(TypeContext&& types) noexcept
   : types(std::move(types)) {}
 
   TypeContext types;
-  std::vector<Global> globals;
+  released_ptr<const Type*> globals;
+  released_span<Instruction> global_instructions;
   std::vector<Function> functions;
 };
 

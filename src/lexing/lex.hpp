@@ -52,11 +52,6 @@ public:
 
   Token &operator=(const Token& other) = delete;
 
-  ~Token() {
-    if (type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER)
-      assert(value == 0 and "String value of token should have been taken already");
-  }
-
   void throw_if(TokenType unwanted_type, const char* err_msg) const;
   void throw_if_not(TokenType expected_type, const char* err_msg) const;
 

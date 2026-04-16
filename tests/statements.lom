@@ -1,5 +1,6 @@
+global mut bool condition = true;
+
 fn if_statements() {
-    mut bool condition = true;
     if(condition) ;
     if(true) {}
     if(false) {}

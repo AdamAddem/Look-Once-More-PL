@@ -105,10 +105,6 @@ struct SyntaxTree {
   void print(u64_t starting_line_number) const noexcept;
 };
 
-/*
-[[nodiscard]] std::string
-nodeToString(std::vector<ASTNode>::const_iterator) noexcept; */
-
 //Is this overengineered? Yes. yeah. yep.
 class ASTNode {
 

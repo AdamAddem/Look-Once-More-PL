@@ -28,16 +28,16 @@ public:
   {return *begin;}
 
   [[nodiscard]] constexpr bool
-  peek_is(ASTNode::Type type) const noexcept
-  {return begin->type() == type;}
+  peek_is_empty() const noexcept
+  {return begin->type() == ASTNode::EMPTY;}
 
   constexpr ASTNode&
   pop() noexcept
   {return *(begin++);}
 
   [[nodiscard]] constexpr bool
-  pop_if(ASTNode::Type type) noexcept {
-    if (peek_is(type)) {
+  pop_if_empty() noexcept {
+    if (peek_is_empty()) {
       pop();
       return true;
     }
@@ -57,9 +57,8 @@ public:
   {return begin == end;}
 };
 
+template <bool global_peeping>
 class Peeper {
-  static constexpr u32_t return_block_first_instruction_idx = std::numeric_limits<u32_t>::max();
-  TU& tu;
   SymbolTable& table;
 
   eden::releasing_vector<const Type*> locals;
@@ -147,22 +146,24 @@ class Peeper {
   }
 
   InstantiatedType peepIdentifier(released_ptr<char> identifier) {
-    if (table.containsFunction(identifier.get())) {
-      instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier.get()));
-      auto function_instance_type = table.instanceTypeOfFunction(identifier.get());
-      return function_instance_type;
-    }
+    if constexpr(not global_peeping) {
+      if (table.containsLocalVariable(identifier.get())) {
+        auto variable = table.localVariable(identifier.get());
+        instructions.emplace_back(Instruction::LOCAL, variable.second + 1);
+        eden::releasing_string::destroy_and_deallocate(std::move(identifier));
+        return variable.first;
+      }
 
-    if (table.containsLocalVariable(identifier.get())) {
-      auto variable = table.localVariable(identifier.get());
-      instructions.emplace_back(Instruction::LOCAL, variable.second + 1);
-      eden::releasing_string::destroy_and_deallocate(std::move(identifier));
-      return variable.first;
+      if (table.containsFunction(identifier.get())) {
+        instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier.get()));
+        auto function_instance_type = table.instanceTypeOfFunction(identifier.get());
+        return function_instance_type;
+      }
     }
 
     if (table.containsGlobalVariable(identifier.get())) {
       auto variable = table.globalVariable(identifier.get());
-      instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(identifier.get()));
+      instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(identifier.release()));
       return variable;
     }
 
@@ -173,6 +174,9 @@ class Peeper {
 
   InstantiatedType peepCallingExpression(u64_t parameter_count) {
     assert(parameter_count <= Settings::MAX_FUNCTION_PARAMETERS);
+    if constexpr (global_peeping)
+      throw ValidationError("Function calls not allowed when initializing globals.", "Sorry!", current_line_number);
+
     const auto called = peepExpression();
     if (not called.type->isCallable())
       throw ValidationError("Call operator used on non-callable.", std::format("Expression has type '{}'", called.toString()), current_line_number);
@@ -389,7 +393,7 @@ class Peeper {
 
   void peepReturnStatement() {
     const auto return_type = current_function_type->returnType();
-    if (nodes.pop_if(ASTNode::EMPTY)) {
+    if (nodes.pop_if_empty()) {
       if (not return_type->isDevoid())
         throw ValidationError("Non-devoid function expects return value",
         std::format("Scope return type is '{}'", return_type->toString()), current_line_number);
@@ -454,7 +458,7 @@ class Peeper {
     new_block(); //false block
     const u32_t false_block_idx = current_block_index();
     u32_t after_block_idx = false_block_idx;
-    if (not nodes.pop_if(ASTNode::EMPTY)) {
+    if (not nodes.pop_if_empty()) {
       peepStatement();
       blocks.back().set_br(blocks.size());
       new_block();
@@ -468,26 +472,50 @@ class Peeper {
     const auto declaration_type = nodes.pop().instance_type();
     auto name = nodes.pop().take_identifier();
     char* name_cstr = name.get();
-    if (table.containsLocalVariable(name_cstr))
-      throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
 
-    table.addLocalVariable(std::move(name), declaration_type);
-
-    if (not nodes.pop_if(ASTNode::EMPTY)) {
-      const auto initialization_type = peepExpression();
-      if (not initialization_type.type->convertibleTo(declaration_type.type))
-        throw ValidationError("Variable initialization's type is not compatible with variable type.",
-          std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
-          name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
-
-      instructions.emplace_back(Instruction::LOCAL, locals.size());
-      locals.emplace_back(declaration_type.type);
-      instructions.emplace_back(Instruction::ASSIGN, 0);
+    if constexpr (global_peeping) {
+      if (table.containsGlobalVariable(name_cstr))
+        throw ValidationError("Redefinition of global variable.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
     }
+    else {
+      if (table.containsLocalVariable(name_cstr))
+        throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
+    }
+
+    if (nodes.pop_if_empty()) {
+      if constexpr(global_peeping)
+        throw ValidationError("Global variable may not be junk initialized.", name_cstr, current_line_number);
+      else
+        table.addLocalVariable(std::move(name), declaration_type);
+      return;
+    }
+
+    const auto initialization_type = peepExpression();
+    if (not initialization_type.type->convertibleTo(declaration_type.type))
+      throw ValidationError("Variable initialization's type is not compatible with variable type.",
+        std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
+        name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
+
+    if constexpr(global_peeping) {
+      instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(name_cstr));
+      table.addGlobalVariable(name, declaration_type);
+    }
+    else {
+      table.addLocalVariable(std::move(name), declaration_type);
+      instructions.emplace_back(Instruction::LOCAL, locals.size());
+    }
+
+    locals.emplace_back(declaration_type.type);
+    instructions.emplace_back(Instruction::ASSIGN, 0);
   }
 
   void peepStatement() {
     auto& node = nodes.pop();
+    if constexpr (global_peeping) {
+      assert(node.type() == ASTNode::DECLARATION);
+      return peepVarDeclaration();
+    }
+
     switch (node.type()) {
     case ASTNode::EMPTY:
       assert(false);
@@ -510,7 +538,7 @@ class Peeper {
       return peepReturnStatement();
     case ASTNode::EXPR_STMT:
       current_line_number = node.line_number();
-      if (nodes.pop_if(ASTNode::EMPTY))
+      if (nodes.pop_if_empty())
         instructions.emplace_back(Instruction::NOOP, current_line_number);
       else
         (void)peepExpression();
@@ -576,17 +604,24 @@ class Peeper {
     }
   }
 
-  Peeper(TU& tu, SyntaxTree& tree, SymbolTable& table, const FunctionType* function_type)
-  : tu(tu), table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(function_type) {
+  Peeper(
+    SyntaxTree& tree,
+    SymbolTable& table,
+    const FunctionType* function_type)
+  : table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(function_type) {
     locals.emplace_back(function_type->returnType());
     for (auto parameter_type : function_type->parameterTypes())
       locals.emplace_back(parameter_type);
   }
+
+  Peeper(SyntaxTree& tree, SymbolTable& table)
+  : table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(nullptr) {}
 public:
 
-  static void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table) {
+  static void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table)
+  requires (not global_peeping) {
     const auto function_type = table.enterFunctionScope(func.name.get());
-    Peeper function_peeper(tu, func.body, table, function_type);
+    Peeper function_peeper(func.body, table, function_type);
     function_peeper.peepUntilEmpty();
     tu.functions.emplace_back(
       std::move(func.name), function_type,
@@ -597,6 +632,18 @@ public:
     table.leaveFunctionScope();
   }
 
+  static void peepGlobals(TU& tu, SyntaxTree& global_tree, SymbolTable& table)
+  requires global_peeping {
+    assume_assert(tu.globals == nullptr);
+    assume_assert(tu.global_instructions == nullptr);
+
+    Peeper<true> global_peeper(global_tree, table);
+    while (not global_peeper.nodes.empty())
+      global_peeper.peepStatement();
+
+    tu.globals = global_peeper.locals.release();
+    tu.global_instructions = global_peeper.instructions.release_span();
+  }
 };
 
 }
@@ -746,21 +793,31 @@ void printPeep(TU& tu) {
 }
 }
 
+using GlobalPeeper = Peeper<true>;
+using FunctionPeeper = Peeper<false>;
+
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   SymbolTable& table = parsed_tu.table;
   TU tu(table.takeTypeContext());
-  std::vector<const Type*> globals;
-  std::vector<Function> functions;
+  GlobalPeeper::peepGlobals(tu, parsed_tu.global_tree, table);
+
   for (auto &func : parsed_tu.functions)
-    Peeper::peepFunction(tu, func, table);
+    FunctionPeeper::peepFunction(tu, func, table);
 
   if (Settings::doOutputValidation()) {
     std::cout << "--- Validation Passed ---\n\n";
+
+
+    std::cout << "--- Global Body ---\n";
+    for (auto instruction : tu.global_instructions) {
+      printPeepInstruction(instruction);
+    }
+    std::cout << "--- Global Body ---\n";
+
     printPeep(tu);
     std::cout << "--- Validation Passed ---\n\n";
     std::quick_exit(0);
   }
 
-
-  assert(false);
+  return tu;
 }

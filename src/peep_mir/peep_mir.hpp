@@ -84,6 +84,17 @@ struct Instruction {
   function_name() const noexcept
   {assume_assert(type == FUNCTION); return std::bit_cast<char*>(value);}
 
+  [[nodiscard]] constexpr u64_t
+  num_params() const noexcept
+  {assume_assert(type == CALL); return value;}
+
+  [[nodiscard]] constexpr eden::releasing_string::released_ptr
+  release_string_value() noexcept {
+    assert(type == GLOBAL or type == FUNCTION or type == STRING_LITERAL);
+    auto x = eden::releasing_string::released_ptr(std::bit_cast<char*>(value));
+    value = 0;
+    return x;
+  }
 };
 
 class Block {
@@ -142,11 +153,6 @@ struct TU {
   ~TU() {
     globals.destroy_and_deallocate();
     global_instructions.destroy_and_deallocate();
-    for (auto& f : functions) {
-      f.locals.destroy_and_deallocate();
-      f.instructions.destroy_and_deallocate();
-      f.blocks.destroy_and_deallocate();
-    }
   }
 };
 

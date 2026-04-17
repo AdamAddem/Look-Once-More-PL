@@ -199,6 +199,7 @@ class Peeper {
     return {result, {}};
   }
 
+  //TODO: Add Short Circuiting
   InstantiatedType peepBinaryExpression(Operator opr) {
     auto left = peepExpression();
     const bool left_mutable = left.details.is_mutable;
@@ -404,8 +405,8 @@ class Peeper {
       return;
     }
 
-    const auto return_expression = peepExpression();
     instructions.emplace_back(Instruction::LOCAL, 0);
+    const auto return_expression = peepExpression();
     instructions.emplace_back(Instruction::ASSIGN, 0);
     if (return_type->isDevoid())
       throw ValidationError("Cannot return value from devoid function",
@@ -491,20 +492,20 @@ class Peeper {
       return;
     }
 
-    const auto initialization_type = peepExpression();
-    if (not initialization_type.type->convertibleTo(declaration_type.type))
-      throw ValidationError("Variable initialization's type is not compatible with variable type.",
-        std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
-        name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
-
     if constexpr(global_peeping) {
       instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(name_cstr));
       table.addGlobalVariable(name, declaration_type);
     }
     else {
-      table.addLocalVariable(std::move(name), declaration_type);
       instructions.emplace_back(Instruction::LOCAL, locals.size());
+      table.addLocalVariable(std::move(name), declaration_type);
     }
+
+    const auto initialization_type = peepExpression();
+    if (not initialization_type.type->convertibleTo(declaration_type.type))
+      throw ValidationError("Variable initialization's type is not compatible with variable type.",
+        std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
+        name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
 
     locals.emplace_back(declaration_type.type);
     instructions.emplace_back(Instruction::ASSIGN, 0);
@@ -776,6 +777,7 @@ void printPeepFunction(Function& func) {
   std::println("{} Block(s).", func.blocks.size() - 1);
   std::println("fn {}{} {{", func.name.get(), func.type->toString());
 
+  std::cout << "Return Type: " << func.locals[0]->toString() << std::endl;
   std::cout << "| Locals: | ";
   auto num_locals = func.locals.size() - 1;
   for (auto i{0uz}; i<num_locals; ++i) {
@@ -810,12 +812,11 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   if (Settings::doOutputValidation()) {
     std::cout << "--- Validation Passed ---\n\n";
 
-
     std::cout << "--- Global Body ---\n";
-    for (auto instruction : tu.global_instructions) {
+    for (const auto instruction : tu.global_instructions) {
       printPeepInstruction(instruction);
     }
-    std::cout << "--- Global Body ---\n";
+    std::cout << "--- Global Body ---\n\n";
 
     printPeep(tu);
     std::cout << "--- Validation Passed ---\n\n";

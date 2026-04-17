@@ -21,43 +21,31 @@ using namespace LOM;
 
 namespace {
 /*
-struct FunctionBuilder {
-  static constexpr std::string retval_location_name = "__retval";
-  llvm::Type* return_type;
-  llvm::Function* func;
-  llvm::BasicBlock* return_block;
-
-  llvm::IRBuilder<> builder;
-
-  FunctionBuilder(
-    llvm::Type* ret_type,
-    llvm::Function* function,
-    llvm::BasicBlock* entry,
-    llvm::BasicBlock* ret_block
-    ) :
-  return_type(ret_type), func(function), return_block(ret_block), builder(entry) {}
-
-  void finalizeFunction() {
-    if (not builder.GetInsertBlock()->back().isTerminator())
-      builder.CreateBr(return_block);
-    func->insert(func->end(), return_block);
-    builder.SetInsertPoint(return_block);
-    if (not return_type->isVoidTy()) {
-      llvm::Value* v = builder.CreateLoad(return_type, locals[retval_location_name]);
-      builder.CreateRet(v);
-    }
-    else
-      builder.CreateRetVoid();
-
-    if (verifyFunction(*func, &llvm::errs())) {
-      return_block->getModule()->print(llvm::outs(), nullptr);
-      throw BackendError("Failed to verify Function!", func->getName().str(), 0);
-    }
+void finalizeFunction() {
+  if (not builder.GetInsertBlock()->back().isTerminator())
+    builder.CreateBr(return_block);
+  func->insert(func->end(), return_block);
+  builder.SetInsertPoint(return_block);
+  if (not return_type->isVoidTy()) {
+    llvm::Value* v = builder.CreateLoad(return_type, locals[retval_location_name]);
+    builder.CreateRet(v);
   }
+  else
+    builder.CreateRetVoid();
 
-};
+  if (verifyFunction(*func, &llvm::errs())) {
+    return_block->getModule()->print(llvm::outs(), nullptr);
+    throw BackendError("Failed to verify Function!", func->getName().str(), 0);
+  }
+} */
 
-//shes big but shes a beauty
+
+using PeepMIR::released_string;
+using PeepMIR::released_span;
+using PeepMIR::released_ptr;
+
+
+//shes big but shes a beaut
 class TU final : public Backend {
   llvm::LLVMContext context;
   llvm::Module module;
@@ -70,433 +58,6 @@ class TU final : public Backend {
   llvm::Type* f32;  llvm::Constant* f32_0; llvm::Constant* f32_1;
   llvm::Type* f64; llvm::Constant* f64_0; llvm::Constant* f64_1;
   llvm::Type* devoid;
-
-
-public:
-  explicit TU(const std::string& filename) : module(filename, context)  {
-    i1 = llvm::Type::getInt1Ty(context); i1_0 = llvm::ConstantInt::get(i1, 0); i1_1 = llvm::ConstantInt::get(i1, 1);
-    i8 = llvm::Type::getInt8Ty(context); i8_0 = llvm::ConstantInt::get(i8, 0); i8_1 = llvm::ConstantInt::get(i8, 1);
-    i16 = llvm::Type::getInt16Ty(context); i16_0 = llvm::ConstantInt::get(i16, 0); i16_1 = llvm::ConstantInt::get(i16, 1);
-    i32 = llvm::Type::getInt32Ty(context); i32_0 = llvm::ConstantInt::get(i32, 0); i32_1 = llvm::ConstantInt::get(i32, 1);
-    i64 = llvm::Type::getInt64Ty(context); i64_0 = llvm::ConstantInt::get(i64, 0); i64_1 = llvm::ConstantInt::get(i64, 1);
-
-    f32 = llvm::Type::getFloatTy(context); f32_0 = llvm::ConstantFP::get(f32, 0); f32_1 = llvm::ConstantFP::get(f32, 1);
-    f64 = llvm::Type::getDoubleTy(context); f64_0 = llvm::ConstantFP::get(f64, 0); f64_1 = llvm::ConstantFP::get(f64, 1);
-    devoid = llvm::Type::getVoidTy(context);
-  }
-
-  [[nodiscard]] llvm::Type* translateType(const Type* t) const {
-    assert(not t->isCustom());
-    assert(not t->isVariant());
-    assert(not t->isPointer());
-    assert(t not_eq PrimitiveType::string());
-
-    if (t->isIntegral()) {
-      if (t == PrimitiveType::i32() or t == PrimitiveType::u32())
-        return i32;
-      if (t == PrimitiveType::i64() or t == PrimitiveType::u64())
-        return i64;
-      if (t == PrimitiveType::i8() or t == PrimitiveType::u8())
-        return i8;
-      if (t == PrimitiveType::i16() or t == PrimitiveType::u16())
-        return i16;
-      std::unreachable();
-    }
-
-    if (t->isFloating()) {
-      if (t == PrimitiveType::f32())
-        return f32;
-      if (t == PrimitiveType::f64())
-        return f64;
-      std::unreachable();
-    }
-
-    if (t == Type::devoid())
-      return devoid;
-
-    if (t == PrimitiveType::bool_() or t == PrimitiveType::char_())
-      return i8;
-
-    std::unreachable();
-  }
-  void genGlobals() {
-    llvm::Constant* v = var.expr ?  genConstant(*var.expr) : llvm::Constant::getNullValue(translateType(var.type.type));
-    module.insertGlobalVariable(
-      new llvm::GlobalVariable(
-       translateType(var.type.type),
-       not var.type.details.is_mutable,
-       llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-       v,
-       var.ident
-       )
-     );
-  }
-  [[nodiscard]] FunctionBuilder createFunction(const PeepMIR::Function& func) {
-    llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
-    auto function_type = func.type;
-    auto num_params{0uz};
-    for (auto t : function_type->parameterTypes()) {
-      arg_types[num_params] = translateType(t);
-      ++num_params;
-    }
-
-    //hack
-    llvm::Type* ret_type = function_type->returnType()->isBool() ? i1 : translateType(function_type->returnType());
-
-    const auto func_type = llvm::FunctionType::get(ret_type, {arg_types, num_params}, false);
-    const auto llvmfunc = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, 0, std::string_view(func.name), &module);
-    const auto entry = llvm::BasicBlock::Create(context, "__entry", llvmfunc);
-    const auto ending = llvm::BasicBlock::Create(context, "__return");
-    llvm::IRBuilder<> init(entry);
-
-    auto arg = llvmfunc->arg_begin();
-    FunctionBuilder::LocalsMap locals;
-    if (!ret_type->isVoidTy())
-      locals.emplace(FunctionBuilder::retval_location_name, init.CreateAlloca(ret_type, nullptr, FunctionBuilder::retval_location_name));
-
-    auto i{0uz};
-    for (const auto& v : function_type->parameterTypes()) {
-      assert(!locals.contains(arg->getName().str()));
-
-      AllocaInst* param_alloca = init.CreateAlloca(arg_types[i], nullptr);
-      locals.emplace(arg->getName().str(), param_alloca);
-
-      init.CreateStore(arg, param_alloca);
-      ++arg;
-      ++i;
-    }
-
-    return FunctionBuilder(ret_type, llvmfunc, entry, ending, std::move(locals));
-  }
-  void lowerToLLVM(const PeepMIR::PeepTU& vtu) {
-    for (const auto& v : vtu.globals)
-      genGlobal(v);
-
-    for (const auto& func : vtu.functions) {
-      auto function_builder = createFunction(func);
-      for (const auto s : func.function_body)
-        genStatement(*s, function_builder);
-
-      function_builder.finalizeFunction();
-    }
-
-  }
-
-  Value* genUnary(const AST::UnaryExpression& unary, FunctionBuilder& f) const noexcept {
-    const auto load = cast<LoadInst>(genIdentifier(std::get<AST::IdentifierExpression>(*unary.expr), f));
-    const bool is_float = load->getAccessType()->isFloatingPointTy();
-    Value* result;
-    IRBuilder<>& builder = f.builder;
-    switch (unary.opr) {
-    case AST::Operator::PRE_INCREMENT:
-      result = is_float ? builder.CreateFAdd(load, f32_1) : builder.CreateAdd(load, i32_1);
-      builder.CreateStore(result, load->getPointerOperand() );
-      return result;
-
-    case AST::Operator::PRE_DECREMENT:
-      result = is_float ? builder.CreateFSub(load, f32_1) : builder.CreateSub(load, i32_1);
-      builder.CreateStore(result, load->getPointerOperand() );
-      return result;
-
-    case AST::Operator::UNARY_MINUS:
-      return is_float ? builder.CreateFNeg(load) : builder.CreateNeg(load);
-
-    case AST::Operator::ADDRESS_OF:
-    case AST::Operator::BITNOT:
-      return builder.CreateNot(load);
-    case AST::Operator::NOT:
-      assert(false && "Operator NOT used in codegen, should have been changed to operator bitnot in the ast_validator. Fix that thx");
-
-    case AST::Operator::POST_INCREMENT:
-      builder.CreateStore(
-        is_float ? builder.CreateFAdd(load, f32_1) : builder.CreateAdd(load, i32_1),
-        load->getPointerOperand());
-      return load;
-
-    case AST::Operator::POST_DECREMENT:
-      builder.CreateStore(
-      is_float ? builder.CreateFSub(load, f32_1) : builder.CreateSub(load, i32_1),
-      load->getPointerOperand());
-      return load;
-
-    case AST::Operator::CAST:
-    case AST::Operator::CAST_IF:
-    case AST::Operator::UNSAFE_CAST:
-    default:
-      assert(false && "Unimplemented expression in codegen srry");
-    }
-
-    assert(false && "wtf");
-  }
-  Value* genBinary(const AST::BinaryExpression& binary,  FunctionBuilder& f) noexcept {
-    Value* left = genExpression(*binary.expr_left, f);
-    const bool is_float = left->getType()->isFloatingPointTy();
-    IRBuilder<>& builder = f.builder;
-
-    switch (binary.opr) {
-    case AST::Operator::ADD: {
-      Value* right = genExpression(*binary.expr_right, f);
-      return is_float ? builder.CreateFAdd(left, right) : builder.CreateAdd(left, right);
-    }
-    case AST::Operator::SUBTRACT: {
-      Value* right = genExpression(*binary.expr_right, f);
-      return is_float ? builder.CreateFAdd(left, right) : builder.CreateAdd(left, right);
-    }
-    case AST::Operator::MULTIPLY: {
-      Value* right = genExpression(*binary.expr_right, f);
-      return is_float ? builder.CreateFMul(left, right) : builder.CreateMul(left, right);
-    }
-    case AST::Operator::DIVIDE: {
-      Value* right = genExpression(*binary.expr_right, f);
-      return is_float ? builder.CreateFDiv(left, right) : builder.CreateSDiv(left, right);
-    }
-    case AST::Operator::POWER:
-      assert(false && "Unimplemented exponent operator");
-    case AST::Operator::MODULUS: {
-      Value* right = genExpression(*binary.expr_right, f);
-      return is_float ? builder.CreateFRem(left, right) : builder.CreateSRem(left, right);
-    }
-    case AST::Operator::ASSIGN:
-      assert(isa<LoadInst>(left));
-      builder.CreateStore(genExpression(*binary.expr_right, f), cast<LoadInst>(left)->getPointerOperand());
-      return left;
-    case AST::Operator::LESS:
-      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OLT : CmpInst::Predicate::ICMP_ULT, left, genExpression(*binary.expr_right, f));
-    case AST::Operator::GREATER:
-      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OGT : CmpInst::Predicate::ICMP_UGT, left, genExpression(*binary.expr_right, f));
-    case AST::Operator::LESS_EQUAL:
-      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OLE : CmpInst::Predicate::ICMP_ULE, left, genExpression(*binary.expr_right, f));
-    case AST::Operator::GREATER_EQUAL:
-      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OGE : CmpInst::Predicate::ICMP_UGE, left, genExpression(*binary.expr_right, f));
-    case AST::Operator::AND: {
-      assert(!is_float && "float expression used as conditional");
-      const auto first_value = builder.CreateCmp(CmpInst::Predicate::ICMP_NE, builder.CreateZExtOrTrunc(left, i1), i1_0);
-
-      BasicBlock* begin = builder.GetInsertBlock();
-      BasicBlock* test_second = BasicBlock::Create(context); f.func->insert(f.func->end(), test_second);
-      BasicBlock* end = BasicBlock::Create(context);
-      builder.CreateCondBr(first_value, test_second, end);
-
-      builder.SetInsertPoint(test_second);
-      Value* right = genExpression(*binary.expr_right, f);
-      const auto second_value = builder.CreateCmp(CmpInst::Predicate::ICMP_NE, builder.CreateZExtOrTrunc(right, i1), i1_0);
-      f.func->insert(f.func->end(), end);
-      builder.CreateBr(end);
-
-      builder.SetInsertPoint(end);
-      const auto phi =  builder.CreatePHI(i1, 2);
-      phi->addIncoming(i1_0, begin);
-      phi->addIncoming(second_value, test_second);
-      return phi;
-    }
-    case AST::Operator::OR: {
-      assert(!is_float && "float expression used as conditional");
-      const auto first_value = builder.CreateCmp(CmpInst::Predicate::ICMP_NE, builder.CreateZExtOrTrunc(left, i1), i1_0);
-
-      BasicBlock* begin = builder.GetInsertBlock();
-      BasicBlock* test_second = BasicBlock::Create(context); f.func->insert(f.func->end(), test_second);
-      BasicBlock* end = BasicBlock::Create(context);
-      builder.CreateCondBr(first_value, end, test_second);
-
-      builder.SetInsertPoint(test_second);
-      Value* right = genExpression(*binary.expr_right, f);
-      const auto second_value = builder.CreateCmp(CmpInst::Predicate::ICMP_NE, builder.CreateZExtOrTrunc(right, i1), i1_0);
-      f.func->insert(f.func->end(), end);
-      builder.CreateBr(end);
-
-      builder.SetInsertPoint(end);
-      const auto phi =  builder.CreatePHI(i1, 2);
-      phi->addIncoming(i1_1, begin);
-      phi->addIncoming(second_value, test_second);
-      return phi;
-    }
-    case AST::Operator::XOR:
-      assert(false && "Operator XOR should have been changed to not_eq in the ast_validator. If you're seeing this, that didn't happen for some reason, soz");
-    case AST::Operator::BITAND:
-      return builder.CreateAnd(left, genExpression(*binary.expr_right, f));
-    case AST::Operator::BITOR:
-      return builder.CreateOr(left, genExpression(*binary.expr_right, f));
-    case AST::Operator::BITXOR:
-      return builder.CreateXor(left, genExpression(*binary.expr_right, f));
-
-    case AST::Operator::EQUAL:
-      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_OEQ : CmpInst::Predicate::ICMP_EQ, left, genExpression(*binary.expr_right, f));
-    case AST::Operator::NOT_EQUAL:
-      return builder.CreateCmp( is_float ? CmpInst::Predicate::FCMP_ONE : CmpInst::Predicate::ICMP_NE, left, genExpression(*binary.expr_right, f));
-
-    default: assert(false && "Binary operator not supported");
-    }
-
-    assert(false && "wtf");
-  }
-  Value* genCalling(const AST::CallingExpression& calling, FunctionBuilder& f) noexcept {
-    std::vector<Value*> params;
-    params.reserve(calling.parameters.size());
-    for (const auto e : calling.parameters)
-      params.push_back(genExpression(*e, f));
-
-    const auto d = std::get<AST::IdentifierExpression>(*calling.func);
-    return f.builder.CreateCall(module.getFunction(d.ident), params);
-  }
-  Value* genSubscript(const AST::SubscriptExpression &, FunctionBuilder& ) const noexcept { assert(false); }
-  Value* genIdentifier(const AST::IdentifierExpression & identifier, FunctionBuilder& f) const noexcept {
-    Value* v;
-    Type* t;
-    if (f.locals.contains(identifier.ident)) {
-      v = f.locals[identifier.ident];
-      t = static_cast<AllocaInst*>(v)->getAllocatedType();
-    }
-    else {
-      v = module.getGlobalVariable(identifier.ident); assert(v != nullptr);
-      t = static_cast<GlobalVariable*>(v)->getValueType();
-    }
-
-    return f.builder.CreateLoad(t, v);
-  }
-  Value* genLiteral(const AST::LiteralExpression& literal) noexcept {
-    if (literal.type->isIntegral())
-      return ConstantInt::get(getType(literal.type), literal.getUint(), not literal.type->isUnsignedIntegral());
-
-    if (literal.type->isFloating()) {
-      return ConstantFP::get(
-        getType(literal.type),
-        literal.type == &AST::f64_type ? literal.getDouble() : literal.getFloat()); //ConstantFP::get only accepts double for some reason, so I have to do this weird hackery
-    }
-
-    if (literal.type == &AST::bool_type || literal.type == &AST::char_type)
-      return ConstantInt::get(i8, literal.getUint());
-
-    if (literal.type == &AST::string_type)
-      return ConstantDataArray::getString(context, literal.getString());
-
-    assert(false && "Invalid / Unimplemented literal expression in codegen");
-  }
-  Value* genExpression(const AST::Expression& expr, FunctionBuilder& f) noexcept {
-    return utils_match(expr,
-      utils_callon(const AST::UnaryExpression&, genUnary, f),
-      utils_callon(const AST::BinaryExpression&, genBinary, f),
-      utils_callon(const AST::CallingExpression&, genCalling, f),
-      utils_callon(const AST::SubscriptExpression&, genSubscript, f),
-      utils_callon(const AST::IdentifierExpression&, genIdentifier, f),
-      utils_callon(const AST::LiteralExpression&, genLiteral)
-      );
-  }
-  Constant* genConstant(const AST::Expression& expr) noexcept {
-    if (std::holds_alternative<AST::LiteralExpression>(expr))
-      return cast<Constant>(genLiteral(std::get<AST::LiteralExpression>(expr)));
-
-    if (std::holds_alternative<AST::IdentifierExpression>(expr))
-      return module.getGlobalVariable(std::get<AST::IdentifierExpression>(expr).ident, true);
-
-    assert(false && "Non-constant expression used to initialize global variable");
-  }
-
-
-  void genVarDeclaration(FunctionBuilder& f) {
-    IRBuilder<> func_entry(&f.func->getEntryBlock());
-    AllocaInst* i = func_entry.CreateAlloca(getType(declaration.type.type), nullptr);
-    f.locals.emplace(declaration.ident, i);
-    if (declaration.expr) f.builder.CreateStore(genExpression(*declaration.expr, f), i);
-    return false;
-  }
-  void genIfStatement(FunctionBuilder& f) {
-    IRBuilder<>& builder = f.builder;
-    Value* condition_val = genExpression(*ifstmt.condition, f);
-    condition_val = builder.CreateZExtOrTrunc(condition_val, i1);
-
-    BasicBlock* thenBB = BasicBlock::Create(context); f.func->insert(f.func->end(), thenBB);
-    BasicBlock* mergeBB = BasicBlock::Create(context);
-    BasicBlock* elseBB = ifstmt.false_branch ? BasicBlock::Create(context) : mergeBB;
-
-    builder.CreateCondBr(condition_val, thenBB, elseBB);
-
-    builder.SetInsertPoint(thenBB);
-
-    if (!genStatement(*ifstmt.true_branch, f))
-      builder.CreateBr(mergeBB);
-
-    f.func->insert(f.func->end(), elseBB);
-    builder.SetInsertPoint(elseBB);
-    if (ifstmt.false_branch) {
-      if (!genStatement(*ifstmt.false_branch, f))
-        builder.CreateBr(mergeBB);
-
-      f.func->insert(f.func->end(), mergeBB);
-      builder.SetInsertPoint(mergeBB);
-    }
-
-    return false;
-  }
-  void genForLoop(FunctionBuilder& ) const { assert(false); }
-  void genWhileLoop(FunctionBuilder& ) const { assert(false); }
-  void genScoped(FunctionBuilder& f) {
-    auto curr = scoped.scope_body.begin();
-    const auto end = scoped.scope_body.end();
-    bool jumps_at_end{false};
-    while (curr != end) {
-      jumps_at_end = genStatement(**curr, f);
-      ++curr;
-    }
-    return jumps_at_end;
-  }
-  void genReturn(FunctionBuilder& f) {
-    if (ret.return_value) {
-      Value* retval = genExpression(*ret.return_value, f);
-      f.builder.CreateStore(retval, f.locals[FunctionBuilder::retval_location_name]);
-    }
-    f.builder.CreateBr(f.return_block);
-    return true;
-  }
-  void genExpressionStatement(FunctionBuilder& f) {
-    if (expr_stmt.expr)
-      genExpression(*expr_stmt.expr, f);
-    return false;
-  }
-  void genStatement(FunctionBuilder& f) {}
-
-  void createFile(const std::filesystem::path& obj_path, const llvm::CodeGenFileType filetype) {
-    llvm::InitializeAllTargetInfos();
-    llvm::InitializeAllTargets();
-    llvm::InitializeAllTargetMCs();
-    llvm::InitializeAllAsmParsers();
-    llvm::InitializeAllAsmPrinters();
-
-    static const auto target_triple = llvm::sys::getDefaultTargetTriple();
-    module.setTargetTriple(target_triple);
-    std::string err;
-    const auto target = llvm::TargetRegistry::lookupTarget(module.getTargetTriple(), err);
-    if (!target) {
-      llvm::errs() << err;
-      assert(false);
-    }
-
-    static constexpr auto CPU = "generic";
-    static constexpr auto Features = "";
-    static const llvm::TargetOptions opt;
-    auto target_machine = target->createTargetMachine(
-      target_triple, CPU, Features, opt, llvm::Reloc::PIC_);
-    module.setDataLayout(target_machine->createDataLayout());
-
-    std::error_code EC;
-    llvm::raw_fd_ostream dest(obj_path.string(), EC, llvm::sys::fs::OF_None);
-    if (EC) {
-      llvm::errs() << "Could not open file: " << obj_path.string() << " | " << EC.message() << '\n';
-      assert(false);
-    }
-
-    llvm::legacy::PassManager pass;
-    if (target_machine->addPassesToEmitFile(pass, dest, nullptr, filetype)) {
-      llvm::errs() << "Target machine can't emit a file of this type";
-      assert(false);
-    }
-
-    pass.run(module);
-    dest.flush();
-    delete target_machine;
-  }
-
-  void printModule(llvm::raw_ostream& out = llvm::outs()) const
-  { module.print(out, nullptr); }
 
   [[nodiscard]] std::filesystem::path
   createASMFile(const std::filesystem::path &file) override {
@@ -548,15 +109,534 @@ public:
     createFile(obj_path, llvm::CodeGenFileType::ObjectFile);
     return obj_path;
   }
+
+  void createFile(const std::filesystem::path& obj_path, const llvm::CodeGenFileType filetype) {
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
+
+    static const llvm::Triple target_triple{llvm::sys::getDefaultTargetTriple()};
+    module.setTargetTriple(target_triple);
+    std::string err;
+    const auto target = llvm::TargetRegistry::lookupTarget(module.getTargetTriple(), err);
+    if (not target) {
+      llvm::errs() << err;
+      std::unreachable();
+    }
+
+    static constexpr auto CPU = "generic";
+    static constexpr auto Features = "";
+    static const llvm::TargetOptions opt;
+    const auto target_machine = target->createTargetMachine(
+      target_triple, CPU, Features, opt, llvm::Reloc::PIC_);
+    module.setDataLayout(target_machine->createDataLayout());
+
+    std::error_code EC;
+    llvm::raw_fd_ostream dest(obj_path.string(), EC, llvm::sys::fs::OF_None);
+    if (EC) {
+      llvm::errs() << "Could not open file: " << obj_path.string() << " | " << EC.message() << '\n';
+      assert(false);
+    }
+
+    llvm::legacy::PassManager pass;
+    if (target_machine->addPassesToEmitFile(pass, dest, nullptr, filetype)) {
+      llvm::errs() << "Target machine can't emit a file of this type";
+      assert(false);
+    }
+
+    pass.run(module);
+    dest.flush();
+    delete target_machine;
+  }
+
+
+  [[nodiscard]] llvm::Type*
+  translateType(const Type* t) const {
+    assert(not t->isCustom());
+    assert(not t->isVariant());
+    assert(not t->isPointer());
+    assert(t not_eq PrimitiveType::string());
+
+    if (t->isIntegral()) {
+      if (t == PrimitiveType::i32() or t == PrimitiveType::u32())
+        return i32;
+      if (t == PrimitiveType::i64() or t == PrimitiveType::u64())
+        return i64;
+      if (t == PrimitiveType::i8() or t == PrimitiveType::u8())
+        return i8;
+      if (t == PrimitiveType::i16() or t == PrimitiveType::u16())
+        return i16;
+      std::unreachable();
+    }
+
+    if (t->isFloating()) {
+      if (t == PrimitiveType::f32())
+        return f32;
+      if (t == PrimitiveType::f64())
+        return f64;
+      std::unreachable();
+    }
+
+    if (t == Type::devoid())
+      return devoid;
+
+    if (t == PrimitiveType::bool_() or t == PrimitiveType::char_())
+      return i8;
+
+    std::unreachable();
+  }
+
+  [[nodiscard]] llvm::IntegerType*
+  typeForInteger(i64_t int_literal) const noexcept {
+    return
+    llvm::cast<llvm::IntegerType>(translateType(signedToLiteralInstance(int_literal).type));
+  }
+
+  [[nodiscard]] llvm::IntegerType*
+  typeForUnsigned(u64_t uint_literal) const noexcept {
+    return
+    llvm::cast<llvm::IntegerType>(translateType(signedToLiteralInstance(uint_literal).type));
+  }
+
+  friend class Function;
+  struct Function {
+    TU* tu;
+
+    llvm::Type* return_type;
+    llvm::Function* llvmfunc;
+    llvm::IRBuilder<>* builder;
+    std::vector<llvm::AllocaInst*> locals;
+
+    released_ptr<PeepMIR::Instruction> instructions; sz_t instruction_idx{};
+    released_span<PeepMIR::Block> mir_blocks; sz_t block_idx{};
+    std::vector<llvm::BasicBlock*> llvm_blocks;
+
+    [[nodiscard]] llvm::Constant*
+    fpConstant(llvm::Type* t, double value) const noexcept
+    {return llvm::ConstantFP::get(t, value);}
+
+    [[nodiscard]] llvm::Constant*
+    signedConstant(llvm::Type* t, i64_t value) const noexcept
+    {return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value, true);}
+
+    [[nodiscard]] llvm::Constant*
+    unsignedConstant(llvm::Type* t, u64_t value) const noexcept
+    {return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value);}
+
+    void genUnary(PeepMIR::Instruction::Type type) noexcept {
+      const auto var = llvm::cast<llvm::AllocaInst>(expression_buffer.back());
+      const bool is_float = var->getType()->isFloatingPointTy();
+      llvm::Value* res{};
+      switch (type) {
+      using enum PeepMIR::Instruction::Type;
+      case PRE_INC:
+        res = is_float
+        ? builder->CreateFAdd(var, fpConstant(var->getType(), 1))
+        : builder->CreateAdd(var, unsignedConstant(var->getType(), 1));
+        builder->CreateStore(res, var);
+        break;
+
+      case PRE_DEC:
+        res = is_float
+        ? builder->CreateFSub(var, fpConstant(var->getType(), 1))
+        : builder->CreateSub(var, unsignedConstant(var->getType(), 1));
+        builder->CreateStore(res, var);
+        break;
+
+      case NEGATE:
+        res = is_float ? builder->CreateFNeg(var) : builder->CreateNeg(var);
+        break;
+
+      case ADDRESS_OF:
+        res = var;
+        break;
+
+      case BITNOT:
+        res = builder->CreateNot(var);
+        break;
+
+      case POST_INC:
+        builder->CreateStore(
+          is_float
+          ? builder->CreateFAdd(var, fpConstant(var->getType(), 1))
+          : builder->CreateAdd(var, unsignedConstant(var->getType(), 1)),
+          var
+          );
+        res = var;
+        break;
+
+      case POST_DEC:
+        builder->CreateStore(
+          is_float
+          ? builder->CreateFSub(var, fpConstant(var->getType(), 1))
+          : builder->CreateSub(var, unsignedConstant(var->getType(), 1)),
+          var
+          );
+        res = var;
+        break;
+
+      default:
+        std::unreachable();
+      }
+
+      expression_buffer.clear();
+      expression_buffer.emplace_back(res);
+    }
+
+    void genBinary(PeepMIR::Instruction::Type type) noexcept {
+      auto e = expression_buffer.crbegin();
+      auto right = *(e++);
+      right =
+      llvm::isa<llvm::AllocaInst>(right)
+      ? builder->CreateLoad(llvm::cast<llvm::AllocaInst>(right)->getAllocatedType(), right)
+      : right;
+
+      auto left = *e;
+      const bool is_float = left->getType()->isFloatingPointTy();
+      llvm::Value* res{};
+
+      switch (type) {
+        using enum PeepMIR::Instruction::Type;
+      case ADD:
+        res = is_float ?
+        builder->CreateFAdd(left, right) : builder->CreateAdd(left, right);
+        break;
+      case SUB:
+        res = is_float ?
+        builder->CreateFSub(left, right) : builder->CreateSub(left, right);
+        break;
+      case MULT:
+        res = is_float ?
+        builder->CreateFMul(left, right) : builder->CreateMul(left, right);
+        break;
+      case DIV:
+        res = is_float ?                       // CHANGE THIS
+        builder->CreateFDiv(left, right) : builder->CreateSDiv(left, right);
+        break;
+      case MOD:
+        res = is_float ?                       // CHANGE THIS
+        builder->CreateFRem(left, right) : builder->CreateSRem(left, right);
+        break;
+      case ASSIGN:
+        assert(llvm::isa<llvm::AllocaInst>(left));
+        builder->CreateStore(
+          right,
+          llvm::cast<llvm::AllocaInst>(left));
+        res = left;
+        break;
+      case LESS:
+        res = builder->CreateCmp( // CHANGE THIS
+          is_float ? llvm::CmpInst::Predicate::FCMP_OLT : llvm::CmpInst::Predicate::ICMP_ULT, left, right
+          );
+        break;
+      case GTR:
+        res = builder->CreateCmp(
+          is_float ? llvm::CmpInst::Predicate::FCMP_OGT : llvm::CmpInst::Predicate::ICMP_UGT, left, right
+          );
+        break;
+      case LEQ:
+        res = builder->CreateCmp(
+          is_float ? llvm::CmpInst::Predicate::FCMP_OLE : llvm::CmpInst::Predicate::ICMP_ULE, left, right
+        );
+        break;
+      case GEQ:
+        res = builder->CreateCmp(
+          is_float ? llvm::CmpInst::Predicate::FCMP_OGE : llvm::CmpInst::Predicate::ICMP_UGE, left, right
+        );
+        break;
+      case AND:
+        assert(not is_float);
+        res = builder->CreateLogicalAnd(left, right);
+        break;
+      case OR:
+        assert(not is_float);
+        res = builder->CreateLogicalOr(left, right);
+        break;
+      case BITAND:
+        res = builder->CreateAnd(left, right);
+        break;
+      case BITOR:
+        res = builder->CreateOr(left, right);
+        break;
+      case BITXOR:
+        res = builder->CreateXor(left, right);
+        break;
+      case EQ:
+        res = builder->CreateCmp(
+          is_float ? llvm::CmpInst::Predicate::FCMP_OEQ : llvm::CmpInst::Predicate::ICMP_EQ, left, right
+          );
+        break;
+      case NEQ:
+        res = builder->CreateCmp(
+          is_float ? llvm::CmpInst::Predicate::FCMP_ONE : llvm::CmpInst::Predicate::ICMP_NE, left, right
+        );
+        break;
+      default:
+        std::unreachable();
+      }
+
+      expression_buffer.clear();
+      expression_buffer.emplace_back(res);
+    }
+
+    std::vector<llvm::Value*> expression_buffer;
+    void genExpression() noexcept {
+      auto& instruction = instructions[instruction_idx++];
+      switch (instruction.type) {
+        using enum PeepMIR::Instruction::Type;
+      case NOOP:
+        return;
+      case GLOBAL:
+        expression_buffer.emplace_back(tu->module.getNamedGlobal(instruction.string_value()));
+        assert(expression_buffer.back());
+        instruction.release_string_value().destroy_and_deallocate();
+        return;
+
+      case LOCAL:
+        assert(instruction.local_idx() < locals.size());
+        expression_buffer.emplace_back(locals[instruction.local_idx()]);
+        return;
+
+      case FUNCTION:
+        expression_buffer.emplace_back(tu->module.getFunction(instruction.function_name())); assert(expression_buffer.back());
+        instruction.release_string_value().destroy_and_deallocate();
+        return;
+
+      case INT_LITERAL:
+        expression_buffer.emplace_back(
+          llvm::ConstantInt::get(tu->typeForInteger(instruction.int_value()),
+          std::bit_cast<u64_t>(instruction.int_value()), true));
+        return;
+      case UINT_LITERAL:
+        expression_buffer.emplace_back(llvm::ConstantInt::get(tu->typeForUnsigned(instruction.int_value()),
+          instruction.uint_value()));
+        return;
+      case FLOAT_LITERAL:
+        expression_buffer.emplace_back(llvm::ConstantFP::get(tu->f32, instruction.float_value()));
+        return;
+      case DOUBLE_LITERAL:
+        expression_buffer.emplace_back(llvm::ConstantFP::get(tu->f64, instruction.double_value()));
+        return;
+      case BOOL_LITERAL:
+        expression_buffer.emplace_back(instruction.bool_value() ? tu->i1_1 : tu->i1_0);
+        return;
+      case CHAR_LITERAL:
+        expression_buffer.emplace_back(llvm::ConstantInt::get(tu->i8, instruction.char_value()));
+        return;
+      case STRING_LITERAL:
+        expression_buffer.emplace_back(llvm::ConstantDataArray::getString(tu->context, instruction.string_value()));
+        instruction.release_string_value().destroy_and_deallocate();
+        return;
+
+      case ADD:
+      case SUB:
+      case MULT:
+      case DIV:
+      case MOD:
+      case ASSIGN:
+      case LESS:
+      case GTR:
+      case LEQ:
+      case GEQ:
+      case AND:
+      case OR:
+      case BITAND:
+      case BITOR:
+      case BITXOR:
+      case BITNOT:
+      case EQ:
+      case NEQ:
+        genBinary(instruction.type);
+        return;
+
+      case PRE_INC:
+      case PRE_DEC:
+      case ADDRESS_OF:
+      case NEGATE:
+      case POST_INC:
+      case POST_DEC:
+        genUnary(instruction.type);
+        return;
+
+      case CALL: {
+        assert(expression_buffer.size() >= instruction.num_params() + 1);
+        auto iter = expression_buffer.crbegin();
+        llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
+        for (auto i{0uz}; i<instruction.num_params(); ++i)
+          parameters[i] = *iter++;
+
+        auto call_res = builder->CreateCall(
+          llvm::cast<llvm::Function>(*iter),
+          {parameters, instruction.num_params()}
+          );
+        expression_buffer.clear();
+        expression_buffer.emplace_back(call_res);
+        return;
+      }
+      default:
+        std::unreachable();
+      }
+
+    }
+
+    llvm::Value* branch_value;
+    void genBlock(u32_t instruction_cut_off) {
+      while (instruction_idx < instruction_cut_off)
+        genExpression();
+
+      branch_value = expression_buffer.back();
+      expression_buffer.clear();
+      const auto& block = mir_blocks[block_idx];
+      switch (block.terminator_type) {
+        using enum PeepMIR::Block::Terminator;
+      case BR:
+        builder->CreateBr(
+          llvm_blocks[block.br.next_block_idx]);
+        break;
+      case BRC:
+        builder->CreateCondBr( branch_value,
+          llvm_blocks[block.brc.true_block_idx],
+          llvm_blocks[block.brc.false_block_idx]);
+        break;
+      case RET:
+        builder->CreateRet(branch_value);
+        break;
+      default:
+        std::unreachable();
+      }
+    }
+
+    void genFunction() {
+      const auto num_blocks = mir_blocks.size();
+      while (block_idx < (num_blocks - 1)) {
+        genBlock(mir_blocks[block_idx+1].first_instruction_idx);
+        ++block_idx;
+      }
+      builder->SetInsertPoint(&llvmfunc->back());
+      if (return_type->isVoidTy()) {
+        builder->CreateRetVoid();
+      }
+      else {
+        builder->CreateRet(
+            builder->CreateLoad(locals[0]->getAllocatedType(), locals[0])
+          );
+      }
+
+      mir_blocks.destroy_and_deallocate();
+      instructions.destroy_and_deallocate();
+      if (verifyFunction(*llvmfunc, &llvm::errs())) {
+        tu->module.print(llvm::outs(), nullptr);
+        throw BackendError("Failed to verify Function!", llvmfunc->getName().str(), 0);
+      }
+    }
+  };
+
+  void genGlobals() {
+    /*
+    llvm::Constant* v = var.expr ?  genConstant(*var.expr) : llvm::Constant::getNullValue(translateType(var.type.type));
+    module.insertGlobalVariable(
+      new llvm::GlobalVariable(
+       translateType(var.type.type),
+       not var.type.details.is_mutable,
+       llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+       v,
+       var.ident
+       )
+     );
+     */
+  }
+
+  void compileFunction(PeepMIR::Function& func) {
+    Function lowering_function; lowering_function.tu = this;
+    lowering_function.llvm_blocks.reserve(func.blocks.size());
+
+    llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
+    const auto function_type = func.type;
+    auto num_params{0uz};
+    for (const auto t : function_type->parameterTypes()) {
+      arg_types[num_params] = translateType(t);
+      ++num_params;
+    }
+
+    //hack
+    lowering_function.return_type =
+      function_type->returnType()->isBool() ? i1 : translateType(function_type->returnType());
+
+    const auto func_type = llvm::FunctionType::get(lowering_function.return_type, {arg_types, num_params}, false);
+    lowering_function.llvmfunc = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, 0, std::string_view(func.name), &module);
+    const auto entry = llvm::BasicBlock::Create(context, "", lowering_function.llvmfunc);
+    llvm::IRBuilder builder(entry); lowering_function.builder = &builder;
+    lowering_function.llvm_blocks.emplace_back(entry);
+    for (auto i{1uz}; i<func.blocks.size(); ++i) {
+      lowering_function.llvm_blocks.emplace_back(
+        llvm::BasicBlock::Create(context, "", lowering_function.llvmfunc));
+    }
+
+    auto arg = lowering_function.llvmfunc->arg_begin();
+    lowering_function.locals.reserve(func.locals.size() + 1);
+    lowering_function.locals.emplace_back(
+      (lowering_function.return_type->isVoidTy()) ? nullptr
+      : builder.CreateAlloca(lowering_function.return_type, nullptr) );
+
+    for (auto i{0uz}; i<num_params; ++i) {
+      llvm::AllocaInst* param_alloca = builder.CreateAlloca(arg_types[i], nullptr);
+      builder.CreateStore(arg, param_alloca);
+      lowering_function.locals.emplace_back(param_alloca);
+      ++arg, ++i;
+    }
+
+    const auto num_locals = func.locals.size();
+      for (auto i{num_params + 1}; i<num_locals; ++i) {
+        lowering_function.locals.emplace_back(
+          builder.CreateAlloca(translateType(func.locals[i]), nullptr)
+          );
+    }
+
+    func.name.destroy_and_deallocate();
+    func.locals.destroy_and_deallocate();
+    lowering_function.instructions = std::move(func.instructions);
+    lowering_function.mir_blocks = std::move(func.blocks);
+    lowering_function.genFunction();
+
+
+
+  }
+
+public:
+
+  void lowerToLLVM(PeepMIR::TU& tu) {
+    //for (const auto& v : tu.globals)
+      //void;
+
+    for (auto& func : tu.functions)
+      compileFunction(func);
+  }
+
+  explicit TU(const std::string& filename)
+  : module(filename, context) {
+    i1 = llvm::Type::getInt1Ty(context); i1_0 = llvm::ConstantInt::get(i1, 0); i1_1 = llvm::ConstantInt::get(i1, 1);
+    i8 = llvm::Type::getInt8Ty(context); i8_0 = llvm::ConstantInt::get(i8, 0); i8_1 = llvm::ConstantInt::get(i8, 1);
+    i16 = llvm::Type::getInt16Ty(context); i16_0 = llvm::ConstantInt::get(i16, 0); i16_1 = llvm::ConstantInt::get(i16, 1);
+    i32 = llvm::Type::getInt32Ty(context); i32_0 = llvm::ConstantInt::get(i32, 0); i32_1 = llvm::ConstantInt::get(i32, 1);
+    i64 = llvm::Type::getInt64Ty(context); i64_0 = llvm::ConstantInt::get(i64, 0); i64_1 = llvm::ConstantInt::get(i64, 1);
+
+    f32 = llvm::Type::getFloatTy(context); f32_0 = llvm::ConstantFP::get(f32, 0); f32_1 = llvm::ConstantFP::get(f32, 1);
+    f64 = llvm::Type::getDoubleTy(context); f64_0 = llvm::ConstantFP::get(f64, 0); f64_1 = llvm::ConstantFP::get(f64, 1);
+    devoid = llvm::Type::getVoidTy(context);
+  }
+
+  void printModule(llvm::raw_ostream& out = llvm::outs()) const
+  { module.print(out, nullptr); }
+
+
 };
 }
-*/
-}
 
-std::unique_ptr<Backend> ToLLVM::codegen(
-  [[maybe_unused]] PeepMIR::TU&& peeped_tu,
-  [[maybe_unused]] const std::filesystem::path &file) {
-  //auto ptr = std::make_unique<TU>(file.string());
-  //ptr->lowerToLLVM(peeped_tu);
-  return nullptr;
+std::unique_ptr<Backend> ToLLVM::codegen(PeepMIR::TU&& peeped_tu, const std::filesystem::path &file) {
+  auto ptr = std::make_unique<TU>(file.string());
+  ptr->lowerToLLVM(peeped_tu);
+  ptr->printModule();
+  return ptr;
 }

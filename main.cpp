@@ -37,14 +37,6 @@ int main(const int argc, const char* argv[]) {
   if (filepaths.empty())
     throw std::runtime_error("At least one file name must be specified");
 
-  try {
-    auto k = lowerToPeep(parseTokens(tokenizeFile(filepaths[0])));
-  }
-  catch (LOMError& e) {
-    std::cout << e.error_message << std::endl;
-    std::quick_exit(1);
-  }
-  /*
   const bool output_asm = Settings::doOutputASM();
   const bool output_ir = Settings::doOutputIR();
   const bool output_obj = Settings::doOutputOBJ() or Settings::doLinking();
@@ -60,7 +52,6 @@ int main(const int argc, const char* argv[]) {
 
   if (Settings::doLinking())
     Backend::linkObjects(filepaths);
-    */
 
   return 0;
 }

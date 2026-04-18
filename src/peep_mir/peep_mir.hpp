@@ -24,20 +24,19 @@ struct Instruction {
     LOCAL, //value is local idx
     FUNCTION, //value is char*
 
-
-    //literals contain exactly what you think they would
+    //look you've read my codebase you get the memo by now
     INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
 
     //value not determined yet for the operators
     ADD, SUB, MULT, DIV, MOD,
     ASSIGN,
-    LESS, GTR, LEQ, GEQ,
-    AND, OR, BITAND, BITOR, BITXOR, BITNOT,
-    EQ, NEQ,
+    LESS, GTR, LEQ, GEQ, EQ, NEQ, AND, OR,
+    BITAND, BITOR, BITXOR, BITNOT,
     PRE_INC, PRE_DEC, ADDRESS_OF, NEGATE,
     POST_INC, POST_DEC,
 
     CALL // value equals number of parameters
+    // CALL CALLED PARAMETERS...
   }type;
   u64_t value;
 

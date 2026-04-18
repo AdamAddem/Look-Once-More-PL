@@ -178,6 +178,7 @@ class Peeper {
     if constexpr (global_peeping)
       throw ValidationError("Function calls not allowed when initializing globals.", "Sorry!", current_line_number);
 
+    instructions.emplace_back(Instruction::CALL, parameter_count);
     const auto called = peepExpression();
     if (not called.type->isCallable())
       throw ValidationError("Call operator used on non-callable.", std::format("Expression has type '{}'", called.toString()), current_line_number);
@@ -194,22 +195,87 @@ class Peeper {
           current_line_number);
     }
 
-    instructions.emplace_back(Instruction::CALL, parameter_count);
     const auto result = function_type->returnType();
     return {result, {}};
   }
 
   //TODO: Add Short Circuiting
   InstantiatedType peepBinaryExpression(Operator opr) {
+    switch (opr) {
+    case Operator::ADD:
+      instructions.emplace_back(Instruction::ADD, 0); //left
+      break;
+    case Operator::SUBTRACT:
+      instructions.emplace_back(Instruction::SUB, 0); //left
+      break;
+    case Operator::MULTIPLY:
+      instructions.emplace_back(Instruction::MULT, 0); //left
+      break;
+    case Operator::DIVIDE:
+      instructions.emplace_back(Instruction::DIV, 0); //left
+      break;
+    case Operator::MODULUS:
+      instructions.emplace_back(Instruction::MOD, 0); //left
+      break;
+
+    case Operator::LESS:
+      instructions.emplace_back(Instruction::LESS, 0); //bool_literal
+      break;
+    case Operator::GREATER:
+      instructions.emplace_back(Instruction::GTR, 0); //bool_literal
+      break;
+    case Operator::LESS_EQUAL:
+      instructions.emplace_back(Instruction::LEQ, 0); //bool_literal
+      break;
+    case Operator::GREATER_EQUAL:
+      instructions.emplace_back(Instruction::GEQ, 0); //bool_literal
+      break;
+    case Operator::AND:
+      instructions.emplace_back(Instruction::AND, 0); //bool_literal
+      break;
+    case Operator::OR:
+      instructions.emplace_back(Instruction::OR, 0); //bool_literal;
+      break;
+    case Operator::XOR:
+      instructions.emplace_back(Instruction::NEQ, 0); //bool_literal;
+      break;
+
+    case Operator::BITAND:
+      instructions.emplace_back(Instruction::BITAND, 0); //left;
+      break;
+    case Operator::BITOR:
+      instructions.emplace_back(Instruction::BITOR, 0); //left;
+      break;
+    case Operator::BITXOR:
+      instructions.emplace_back(Instruction::BITXOR, 0); //left;
+      break;
+
+    case Operator::ASSIGN:
+      instructions.emplace_back(Instruction::ASSIGN, 0); //left;
+      break;
+
+    case Operator::EQUAL:
+      instructions.emplace_back(Instruction::EQ, 0); //bool_literal;
+      break;
+    case Operator::NOT_EQUAL:
+      instructions.emplace_back(Instruction::NEQ, 0); //bool_literal;
+      break;
+
+    default:
+      std::unreachable();
+    }
+
     auto left = peepExpression();
     const bool left_mutable = left.details.is_mutable;
-    auto right = peepExpression();
+    const auto right = peepExpression();
 
     if (not left.type->convertibleTo(right.type) and not right.type->convertibleTo(left.type))
-      throw ValidationError("Binary operator used on differing types.", std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
+      throw ValidationError("Binary operator used on differing types.",
+        std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
 
     if (left.type->isVariant()) //types should be same, so checking just one is sufficient
-      throw ValidationError("Binary operator used on variant types.", std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
+      throw ValidationError("Binary operator used on variant types.",
+        std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
 
     const bool arithmetic = left.type->isArithmetic();
     switch (opr) {
@@ -218,6 +284,12 @@ class Peeper {
     case Operator::MULTIPLY:
     case Operator::DIVIDE:
     case Operator::MODULUS:
+      if (not arithmetic)
+        throw ValidationError("Non-arithmetic expression in arithmetic binary operation.",
+          std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
+      left.details.is_mutable = false;
+      return left;
+
     case Operator::LESS:
     case Operator::GREATER:
     case Operator::LESS_EQUAL:
@@ -225,8 +297,7 @@ class Peeper {
       if (not arithmetic)
         throw ValidationError("Non-arithmetic expression in arithmetic binary operation.",
           std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
-      left.details.is_mutable = false;
-      break;
+      return bool_literal;
 
     case Operator::AND:
     case Operator::OR:
@@ -234,8 +305,7 @@ class Peeper {
       if (not left.type->isBool())
         throw ValidationError("Non-boolean expressions in boolean binary operation.",
           std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
-      left.details.is_mutable = false;
-      break;
+      return bool_literal;
 
     case Operator::BITAND:
     case Operator::BITOR:
@@ -244,71 +314,52 @@ class Peeper {
         throw ValidationError("Non-arithmetic expression(s) in bitwise operation.",
           std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
       left.details.is_mutable = false;
-      break;
+      return left;
 
     case Operator::ASSIGN:
       if (not left_mutable)
         throw ValidationError("Left expression in assignment non-mutable.",
           std::format("Type of expression is '{}'", left.type->toString()), current_line_number);
-      break;
+      return left;
 
     case Operator::EQUAL:
     case Operator::NOT_EQUAL:
-      left.details.is_mutable = false;
-      break;
-
-    default:
-      assert(false);
-    }
-
-    switch (opr) {
-    case Operator::ADD:
-      return instructions.emplace_back(Instruction::ADD, 0), left;
-    case Operator::SUBTRACT:
-      return instructions.emplace_back(Instruction::SUB, 0), left;
-    case Operator::MULTIPLY:
-      return instructions.emplace_back(Instruction::MULT, 0), left;
-    case Operator::DIVIDE:
-      return instructions.emplace_back(Instruction::DIV, 0), left;
-    case Operator::MODULUS:
-      return instructions.emplace_back(Instruction::MOD, 0), left;
-
-    case Operator::LESS:
-      return instructions.emplace_back(Instruction::LESS, 0), bool_literal;
-    case Operator::GREATER:
-      return instructions.emplace_back(Instruction::GTR, 0), bool_literal;
-    case Operator::LESS_EQUAL:
-      return instructions.emplace_back(Instruction::LEQ, 0), bool_literal;
-    case Operator::GREATER_EQUAL:
-      return instructions.emplace_back(Instruction::GEQ, 0), bool_literal;
-    case Operator::AND:
-      return instructions.emplace_back(Instruction::AND, 0), bool_literal;
-    case Operator::OR:
-      return instructions.emplace_back(Instruction::OR, 0), bool_literal;
-    case Operator::XOR:
-      return instructions.emplace_back(Instruction::NEQ, 0), bool_literal;
-
-    case Operator::BITAND:
-      return instructions.emplace_back(Instruction::BITAND, 0), bool_literal;
-    case Operator::BITOR:
-      return instructions.emplace_back(Instruction::BITOR, 0), bool_literal;
-    case Operator::BITXOR:
-      return instructions.emplace_back(Instruction::BITXOR, 0), bool_literal;
-
-    case Operator::ASSIGN:
-      return instructions.emplace_back(Instruction::ASSIGN, 0), left;
-
-    case Operator::EQUAL:
-      return instructions.emplace_back(Instruction::EQ, 0), bool_literal;
-    case Operator::NOT_EQUAL:
-      return instructions.emplace_back(Instruction::NEQ, 0), bool_literal;
+      return bool_literal;
 
     default:
       std::unreachable();
     }
+
   }
 
-  InstantiatedType peepUnaryExpression(Operator opr) {
+  InstantiatedType peepUnaryExpression(const Operator opr) {
+    switch (opr) {
+    case Operator::PRE_INCREMENT:
+      instructions.emplace_back(Instruction::PRE_INC, 0);
+      break;
+    case Operator::PRE_DECREMENT:
+      instructions.emplace_back(Instruction::PRE_DEC, 0);
+      break;
+    case Operator::UNARY_MINUS:
+      instructions.emplace_back(Instruction::NEGATE, 0);
+      break;
+    case Operator::ADDRESS_OF:
+      instructions.emplace_back(Instruction::ADDRESS_OF, 0);
+      break;
+    case Operator::BITNOT:
+    case Operator::NOT:
+      instructions.emplace_back(Instruction::BITNOT, 0);
+      break;
+    case Operator::POST_INCREMENT:
+      instructions.emplace_back(Instruction::POST_INC, 0);
+      break;
+    case Operator::POST_DECREMENT:
+      instructions.emplace_back(Instruction::POST_DEC, 0);
+      break;
+    default:
+      std::unreachable();
+    }
+
     auto expression = peepExpression();
     if (expression.type->isVariant())
       throw ValidationError("Unary operator used on variant type.", expression.toString(), current_line_number);
@@ -316,45 +367,28 @@ class Peeper {
     const bool arithmetic = expression.type->isArithmetic();
     switch (opr) {
     case Operator::PRE_INCREMENT:
-      if (not expression.details.is_mutable)
-        throw ValidationError("Prefix operator used on non-mutable expression.", expression.toString(), current_line_number);
-      return instructions.emplace_back(Instruction::PRE_INC, 0), expression;
     case Operator::PRE_DECREMENT:
       if (not expression.details.is_mutable)
         throw ValidationError("Prefix operator used on non-mutable expression.", expression.toString(), current_line_number);
-      return instructions.emplace_back(Instruction::PRE_DEC, 0), expression;
-
+      return expression;
     case Operator::UNARY_MINUS:
       if (not arithmetic)
         throw ValidationError("Unary minus used on non-arithmetic expression.", expression.toString(), current_line_number);
-      instructions.emplace_back(Instruction::NEGATE, 0);
       return expression.details.is_mutable = false, expression;
-
     case Operator::ADDRESS_OF:
-      instructions.emplace_back(Instruction::ADDRESS_OF, 0);
       return {table.addRawPointer(expression), {}};
-
     case Operator::BITNOT:
       if (not arithmetic)
         throw ValidationError("bitnot operator used non-arithmetic expression", expression.toString(), current_line_number);
-      instructions.emplace_back(Instruction::BITNOT, 0);
       return expression.details.is_mutable = false, expression;
-
     case Operator::NOT:
       if (not expression.type->isBool())
         throw ValidationError("not operator used non-boolean expression", expression.toString(), current_line_number);
-      instructions.emplace_back(Instruction::BITNOT, 0);
       return expression.details.is_mutable = false, expression;
-
     case Operator::POST_INCREMENT:
-      if (not expression.details.is_mutable)
-        throw ValidationError("Postfix increment operator used on non-mutable expression.", expression.toString(), current_line_number);
-      instructions.emplace_back(Instruction::POST_INC, 0);
-      return expression.details.is_mutable = false, expression;
     case Operator::POST_DECREMENT:
       if (not expression.details.is_mutable)
         throw ValidationError("Postfix decrement operator used on non-mutable expression.", expression.toString(), current_line_number);
-      instructions.emplace_back(Instruction::POST_DEC, 0);
       return expression.details.is_mutable = false, expression;
 
     default:
@@ -405,9 +439,9 @@ class Peeper {
       return;
     }
 
+    instructions.emplace_back(Instruction::ASSIGN, 0);
     instructions.emplace_back(Instruction::LOCAL, 0);
     const auto return_expression = peepExpression();
-    instructions.emplace_back(Instruction::ASSIGN, 0);
     if (return_type->isDevoid())
       throw ValidationError("Cannot return value from devoid function",
       std::format("Return value type is '{}'", return_expression.toString()), current_line_number);
@@ -492,6 +526,7 @@ class Peeper {
       return;
     }
 
+    instructions.emplace_back(Instruction::ASSIGN, 0);
     if constexpr(global_peeping) {
       instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(name_cstr));
       table.addGlobalVariable(name, declaration_type);
@@ -508,7 +543,6 @@ class Peeper {
         name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", initialization_type.toString()), current_line_number);
 
     locals.emplace_back(declaration_type.type);
-    instructions.emplace_back(Instruction::ASSIGN, 0);
   }
 
   void peepStatement() {

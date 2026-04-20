@@ -135,8 +135,9 @@ public:
     IDENTIFIER,  // HAS CHAR*      |
 
     //value holds the bitwise representation of their respective type
-    INT_LITERAL,
-    UINT_LITERAL,
+    INTEGER_LITERAL,
+    SIGNED_LITERAL,
+    UNSIGNED_LITERAL,
     FLOAT_LITERAL,
     DOUBLE_LITERAL,
     BOOL_LITERAL,
@@ -196,14 +197,14 @@ public:
   }
 
   [[nodiscard]] constexpr i64_t
-  int_val() const noexcept {
-    assert(type() == INT_LITERAL);
+  signed_val() const noexcept {
+    assert(type() == SIGNED_LITERAL);
     return std::bit_cast<i64_t>(value());
   }
 
   [[nodiscard]] constexpr u64_t
-  uint_val() const noexcept {
-    assert(type() == UINT_LITERAL);
+  unsigned_val() const noexcept {
+    assert(type() == UNSIGNED_LITERAL);
     return value();
   }
 

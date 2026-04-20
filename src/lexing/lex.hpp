@@ -72,10 +72,10 @@ public:
   getRawValue() const noexcept {return value;}
 
   [[nodiscard]] constexpr i64_t
-  getInt() const noexcept {assume_assert(type == TokenType::INT_LITERAL); return std::bit_cast<i64_t>(value);}
+  getSigned() const noexcept {assume_assert(type == TokenType::INTEGER_LITERAL); return std::bit_cast<i64_t>(value);}
 
   [[nodiscard]] constexpr u64_t
-  getUint() const noexcept {assume_assert(type == TokenType::UINT_LITERAL); return value;}
+  getUnsigned() const noexcept {assume_assert(type == TokenType::UNSIGNED_LITERAL); return value;}
 
   [[nodiscard]] constexpr float
   getFloat() const noexcept {assume_assert(type == TokenType::FLOAT_LITERAL); return std::bit_cast<float>(static_cast<u32_t>(value));}

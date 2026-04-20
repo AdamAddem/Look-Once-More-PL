@@ -197,16 +197,20 @@ struct Body {
 
     if (tokens.peek().isLiteral()) {
       auto token = tokens.take();
-      auto literal_type = ASTNode::EMPTY;
+      ASTNode::Type literal_type;
       u64_t literal_value;
 
       switch (token.getType()) {
-      case TokenType::INT_LITERAL:
-        literal_type = ASTNode::INT_LITERAL;
+      case TokenType::INTEGER_LITERAL:
+        literal_type = ASTNode::INTEGER_LITERAL;
         literal_value = token.getRawValue();
         break;
-      case TokenType::UINT_LITERAL:
-        literal_type = ASTNode::UINT_LITERAL;
+      case TokenType::SIGNED_LITERAL:
+        literal_type = ASTNode::SIGNED_LITERAL;
+        literal_value = token.getRawValue();
+        break;
+      case TokenType::UNSIGNED_LITERAL:
+        literal_type = ASTNode::UNSIGNED_LITERAL;
         literal_value = token.getRawValue();
         break;
       case TokenType::FLOAT_LITERAL:
@@ -518,8 +522,9 @@ struct Body {
       return;
 
     case IDENTIFIER:
-    case INT_LITERAL:
-    case UINT_LITERAL:
+    case INTEGER_LITERAL:
+    case SIGNED_LITERAL:
+    case UNSIGNED_LITERAL:
     case FLOAT_LITERAL:
     case DOUBLE_LITERAL:
     case BOOL_LITERAL:

@@ -296,12 +296,12 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::cout << node->identifier();
     return;
 
-  case INT_LITERAL:
-    std::cout << node->int_val();
+  case SIGNED_LITERAL:
+    std::cout << node->signed_val();
     return;
 
-  case UINT_LITERAL:
-    std::cout << node->uint_val();
+  case UNSIGNED_LITERAL:
+    std::cout << node->unsigned_val();
     return;
 
   case FLOAT_LITERAL:

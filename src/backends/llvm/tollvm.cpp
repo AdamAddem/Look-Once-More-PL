@@ -197,21 +197,74 @@ class TU final : public Backend {
   [[nodiscard]] llvm::IntegerType*
   typeForUnsigned(u64_t uint_literal) const noexcept {
     return
-    llvm::cast<llvm::IntegerType>(translateType(signedToLiteralInstance(uint_literal).type));
+    llvm::cast<llvm::IntegerType>(translateType(unsignedToLiteralInstance(uint_literal).type));
   }
 
-  friend class Function;
+  friend struct Function;
   struct Function {
     TU* tu;
 
     llvm::Type* return_type;
     llvm::Function* llvmfunc;
-    llvm::IRBuilder<>* builder;
+    llvm::IRBuilder<> builder;
     std::vector<llvm::AllocaInst*> locals;
 
     released_ptr<PeepMIR::Instruction> instructions; sz_t instruction_idx{};
     released_span<PeepMIR::Block> mir_blocks; sz_t block_idx{};
     std::vector<llvm::BasicBlock*> llvm_blocks;
+
+    Function(PeepMIR::Function& func, TU* tu)
+    : tu(tu), builder(tu->context) {
+      llvm_blocks.reserve(func.blocks.size());
+
+      llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
+      const auto function_type = func.type;
+      auto num_params{0uz};
+      for (const auto t : function_type->parameterTypes()) {
+        arg_types[num_params] = tu->translateType(t);
+        ++num_params;
+      }
+
+      //hack
+      return_type =
+        function_type->returnType()->isBool() ? tu->i1 : tu->translateType(function_type->returnType());
+
+      const auto func_type = llvm::FunctionType::get(return_type, {arg_types, num_params}, false);
+      llvmfunc = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, 0, std::string_view(func.name), &tu->module);
+
+      const auto entry = llvm::BasicBlock::Create(tu->context, "", llvmfunc);
+      builder.SetInsertPoint(entry);
+      llvm_blocks.emplace_back(entry);
+      for (auto i{1uz}; i<func.blocks.size(); ++i) {
+        llvm_blocks.emplace_back(
+          llvm::BasicBlock::Create(tu->context, "", llvmfunc));
+      }
+
+      auto arg = llvmfunc->arg_begin();
+      locals.reserve(func.locals.size() + 1);
+      locals.emplace_back(
+        (return_type->isVoidTy()) ? nullptr
+        : builder.CreateAlloca(return_type, nullptr) );
+
+      for (auto i{0uz}; i<num_params; ++i) {
+        llvm::AllocaInst* param_alloca = builder.CreateAlloca(arg_types[i], nullptr);
+        builder.CreateStore(arg, param_alloca);
+        locals.emplace_back(param_alloca);
+        ++arg, ++i;
+      }
+
+      const auto num_locals = func.locals.size();
+        for (auto i{num_params + 1}; i<num_locals; ++i) {
+          locals.emplace_back(
+            builder.CreateAlloca(tu->translateType(func.locals[i]), nullptr)
+            );
+      }
+
+      func.name.destroy_and_deallocate();
+      func.locals.destroy_and_deallocate();
+      instructions = std::move(func.instructions);
+      mir_blocks = std::move(func.blocks);
+    }
 
     [[nodiscard]] llvm::Constant*
     fpConstant(llvm::Type* t, double value) const noexcept
@@ -228,53 +281,45 @@ class TU final : public Backend {
     [[nodiscard]] llvm::Value*
     genUnary(PeepMIR::Instruction::Type type) noexcept {
       const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
-      const bool is_float = var->getType()->isFloatingPointTy();
+      const auto var_type = var->getType();
+
       llvm::Value* res{};
       switch (type) {
       using enum PeepMIR::Instruction::Type;
       case PRE_INC:
-        res = is_float
-        ? builder->CreateFAdd(var, fpConstant(var->getType(), 1))
-        : builder->CreateAdd(var, unsignedConstant(var->getType(), 1));
-        builder->CreateStore(res, var);
+        res = builder.CreateAdd(var, unsignedConstant(var_type, 1));
+        builder.CreateStore(res, var);
         break;
-
+      case FPRE_INC:
+        res = builder.CreateFAdd(var, fpConstant(var_type, 1));
+        builder.CreateStore(res, var);
+        break;
       case PRE_DEC:
-        res = is_float
-        ? builder->CreateFSub(var, fpConstant(var->getType(), 1))
-        : builder->CreateSub(var, unsignedConstant(var->getType(), 1));
-        builder->CreateStore(res, var);
+        res = builder.CreateSub(var, unsignedConstant(var_type, 1));
+        builder.CreateStore(res, var);
         break;
-
-      case NEGATE:
-        res = is_float ? builder->CreateFNeg(var) : builder->CreateNeg(var);
+      case FPRE_DEC:
+        res = builder.CreateFSub(var, fpConstant(var_type, 1));
+        builder.CreateStore(res, var);
         break;
-
-      case ADDRESS_OF:
-        res = var;
-        break;
-
-      case BITNOT:
-        res = builder->CreateNot(var);
-        break;
-
+      case ADDRESS_OF: res = var; break;
+      case NEGATE: res = builder.CreateNeg(var); break;
+      case FNEGATE: res = builder.CreateFNeg(var); break;
+      case BITNOT: res = builder.CreateNot(var); break;
       case POST_INC:
-        builder->CreateStore(
-          is_float
-          ? builder->CreateFAdd(var, fpConstant(var->getType(), 1))
-          : builder->CreateAdd(var, unsignedConstant(var->getType(), 1)),
-          var
-          );
+        builder.CreateStore(builder.CreateAdd(var, unsignedConstant(var_type, 1)), var);
         res = var;
         break;
-
+      case FPOST_INC:
+        builder.CreateStore(builder.CreateFAdd(var, fpConstant(var_type, 1)), var);
+        res = var;
+        break;
       case POST_DEC:
-        builder->CreateStore(
-          is_float
-          ? builder->CreateFSub(var, fpConstant(var->getType(), 1))
-          : builder->CreateSub(var, unsignedConstant(var->getType(), 1)),
-          var
-          );
+        builder.CreateStore(builder.CreateSub(var, unsignedConstant(var_type, 1)), var);
+        res = var;
+        break;
+      case FPOST_DEC:
+        builder.CreateStore(builder.CreateFSub(var, fpConstant(var_type, 1)), var);
         res = var;
         break;
 
@@ -288,108 +333,73 @@ class TU final : public Backend {
     [[nodiscard]] llvm::Value*
     genBinary(PeepMIR::Instruction::Type type) noexcept {
       if (type == PeepMIR::Instruction::ASSIGN) {
-        auto left = genExpression();
-        auto right = genExpression();
-        return builder->CreateStore( right, left );
+        const auto left = genExpression();
+        const auto right = genReadExpression();
+        return builder.CreateStore(right, left);
       }
 
-      auto left = genReadExpression();
-      auto right = genReadExpression();
-      const bool is_float = left->getType()->isFloatingPointTy();
-      llvm::Value* res{};
+      const auto left = genReadExpression();
+      const auto right = genReadExpression();
 
       switch (type) {
         using enum PeepMIR::Instruction::Type;
-      case ADD:
-        res = is_float
-        ? builder->CreateFAdd(left, right)
-        : builder->CreateAdd(left, builder->CreateZExtOrTrunc(right, left->getType()));
-        break;
-      case SUB:
-        res = is_float
-        ? builder->CreateFSub(left, right)
-        : builder->CreateSub(left, builder->CreateZExtOrTrunc(right, left->getType()));
-        break;
-      case MULT:
-        res = is_float
-        ? builder->CreateFMul(left, right)
-        : builder->CreateMul(left, builder->CreateZExtOrTrunc(right, left->getType()));
-        break;
-      case DIV:
-        res = is_float
-        ? builder->CreateFDiv(left, right)
-        : builder->CreateSDiv(left, right); // CHANGE THIS
-        break;
-      case MOD:
-        res = is_float
-        ? builder->CreateFRem(left, right)
-        : builder->CreateSRem(left, right); // CHANGE THIS
-        break;
-      case ASSIGN:
-        std::unreachable();
-      case LESS:
-        res = builder->CreateCmp( // CHANGE THIS
-          is_float ? llvm::CmpInst::Predicate::FCMP_OLT : llvm::CmpInst::Predicate::ICMP_ULT, left, right
-          );
-        break;
-      case GTR:
-        res = builder->CreateCmp(
-          is_float ? llvm::CmpInst::Predicate::FCMP_OGT : llvm::CmpInst::Predicate::ICMP_UGT, left, right
-          );
-        break;
-      case LEQ:
-        res = builder->CreateCmp(
-          is_float ? llvm::CmpInst::Predicate::FCMP_OLE : llvm::CmpInst::Predicate::ICMP_ULE, left, right
-        );
-        break;
-      case GEQ:
-        res = builder->CreateCmp(
-          is_float ? llvm::CmpInst::Predicate::FCMP_OGE : llvm::CmpInst::Predicate::ICMP_UGE, left, right
-        );
-        break;
-      case AND:
-        assert(not is_float);
-        res = builder->CreateLogicalAnd(left, right);
-        break;
-      case OR:
-        assert(not is_float);
-        res = builder->CreateLogicalOr(left, right);
-        break;
-      case BITAND:
-        res = builder->CreateAnd(left, right);
-        break;
-      case BITOR:
-        res = builder->CreateOr(left, right);
-        break;
-      case BITXOR:
-        res = builder->CreateXor(left, right);
-        break;
+      case ADD: return builder.CreateAdd(left, right);
+      case FADD: return builder.CreateFAdd(left, right);
+      case SUB: return builder.CreateSub(left, right);
+      case FSUB: return builder.CreateFSub(left, right);
+      case MULT: return builder.CreateMul(left, right);
+      case FMULT: return builder.CreateFMul(left, right);
+
+      case UDIV: return builder.CreateUDiv(left, right);
+      case SDIV: return builder.CreateSDiv(left, right);
+      case FDIV: return builder.CreateFDiv(left, right);
+      case UMOD: return builder.CreateURem(left, right);
+      case SMOD: return builder.CreateSRem(left, right);
+      case FMOD: return builder.CreateFRem(left, right);
+
+      case ULESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULT, left, right);
+      case SLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLT, left, right);
+      case FLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OLT, left, right);
+      case UGTR: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_UGT, left, right);
+      case SGTR: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SGT, left, right);
+      case FGTR: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OGT, left, right);
+      case ULEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULE, left, right);
+      case SLEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLE, left, right);
+      case FLEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OLE, left, right);
+      case UGEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_UGE, left, right);
+      case SGEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SGE, left, right);
+      case FGEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OGE, left, right);
+
+      case AND: return builder.CreateLogicalAnd(left, right);
+      case OR: return builder.CreateLogicalOr(left, right);
+      case BITAND: return builder.CreateAnd(left, right);
+      case BITOR: return builder.CreateOr(left, right);
+      case BITXOR: return builder.CreateXor(left, right);
       case EQ:
-        res = builder->CreateCmp(
-          is_float ? llvm::CmpInst::Predicate::FCMP_OEQ : llvm::CmpInst::Predicate::ICMP_EQ, left, right
-          );
-        break;
+        return builder.CreateCmp(
+        left->getType()->isFloatingPointTy()
+        ? llvm::CmpInst::Predicate::FCMP_OEQ
+        : llvm::CmpInst::Predicate::ICMP_EQ,
+        left, right);
       case NEQ:
-        res = builder->CreateCmp(
-          is_float ? llvm::CmpInst::Predicate::FCMP_ONE : llvm::CmpInst::Predicate::ICMP_NE, left, right
-        );
-        break;
+        return builder.CreateCmp(
+        left->getType()->isFloatingPointTy()
+        ? llvm::CmpInst::Predicate::FCMP_ONE
+        : llvm::CmpInst::Predicate::ICMP_NE,
+        left, right);
       default:
         std::unreachable();
       }
-
-      return res;
     }
 
     [[nodiscard]] llvm::Value*
     genReadExpression() noexcept {
       const auto& instruction_type = instructions[instruction_idx].type;
       const auto res = genExpression();
-      if (instruction_type == PeepMIR::Instruction::GLOBAL)
-        return builder->CreateLoad(
-          llvm::cast<llvm::GlobalVariable>(res)->getValueType(), res);
+      if (instruction_type == PeepMIR::Instruction::GLOBAL) //this is disgusting
+        return builder.CreateLoad(llvm::cast<llvm::GlobalVariable>(res)->getValueType(), res);
       if (instruction_type == PeepMIR::Instruction::LOCAL)
-        return builder->CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
+        return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
 
       return res;
     }
@@ -398,7 +408,7 @@ class TU final : public Backend {
     genExpression() noexcept {
       auto& instruction = instructions[instruction_idx++];
       switch (instruction.type) {
-        using enum PeepMIR::Instruction::Type;
+      using enum PeepMIR::Instruction::Type;
       case NOOP:
         return nullptr;
       case GLOBAL: {
@@ -417,12 +427,9 @@ class TU final : public Backend {
         return function;
       }
       case INT_LITERAL:
-        return llvm::ConstantInt::get(tu->typeForInteger(instruction.int_value()),
-                                      std::bit_cast<u64_t>(instruction.int_value()),
-                                      true);
+        return signedConstant(tu->typeForInteger(instruction.int_value()), instruction.int_value());
       case UINT_LITERAL:
-        return llvm::ConstantInt::get(tu->typeForUnsigned(instruction.int_value()),
-                                      instruction.uint_value());
+        return unsignedConstant(tu->typeForUnsigned(instruction.uint_value()), instruction.uint_value());
       case FLOAT_LITERAL:
         return llvm::ConstantFP::get(tu->f32, instruction.float_value());
       case DOUBLE_LITERAL:
@@ -437,16 +444,16 @@ class TU final : public Backend {
         return str_lit;
       }
 
-      case ADD:
-      case SUB:
-      case MULT:
-      case DIV:
-      case MOD:
+      case ADD: case FADD:
+      case SUB: case FSUB:
+      case MULT: case FMULT:
+      case UDIV: case SDIV: case FDIV:
+      case UMOD: case SMOD: case FMOD:
       case ASSIGN:
-      case LESS:
-      case GTR:
-      case LEQ:
-      case GEQ:
+      case ULESS: case SLESS: case FLESS:
+      case UGTR: case SGTR: case FGTR:
+      case ULEQ: case SLEQ: case FLEQ:
+      case UGEQ: case SGEQ: case FGEQ:
       case EQ:
       case NEQ:
       case AND:
@@ -454,24 +461,34 @@ class TU final : public Backend {
       case BITAND:
       case BITOR:
       case BITXOR:
-      case BITNOT:
         return genBinary(instruction.type);
 
-      case PRE_INC:
-      case PRE_DEC:
+      case PRE_INC: case FPRE_INC:
+      case PRE_DEC: case FPRE_DEC:
       case ADDRESS_OF:
-      case NEGATE:
-      case POST_INC:
-      case POST_DEC:
+      case NEGATE: case FNEGATE:
+      case BITNOT:
+      case POST_INC: case FPOST_INC:
+      case POST_DEC: case FPOST_DEC:
         return genUnary(instruction.type);
 
+      case UCAST:
+        return builder.CreateZExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.value));
+      case SCAST:
+        return builder.CreateSExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.value));
+      case FCAST:
+        assert(instruction.value == 32 or instruction.value == 64);
+        return builder.CreateFPCast(genReadExpression(),
+          instruction.value == 32
+          ? llvm::Type::getFloatTy(tu->context)
+          : llvm::Type::getDoubleTy(tu->context));
       case CALL: {
         const auto fn = genExpression();
         llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
         for (auto i{0uz}; i<instruction.num_params(); ++i)
           parameters[i] = genExpression();
 
-        return builder->CreateCall(
+        return builder.CreateCall(
           llvm::cast<llvm::Function>(fn),
           {parameters, instruction.num_params()}
           );
@@ -481,7 +498,6 @@ class TU final : public Backend {
       }
     }
 
-    llvm::Value* branch_value;
     void genBlock(u32_t instruction_cut_off) {
       llvm::Value* branch_value{};
       while (instruction_idx < instruction_cut_off)
@@ -491,35 +507,36 @@ class TU final : public Backend {
       switch (block.terminator_type) {
         using enum PeepMIR::Block::Terminator;
       case BR:
-        builder->CreateBr(
+        builder.CreateBr(
           llvm_blocks[block.br.next_block_idx]);
         break;
       case BRC:
-        builder->CreateCondBr( branch_value,
+        builder.CreateCondBr( branch_value,
           llvm_blocks[block.brc.true_block_idx],
           llvm_blocks[block.brc.false_block_idx]);
         break;
       case RET:
-        builder->CreateRet(branch_value);
+        builder.CreateRet(branch_value);
         break;
       default:
         std::unreachable();
       }
     }
 
-    void genFunction() {
+    void codegenFunction() {
       const auto num_blocks = mir_blocks.size();
       while (block_idx < (num_blocks - 1)) {
         genBlock(mir_blocks[block_idx+1].first_instruction_idx);
         ++block_idx;
+        builder.SetInsertPoint(llvm_blocks[block_idx]);
       }
-      builder->SetInsertPoint(&llvmfunc->back());
+      builder.SetInsertPoint(&llvmfunc->back());
       if (return_type->isVoidTy()) {
-        builder->CreateRetVoid();
+        builder.CreateRetVoid();
       }
       else {
-        builder->CreateRet(
-            builder->CreateLoad(locals[0]->getAllocatedType(), locals[0])
+        builder.CreateRet(
+            builder.CreateLoad(locals[0]->getAllocatedType(), locals[0])
           );
       }
 
@@ -548,59 +565,8 @@ class TU final : public Backend {
   }
 
   void compileFunction(PeepMIR::Function& func) {
-    Function lowering_function; lowering_function.tu = this;
-    lowering_function.llvm_blocks.reserve(func.blocks.size());
-
-    llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
-    const auto function_type = func.type;
-    auto num_params{0uz};
-    for (const auto t : function_type->parameterTypes()) {
-      arg_types[num_params] = translateType(t);
-      ++num_params;
-    }
-
-    //hack
-    lowering_function.return_type =
-      function_type->returnType()->isBool() ? i1 : translateType(function_type->returnType());
-
-    const auto func_type = llvm::FunctionType::get(lowering_function.return_type, {arg_types, num_params}, false);
-    lowering_function.llvmfunc = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, 0, std::string_view(func.name), &module);
-    const auto entry = llvm::BasicBlock::Create(context, "", lowering_function.llvmfunc);
-    llvm::IRBuilder builder(entry); lowering_function.builder = &builder;
-    lowering_function.llvm_blocks.emplace_back(entry);
-    for (auto i{1uz}; i<func.blocks.size(); ++i) {
-      lowering_function.llvm_blocks.emplace_back(
-        llvm::BasicBlock::Create(context, "", lowering_function.llvmfunc));
-    }
-
-    auto arg = lowering_function.llvmfunc->arg_begin();
-    lowering_function.locals.reserve(func.locals.size() + 1);
-    lowering_function.locals.emplace_back(
-      (lowering_function.return_type->isVoidTy()) ? nullptr
-      : builder.CreateAlloca(lowering_function.return_type, nullptr) );
-
-    for (auto i{0uz}; i<num_params; ++i) {
-      llvm::AllocaInst* param_alloca = builder.CreateAlloca(arg_types[i], nullptr);
-      builder.CreateStore(arg, param_alloca);
-      lowering_function.locals.emplace_back(param_alloca);
-      ++arg, ++i;
-    }
-
-    const auto num_locals = func.locals.size();
-      for (auto i{num_params + 1}; i<num_locals; ++i) {
-        lowering_function.locals.emplace_back(
-          builder.CreateAlloca(translateType(func.locals[i]), nullptr)
-          );
-    }
-
-    func.name.destroy_and_deallocate();
-    func.locals.destroy_and_deallocate();
-    lowering_function.instructions = std::move(func.instructions);
-    lowering_function.mir_blocks = std::move(func.blocks);
-    lowering_function.genFunction();
-
-
-
+    Function lowering_function(func, this);
+    lowering_function.codegenFunction();
   }
 
 public:

@@ -205,10 +205,13 @@ void grabSymbol(FileInAnalysis &file) {
 }
 
 void grabNumber(FileInAnalysis &file) {
-  auto type = TokenType::INT_LITERAL;
   u64_t value;
   int c = file.stream.get();
   const bool is_negative = c == '-';
+  TokenType type = is_negative
+    ? TokenType::SIGNED_LITERAL
+    : TokenType::INTEGER_LITERAL;
+
   std::string num_stringrep(1, static_cast<char>(c));
   while ((c = file.stream.get()) not_eq EOF) {
     // i hate file handling so much, replace
@@ -218,7 +221,7 @@ void grabNumber(FileInAnalysis &file) {
       break;
     }
     if (c == 'u') {
-      type = TokenType::UINT_LITERAL;
+      type = TokenType::UNSIGNED_LITERAL;
       if (is_negative)
         throw LexingError("Negative unsigned literal.", num_stringrep, file.line_number);
       break;
@@ -237,11 +240,12 @@ void grabNumber(FileInAnalysis &file) {
   }
 
   switch (type) {
-  case TokenType::INT_LITERAL:
+  case TokenType::SIGNED_LITERAL:
     static_assert((sizeof(long long) == 8) and "The following line of code may cause problems if long longs are not 64 bits in width");
     value = std::bit_cast<u64_t>(static_cast<i64_t>(std::stoll(num_stringrep)));
     break;
-  case TokenType::UINT_LITERAL:
+  case TokenType::INTEGER_LITERAL:
+  case TokenType::UNSIGNED_LITERAL:
     static_assert((sizeof(unsigned long long) == 8) and "The following line of code may cause problems if unsigned long longs are not 64 bits in width");
     value = static_cast<u64_t>(std::stoull(num_stringrep));
     break;

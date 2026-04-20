@@ -56,39 +56,25 @@ std::string Type::toString() const noexcept {
 
 bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
   const auto other_type = other->primitive_type;
-  if (other_type == primitive_type) return true;
+  if (other_type == U_ and isIntegral())
+    return true;
 
   switch (primitive_type) {
   case I8:
   case I16:
   case I32:
-  case I64: //convert if other type is a greater size signed integer
-    static_assert(std::to_underlying(I8) < std::to_underlying(I16));
-    static_assert(std::to_underlying(I16) < std::to_underlying(I32));
-    static_assert(std::to_underlying(I32) < std::to_underlying(I64));
-    return std::to_underlying(other_type) > std::to_underlying(primitive_type) and
-           std::to_underlying(other_type) <= std::to_underlying(I64);
+  case I64:
+    return other->isSignedIntegral() and (other->bitwidth() > bitwidth());
+  case U_:
+    return other->isIntegral();
   case U8:
   case U16:
   case U32:
   case U64: //convert if other type is a greater size signed/unsigned integer
-    static_assert(std::to_underlying(U8) < std::to_underlying(U16));
-    static_assert(std::to_underlying(U16) < std::to_underlying(U32));
-    static_assert(std::to_underlying(U32) < std::to_underlying(U64));
-    static_assert(std::to_underlying(U8) - 4 == std::to_underlying(I8));
-    static_assert(std::to_underlying(U64) - 4 == std::to_underlying(I64));
-    if (other->isUnsignedIntegral() and std::to_underlying(other_type) > std::to_underlying(primitive_type))
-      return true;
-
-    return std::to_underlying(other_type) > (std::to_underlying(primitive_type) - 4) and
-       std::to_underlying(other_type) <= std::to_underlying(I64);
-
+    return other->isIntegral() and (other->bitwidth() > bitwidth());
   case F32:
-    if (other_type == F32) return true;
-    [[fallthrough]];
-  case F64:
     return other_type == F64;
-
+  case F64:
   case BOOL:
   case CHAR:
   case STRING:
@@ -210,7 +196,6 @@ std::string FunctionType::toString() const noexcept {
 
   return string_rep;
 }
-
 
 bool FunctionType::isValidCall(std::span<InstantiatedType> parameters) const noexcept {
   assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);

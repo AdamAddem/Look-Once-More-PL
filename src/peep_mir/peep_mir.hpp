@@ -27,16 +27,31 @@ struct Instruction {
     //look you've read my codebase you get the memo by now
     INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
 
-    //value not determined yet for the operators
-    ADD, SUB, MULT, DIV, MOD,
+    //value indeterminate for operators
+    ADD, FADD,
+    SUB, FSUB,
+    MULT, FMULT,
+    UDIV, SDIV, FDIV,
+    UMOD, SMOD, FMOD,
     ASSIGN,
-    LESS, GTR, LEQ, GEQ, EQ, NEQ, AND, OR,
-    BITAND, BITOR, BITXOR, BITNOT,
-    PRE_INC, PRE_DEC, ADDRESS_OF, NEGATE,
-    POST_INC, POST_DEC,
+    ULESS, SLESS, FLESS,
+    UGTR, SGTR, FGTR,
+    ULEQ, SLEQ, FLEQ,
+    UGEQ, SGEQ, FGEQ,
+    EQ, NEQ, AND, OR,
+    BITAND, BITOR, BITXOR,
+    PRE_INC, FPRE_INC,
+    PRE_DEC, FPRE_DEC,
+    ADDRESS_OF,
+    NEGATE, FNEGATE,
+    BITNOT,
+    POST_INC, FPOST_INC,
+    POST_DEC, FPOST_DEC,
+
+    //value contains bitwidth to extend / truncate to
+    UCAST, SCAST, FCAST,
 
     CALL // value equals number of parameters
-    // CALL CALLED PARAMETERS...
   }type;
   u64_t value;
 
@@ -106,7 +121,7 @@ class Block {
 public:
 
   u32_t first_instruction_idx;
-  enum class Terminator : u32_t {BR, BRC, RET} //when done peeping, there should be no ret besides the last block
+  enum class Terminator : u32_t {NONE, BR, BRC, RET} //when done peeping, there should be no ret besides the last block
   terminator_type;
 
   union {
@@ -116,19 +131,25 @@ public:
 
   constexpr void
   set_brc(u32_t true_block_idx, u32_t false_block_idx) noexcept {
-    terminator_type = Terminator::BRC;
-    brc = {true_block_idx, false_block_idx};
+    if (terminator_type == Terminator::NONE) {
+      terminator_type = Terminator::BRC;
+      brc = {true_block_idx, false_block_idx};
+    }
   }
 
   constexpr void
   set_br(u32_t next_block_idx) noexcept {
-    terminator_type = Terminator::BR;
-    br.next_block_idx = next_block_idx;
+    if (terminator_type == Terminator::NONE) {
+      terminator_type = Terminator::BR;
+      br.next_block_idx = next_block_idx;
+    }
   }
 
   constexpr void
-  set_ret() noexcept
-  {terminator_type = Terminator::RET;}
+  set_ret() noexcept {
+    if (terminator_type == Terminator::NONE)
+      terminator_type = Terminator::RET;
+  }
 };
 
 struct Function {

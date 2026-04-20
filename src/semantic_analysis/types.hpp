@@ -39,22 +39,26 @@ protected:
   explicit constexpr Type(auto derived_type)
   : derived_type(derived_type) {}
 public:
-  [[nodiscard]] static consteval const Type* devoid()         { static constexpr Type devoid{DEVOID}; return &devoid; }
+  [[nodiscard]] static consteval const Type* devoid() {static constexpr Type devoid{DEVOID}; return &devoid;}
 
-  [[nodiscard]] constexpr bool isDevoid()     const noexcept  {return derived_type == DEVOID;}
-  [[nodiscard]] constexpr bool isPrimitive()  const noexcept  {return derived_type == PRIMITIVE;}
-  [[nodiscard]] constexpr bool isPointer()    const noexcept  {return derived_type == POINTER;}
-  [[nodiscard]] constexpr bool isVariant()    const noexcept  {return derived_type == VARIANT;}
-  [[nodiscard]] constexpr bool isFunction()   const noexcept  {return derived_type == FUNCTION;}
-  [[nodiscard]] constexpr bool isCustom()     const noexcept  {return derived_type == CUSTOM;}
+  [[nodiscard]] constexpr bool isDevoid()           const noexcept  {return derived_type == DEVOID;}
+  [[nodiscard]] constexpr bool isPrimitive()        const noexcept  {return derived_type == PRIMITIVE;}
+  [[nodiscard]] constexpr bool isPointer()          const noexcept  {return derived_type == POINTER;}
+  [[nodiscard]] constexpr bool isVariant()          const noexcept  {return derived_type == VARIANT;}
+  [[nodiscard]] constexpr bool isFunction()         const noexcept  {return derived_type == FUNCTION;}
+  [[nodiscard]] constexpr bool isCustom()           const noexcept  {return derived_type == CUSTOM;}
 
-  [[nodiscard]] constexpr bool isArithmetic() const noexcept  {return flags bitand is_arithmetic_mask;}
-  [[nodiscard]] constexpr bool isCallable()   const noexcept  {return flags bitand is_callable_mask;}
-  [[nodiscard]] constexpr bool isArray()      const noexcept  {return flags bitand is_array_mask;}
+  [[nodiscard]] constexpr bool isArithmetic()       const noexcept  {return flags bitand is_arithmetic_mask;}
+  [[nodiscard]] constexpr bool isCallable()         const noexcept  {return flags bitand is_callable_mask;}
+  [[nodiscard]] constexpr bool isArray()            const noexcept  {return flags bitand is_array_mask;}
 
-  [[nodiscard]] constexpr bool isBool()       const noexcept;
-  [[nodiscard]] constexpr bool isIntegral()   const noexcept;
-  [[nodiscard]] constexpr bool isFloating()   const noexcept;
+  [[nodiscard]] constexpr bool isBool()             const noexcept;
+  [[nodiscard]] constexpr bool isIntegral()         const noexcept;
+  [[nodiscard]] constexpr bool isUnsignedIntegral() const noexcept;
+  [[nodiscard]] constexpr bool isSignedIntegral()   const noexcept;
+  [[nodiscard]] constexpr bool isFloating()         const noexcept;
+  [[nodiscard]] constexpr sz_t bitwidth()           const noexcept;
+
 
   [[nodiscard]] constexpr const PrimitiveType* castToPrimitive() const noexcept;
   [[nodiscard]] constexpr const PointerType* castToPointer() const noexcept;
@@ -91,12 +95,15 @@ struct InstantiatedType {
   : type(type), details(is_mutable) {}
 
   [[nodiscard]] constexpr bool
-  operator ==(const InstantiatedType&) const = default;
+  operator==(const InstantiatedType&) const = default;
 
   [[nodiscard]] constexpr bool
-  isPlain() const noexcept { return details == InstanceDetails{}; }
+  isPlain() const noexcept
+  {return details == InstanceDetails{};}
+
   [[nodiscard]] constexpr std::string
-  toString() const noexcept { return (details.is_mutable ? "mut " : "") + type->toString(); }
+  toString() const noexcept
+  {return (details.is_mutable ? "mut " : "") + type->toString();}
 };
 
 class PrimitiveType final : public Type {
@@ -104,7 +111,7 @@ class PrimitiveType final : public Type {
 
   enum : u8_t {
     I8, I16, I32, I64,
-    U8, U16, U32, U64,
+    U_, U8, U16, U32, U64,
     F32, F64,
     BOOL, CHAR, STRING
   }primitive_type;
@@ -120,8 +127,12 @@ public:
   {return eden::enumBetween(primitive_type, I8, U64);}
 
   [[nodiscard]] constexpr bool
+  isSignedIntegral() const noexcept
+  {return eden::enumBetween(primitive_type, I8, I64);}
+
+  [[nodiscard]] constexpr bool
   isUnsignedIntegral() const noexcept
-  {return eden::enumBetween(primitive_type, U8, U64);}
+  {return eden::enumBetween(primitive_type, U_, U64);}
 
   [[nodiscard]] constexpr bool
   isFloating() const noexcept
@@ -130,6 +141,31 @@ public:
   [[nodiscard]] constexpr bool
   isBool() const noexcept
   {return primitive_type == BOOL;}
+
+  [[nodiscard]] constexpr sz_t
+  bitwidth() const noexcept {
+    switch (primitive_type) {
+    case U8:
+    case I8:
+    case BOOL:
+    case CHAR:
+      return 8;
+    case U16:
+    case I16:
+      return 16;
+    case U32:
+    case I32:
+    case F32:
+      return 32;
+    case U_:
+    case U64:
+    case I64:
+    case F64:
+      return 64;
+    default:
+      std::unreachable();
+    }
+  }
 
   [[nodiscard]] constexpr u64_t
   maxIntegralValueRepresentable() const noexcept {
@@ -148,6 +184,7 @@ public:
       return std::numeric_limits<u16_t>::max();
     case U32:
       return std::numeric_limits<u32_t>::max();
+    case U_:
     case U64:
       return std::numeric_limits<u64_t>::max();
 
@@ -167,6 +204,7 @@ public:
       return std::numeric_limits<i32_t>::min();
     case I64:
       return std::numeric_limits<i64_t>::min();
+    case U_:
     case U8:
     case U16:
     case U32:
@@ -192,14 +230,6 @@ public:
   canValueBeRepresented(i64_t value) const noexcept
   {return isIntegral() and value <= static_cast<i64_t>(maxIntegralValueRepresentable()) and value >= minIntegralValueRepresentable();}
 
-  [[nodiscard]] constexpr bool
-  canValueBeRepresented(float) const noexcept
-  {return primitive_type == F32 or primitive_type == F64;}
-
-  [[nodiscard]] constexpr bool
-  canValueBeRepresented(double) const noexcept
-  {return primitive_type == F64;}
-
 #define type_singleton(type_name, type_enum) \
   static consteval const PrimitiveType* \
   type_name() noexcept \
@@ -210,6 +240,7 @@ public:
   type_singleton(i32, I32)
   type_singleton(i64, I64)
 
+  type_singleton(unsigned_literal, U_)
   type_singleton(u8, U8)
   type_singleton(u16, U16)
   type_singleton(u32, U32)
@@ -224,9 +255,11 @@ public:
 #undef type_singleton
 };
 
-constexpr bool Type::isBool()       const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isBool();    }
-constexpr bool Type::isIntegral()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isIntegral();}
-constexpr bool Type::isFloating()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isFloating();}
+constexpr bool Type::isBool()               const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isBool();    }
+constexpr bool Type::isIntegral()           const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isIntegral();}
+constexpr bool Type::isUnsignedIntegral()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isUnsignedIntegral();}
+constexpr bool Type::isSignedIntegral()     const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isSignedIntegral();}
+constexpr bool Type::isFloating()           const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isFloating();}
 
 class PointerType final : public Type {
   friend class TypeContext;
@@ -344,6 +377,20 @@ public:
   CustomType() = delete;
 };
 
+constexpr sz_t Type::bitwidth() const noexcept {
+  switch (derived_type) {
+  case PRIMITIVE:
+    return static_cast<const PrimitiveType*>(this)->bitwidth();
+  case POINTER:
+    return 8;
+  case VARIANT:
+  case FUNCTION:
+  case CUSTOM:
+  default:
+    std::unreachable();
+  }
+}
+
 constexpr const PrimitiveType* Type::castToPrimitive() const noexcept {
   assume_assert(derived_type == PRIMITIVE);
   return static_cast<const PrimitiveType*>(this);
@@ -366,6 +413,7 @@ static constexpr InstantiatedType i8_literal{PrimitiveType::i8(), {}};
 static constexpr InstantiatedType i16_literal{PrimitiveType::i16(), {}};
 static constexpr InstantiatedType i32_literal{PrimitiveType::i32(), {}};
 static constexpr InstantiatedType i64_literal{PrimitiveType::i64(), {}};
+static constexpr InstantiatedType unsigned_literal{PrimitiveType::unsigned_literal(), {}};
 static constexpr InstantiatedType u8_literal{PrimitiveType::u8(), {}};
 static constexpr InstantiatedType u16_literal{PrimitiveType::u16(), {}};
 static constexpr InstantiatedType u32_literal{PrimitiveType::u32(), {}};

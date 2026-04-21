@@ -10,14 +10,15 @@ enum class Backend {
   LLVM,
 };
 
-bool doOutputLexer();
-bool doOutputParser();
-bool doOutputValidation();
-bool doOutputIR();
-bool doOutputASM();
-bool doOutputOBJ();
-bool doLinking();
-Backend chosenBackend();
+[[nodiscard]] bool doOutputLexer() noexcept;
+[[nodiscard]] bool doOutputParser() noexcept;
+[[nodiscard]] bool doOutputPeep()noexcept;
+[[nodiscard]] bool doOutputValidation()noexcept;
+[[nodiscard]] bool doOutputIR()noexcept;
+[[nodiscard]] bool doOutputASM()noexcept;
+[[nodiscard]] bool doOutputOBJ()noexcept;
+[[nodiscard]] bool doLinking()noexcept;
+[[nodiscard]] Backend chosenBackend() noexcept ;
 
 const std::string& getExecutableName();
 const std::string& getBuildLocation();

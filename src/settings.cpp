@@ -8,6 +8,7 @@
 enum class Args : unsigned {
   OUTPUT_LEXER,
   OUTPUT_PARSER,
+  OUTPUT_PEEP,
   OUTPUT_VALIDATION,
   OUTPUT_LLVMIR,
   OUTPUT_ASM,
@@ -21,7 +22,7 @@ enum class Args : unsigned {
 };
 
 inline const std::unordered_map<std::string, Args> stringToArgs{
-	    {"-emit-lexer", Args::OUTPUT_LEXER}, {"-emit-parser", Args::OUTPUT_PARSER}, {"-validate", Args::OUTPUT_VALIDATION},
+	    {"-emit-lexer", Args::OUTPUT_LEXER}, {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP}, {"-validate", Args::OUTPUT_VALIDATION},
             {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
             {"-o", Args::EXECUTABLE_NAME},{"-build-location", Args::BUILD_LOCATION},
             {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2},
@@ -33,6 +34,7 @@ using namespace LOM;
 
 static bool output_lexer{false};
 static bool output_parser{false};
+static bool output_peep{false};
 static bool output_validation{false};
 static bool output_llvmir{false};
 static bool output_asm{false};
@@ -45,14 +47,15 @@ static std::string output_name;
 static std::string build_location{"lom_build/"};
 
 
-bool Settings::doOutputLexer()                   { return output_lexer; }
-bool Settings::doOutputParser()                  { return output_parser; }
-bool Settings::doOutputValidation()              { return output_validation; }
-bool Settings::doOutputIR()                      { return output_llvmir; }
-bool Settings::doOutputASM()                     { return output_asm; }
-bool Settings::doOutputOBJ()                     { return output_obj; }
-bool Settings::doLinking()                       { return !output_obj && !output_asm && !output_llvmir; }
-auto Settings::chosenBackend() -> Backend        { return chosen_backend; }
+bool Settings::doOutputLexer() noexcept                   { return output_lexer; }
+bool Settings::doOutputParser() noexcept                  { return output_parser; }
+bool Settings::doOutputPeep() noexcept                    { return output_peep; }
+bool Settings::doOutputValidation() noexcept              { return output_validation; }
+bool Settings::doOutputIR() noexcept                      { return output_llvmir; }
+bool Settings::doOutputASM() noexcept                    { return output_asm; }
+bool Settings::doOutputOBJ() noexcept                     { return output_obj; }
+bool Settings::doLinking() noexcept                       { return not output_obj and not output_asm and not output_llvmir; }
+auto Settings::chosenBackend() noexcept -> Backend { return chosen_backend; }
 
 const std::string& Settings::getExecutableName() { return output_name; }
 const std::string& Settings::getBuildLocation()  { return build_location; }
@@ -63,9 +66,9 @@ std::vector<std::filesystem::path> Settings::setArgs(const unsigned argc, const 
   std::vector<Filepath> filepaths;
   for (auto i{1uz}; i < argc; ++i) {
     using namespace Settings;
-    if (!stringToArgs.contains(argv[i])) {
+    if (not stringToArgs.contains(argv[i])) {
       Filepath filepath = argv[i];
-      if (filepath.extension() != ".lom")  {
+      if (filepath.extension() not_eq ".lom")  {
         if (filepath.has_extension())
           std::cout << "File extension must be .lom: ";
         else
@@ -98,8 +101,8 @@ std::vector<std::filesystem::path> Settings::setArgs(const unsigned argc, const 
         std::cout << "Expected executable name after -o" << std::endl;
         std::quick_exit(1);
       }
-      if (!output_name.empty()) {
-        std::cout << "Multiple output names specified, don't do that" << std::endl;
+      if (not output_name.empty()) {
+        std::cout << "Multiple output names specified, maybe don't do that" << std::endl;
         std::quick_exit(1);
       }
 

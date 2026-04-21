@@ -109,6 +109,11 @@ class Peeper {
       blocks.emplace_back(instructions.size(), Block::Terminator::NONE);
   }
 
+  constexpr void
+  force_new_block() {
+    blocks.emplace_back(instructions.size(), Block::Terminator::NONE);
+  }
+
   InstantiatedType peepLiteral() {
     auto& node = nodes.pop();
     switch (node.type()) {
@@ -118,10 +123,10 @@ class Peeper {
       return unsigned_literal;
     case SIGNED_LITERAL:
       instructions.emplace_back(Instruction::INT_LITERAL, node.value());
-      return i64_literal; //return signedToLiteralInstance(node.signed_val());
+      return signedToLiteralInstance(node.signed_val());
     case UNSIGNED_LITERAL:
       instructions.emplace_back(Instruction::UINT_LITERAL, node.value());
-      return u64_literal; //return unsignedToLiteralInstance(node.unsigned_val());
+      return unsignedToLiteralInstance(node.unsigned_val());
     case FLOAT_LITERAL:
       instructions.emplace_back(Instruction::FLOAT_LITERAL, node.value());
       return f32_literal;
@@ -167,7 +172,7 @@ class Peeper {
     throw ValidationError("Undeclared Identifier.", identifier.get(), current_line_number);
   }
 
-  InstantiatedType peepSubscriptExpression() const {assert(false);}
+  InstantiatedType peepSubscriptExpression() const {assert(false); return {};}
 
   InstantiatedType peepCallingExpression(u64_t parameter_count) {
     assert(parameter_count <= Settings::MAX_FUNCTION_PARAMETERS);
@@ -508,8 +513,9 @@ class Peeper {
   }
 
   void peepScopedStatement(u64_t num_children) {
-    if (num_children == 0)
+    if (num_children == 0) {
       return (void)instructions.emplace_back(Instruction::NOOP, current_line_number);
+    }
 
     while (num_children-- not_eq 0)
       peepStatement();
@@ -542,7 +548,8 @@ class Peeper {
     const u32_t true_block_idx = condition_block_idx + 1;
 
     new_block(); //true block
-    peepScopedStatement(nodes.pop_scoped()); //true statement(s)
+    const auto num_true_statements = nodes.pop_scoped();
+    peepScopedStatement(num_true_statements); //true statement(s)
 
     new_block(); //false block
     const u32_t false_block_idx = current_block_index();
@@ -908,8 +915,11 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
     FunctionPeeper::peepFunction(tu, func, table);
 
   if (Settings::doOutputValidation()) {
-    std::cout << "--- Validation Passed ---\n\n";
+    std::cout << "Validation Passed!\n\n";
+    std::quick_exit(0);
+  }
 
+  if (Settings::doOutputPeep()) {
     std::cout << "--- Global Body ---\n";
     for (const auto instruction : tu.global_instructions) {
       printPeepInstruction(instruction);
@@ -917,7 +927,6 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
     std::cout << "--- Global Body ---\n\n";
 
     printPeep(tu);
-    std::cout << "--- Validation Passed ---\n\n";
     std::quick_exit(0);
   }
 

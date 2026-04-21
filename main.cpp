@@ -40,6 +40,7 @@ int main(const int argc, const char* argv[]) {
   const bool output_asm = Settings::doOutputASM();
   const bool output_ir = Settings::doOutputIR();
   const bool output_obj = Settings::doOutputOBJ() or Settings::doLinking();
+
   for (auto& filename : filepaths) {
     const auto compiled = processLOMFile(filename);
     if (output_asm)

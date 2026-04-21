@@ -73,17 +73,19 @@ Windows support is currently very iffy, as there are some problems with cmake an
 ### Running
 The executable can be ran with the following arguments:
 ```
-    <filenames>.lom             Specifies filenames for compilation
-    -o <output>                 Specifies output file name
-    -build-location <location>  Specifies the folder for all outputs
-    -emit-lexer                 Prints the result of the lexer and exits
-    -emit-parser                Prints the result of the parser and exits
-    -validate                   Prints whether the files are legal LOM programs and exits
+    <filenames>.lom             Specifies filenames for compilation.
+    -o <output>                 Specifies output file name.
+    -build-location <location>  Specifies the folder for all outputs.
+    -emit-lexer                 Prints the result of the lexer.
+    -emit-parser                Prints the result of the parser.
+    -emit-peep                  Validates the program and prints the peep MIR representation.
+    -validate                   Prints whether the files are legal LOM programs.
+    -O0, O1, O2, O3             Does absolutely nothing.
     
     //May be used in conjunction but prevents linking
-    -emit-obj                   Produces object files
-    -emit-llvm                  Compiles to LLVM IR
-    -emit-asm                   Compiles to assembly
+    -emit-obj                   Produces object files.
+    -emit-llvm                  Compiles to LLVM IR.
+    -emit-asm                   Compiles to assembly.
 ```
 As of right now, the module system is not implemented, and forward declarations are not a thing, so compiling multiple files is useless as they can't interact.
 Just come back in a month or two.

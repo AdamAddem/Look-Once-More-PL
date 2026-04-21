@@ -432,6 +432,8 @@ class TU final : public Backend {
     genReadExpression() noexcept {
       const auto& instruction_type = instructions[instruction_idx].type;
       const auto res = genExpression();
+      if (res == nullptr)
+        return nullptr;
       if (llvm::isa<llvm::AllocaInst>(res))
         return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
       if (instruction_type == PeepMIR::Instruction::GLOBAL) //this is disgusting
@@ -613,6 +615,7 @@ public:
           )
         );
       ++i;
+      instruction.release_string_value().destroy_and_deallocate();
     }
 
     for (auto& func : tu.functions)
@@ -642,6 +645,5 @@ public:
 std::unique_ptr<Backend> ToLLVM::codegen(PeepMIR::TU&& peeped_tu, const std::filesystem::path &file) {
   auto ptr = std::make_unique<TU>(file.string());
   ptr->lowerToLLVM(peeped_tu);
-  ptr->printModule();
   return ptr;
 }

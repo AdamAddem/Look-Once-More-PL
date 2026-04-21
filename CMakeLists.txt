@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.31)
 project(LookOnceMore)
 
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -Wnrvo -Wno-deprecated-declarations")
+set(CMAKE_CXX_FLAGS "-O3 -Wall -Wextra -Werror -Wpedantic -Wnrvo -Wno-deprecated-declarations")
 
 find_package(LLVM 21.1.8 REQUIRED CONFIG)
 

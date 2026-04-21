@@ -6,12 +6,13 @@
 
 using namespace LOM::Lexer;
 
-void Token::throw_if(const TokenType unwanted_type, const char* err_msg) const {
+void Token::throw_if(const TokenType unwanted_type, const char *err_msg) const {
   if (type == unwanted_type)
-   throw ParsingError(err_msg, *this);
+    throw ParsingError(err_msg, *this);
 }
 
-void Token::throw_if_not(const TokenType expected_type, const char* err_msg) const {
+void Token::throw_if_not(const TokenType expected_type,
+                         const char *err_msg) const {
   if (type not_eq expected_type)
     throw ParsingError(err_msg, *this);
 }
@@ -23,7 +24,7 @@ std::string Token::toString() const {
   if (isLiteral()) {
     switch (type) {
     case TokenType::INTEGER_LITERAL:
-      return std::to_string(getUnsigned());
+      return std::to_string(getRawValue());
     case TokenType::SIGNED_LITERAL:
       return std::to_string(getSigned());
     case TokenType::UNSIGNED_LITERAL:
@@ -87,8 +88,7 @@ std::string Token::toDebugString() const {
 
 /* TokenHandler Methods */
 
-void
-TokenView::print(const unsigned initial_indent) const {
+void TokenView::print(const unsigned initial_indent) const {
   auto curr_print = begin;
 
   auto indent{initial_indent};
@@ -105,41 +105,43 @@ TokenView::print(const unsigned initial_indent) const {
     if (type == TokenType::LBRACE) {
       std::cout << "{ ";
       indent++;
-    }
-    else if (type == TokenType::RBRACE) {
+    } else if (type == TokenType::RBRACE) {
       std::cout << "\b} ";
       indent--;
-    }
-    else
+    } else
       std::cout << curr_print->toDebugString() << " ";
 
     ++curr_print;
   }
 }
 
-void
-TokenView::expect_then_pop(const TokenType expected_type, const char *err_msg) {
+void TokenView::expect_then_pop(const TokenType expected_type,
+                                const char *err_msg) {
   begin->throw_if_not(expected_type, err_msg);
   pop();
 }
 
-void
-TokenView::expect(const TokenType expected_type, const char *err_msg) const { begin->throw_if_not(expected_type, err_msg); }
+void TokenView::expect(const TokenType expected_type,
+                       const char *err_msg) const {
+  begin->throw_if_not(expected_type, err_msg);
+}
 
-void
-TokenView::reject_then_pop(const TokenType unwanted_type, const char *err_msg) {
+void TokenView::reject_then_pop(const TokenType unwanted_type,
+                                const char *err_msg) {
   begin->throw_if(unwanted_type, err_msg);
   pop();
 }
 
-void
-TokenView::reject(const TokenType unwanted_type, const char *err_msg) const { begin->throw_if(unwanted_type, err_msg); }
+void TokenView::reject(const TokenType unwanted_type,
+                       const char *err_msg) const {
+  begin->throw_if(unwanted_type, err_msg);
+}
 
-TokenView
-TokenView::getTokensBetween(const TokenType opening_token, const TokenType closing_token) {
+TokenView TokenView::getTokensBetween(const TokenType opening_token,
+                                      const TokenType closing_token) {
   const auto new_begin = begin;
   int open = 1;
-  while (open) {
+  while (true) {
     if (empty()) {
       std::string errmsg = "Expected closing ";
       errmsg.append(tokenTypeToString(opening_token));
@@ -151,31 +153,31 @@ TokenView::getTokensBetween(const TokenType opening_token, const TokenType closi
     else if (begin->type == closing_token)
       --open;
 
+    if (open == 0)
+      break;
     pop();
   }
 
-  return {new_begin, begin - 1};
+  return {new_begin, begin++};
 }
 
-
-TokenView
-TokenView::getAllTokensUntilFirstOf(const TokenType type) {
+TokenView TokenView::getAllTokensUntilFirstOf(const TokenType type) {
   const TokenIter new_begin = begin;
-  while (not begin->is(type)) {
-    pop();
+  while (true) {
     if (empty()) {
       std::string errmsg = "Expected ";
       errmsg.append(tokenTypeToString(type));
       throw ParsingError(errmsg, *(begin - 1));
     }
-
+    if (begin->is(type))
+      break;
+    pop();
   }
 
   return {new_begin, begin};
 }
 
-u64_t
-TokenView::distanceFromFirstOf(const TokenType type) const {
+u64_t TokenView::distanceFromFirstOf(const TokenType type) const {
   auto curr = begin;
   while (not curr->is(type)) {
     ++curr;

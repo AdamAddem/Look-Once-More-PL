@@ -185,7 +185,6 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     else
       print(node, ln);
     return;
-
   case IF:
     std::cout << "if ( ";
     print(++node, ln);
@@ -196,7 +195,6 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
       print(node, ln);
     }
     return;
-
   case FOR:
     std::cout << "for ( " << std::flush;
     print(++node, ln);
@@ -207,13 +205,11 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::cout << " )";
     print(++node, ln);
     return;
-
   case WHILE:
     std::cout << "while ( ";
     print(++node, ln);
     std::cout << " )";
     return print(++node, ln);
-
   case SCOPED: {
     const u64_t num_children = node->sub_statements();
     if (num_children == 0)
@@ -227,16 +223,13 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::cout << " }";
     return;
   }
-
   case RETURN:
     std::cout << "return ";
     if ((++node)->type() not_eq EMPTY)
       print(node, ln);
     return;
-
   case EXPR_STMT:
     return print(++node, ln);
-
   case UNARY: {
     const auto opr = node->operator_val();
     const char* opr_str = operatorToString(opr);
@@ -257,7 +250,6 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::cout << ')';
     return;
   }
-
   case BINARY: {
     const auto opr = node->operator_val();
     const char* opr_str = operatorToString(opr);
@@ -270,7 +262,6 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::cout << ')';
     return;
   }
-
   case CALLING: {
     u64_t num_params = node->parameter_count();
     print(++node, ln);
@@ -288,26 +279,23 @@ static void print(std::vector<ASTNode>::const_iterator& node, u64_t& ln) noexcep
     std::cout << "\b\b)";
     return;
   }
-
   case SUBSCRIPT:
     std::unreachable();
-
   case IDENTIFIER:
     std::cout << node->identifier();
     return;
-
+  case INTEGER_LITERAL:
+    std::cout << node->value();
+    return;
   case SIGNED_LITERAL:
     std::cout << node->signed_val();
     return;
-
   case UNSIGNED_LITERAL:
     std::cout << node->unsigned_val();
     return;
-
   case FLOAT_LITERAL:
     std::cout << node->float_val();
     return;
-
   case DOUBLE_LITERAL:
     std::cout << node->double_val();
     return;

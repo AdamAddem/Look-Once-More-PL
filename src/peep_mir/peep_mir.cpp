@@ -1,5 +1,4 @@
 #include "peep_mir.hpp"
-#include "peep_mir/peep_mir.hpp"
 
 #include "ast/ast.hpp"
 #include "edenlib/typedefs.hpp"
@@ -119,10 +118,10 @@ class Peeper {
       return unsigned_literal;
     case SIGNED_LITERAL:
       instructions.emplace_back(Instruction::INT_LITERAL, node.value());
-      return signedToLiteralInstance(node.signed_val());
+      return i64_literal; //return signedToLiteralInstance(node.signed_val());
     case UNSIGNED_LITERAL:
       instructions.emplace_back(Instruction::UINT_LITERAL, node.value());
-      return unsignedToLiteralInstance(node.unsigned_val());
+      return u64_literal; //return unsignedToLiteralInstance(node.unsigned_val());
     case FLOAT_LITERAL:
       instructions.emplace_back(Instruction::FLOAT_LITERAL, node.value());
       return f32_literal;
@@ -168,7 +167,7 @@ class Peeper {
     throw ValidationError("Undeclared Identifier.", identifier.get(), current_line_number);
   }
 
-  InstantiatedType peepSubscriptExpression() {assert(false);}
+  InstantiatedType peepSubscriptExpression() const {assert(false);}
 
   InstantiatedType peepCallingExpression(u64_t parameter_count) {
     assert(parameter_count <= Settings::MAX_FUNCTION_PARAMETERS);
@@ -210,10 +209,10 @@ class Peeper {
 
     auto left = peepExpression();
     const auto cast_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
-    const bool unsigned_opr = left.type->isUnsignedIntegral();
+    const bool signed_opr = left.type->isSignedIntegral();
     const bool float_opr = left.type->isFloating();
     const auto right = peepExpression();
-    const bool unsigned_cast = right.type->isUnsignedIntegral();
+    const bool signed_cast = right.type->isSignedIntegral();
     const bool float_cast = right.type->isFloating();
 
     if (not right.type->convertibleTo(left.type))
@@ -226,7 +225,7 @@ class Peeper {
 
     instructions[cast_idx].type =
     float_cast ? Instruction::FCAST :
-    unsigned_cast ? Instruction::UCAST : Instruction::SCAST;
+    (signed_cast ? Instruction::SCAST : Instruction::UCAST);
     instructions[cast_idx].value = left.type->bitwidth();
 
     const bool arithmetic = left.type->isArithmetic();
@@ -300,32 +299,32 @@ class Peeper {
     case Operator::DIVIDE:
       instructions[instruction_idx].type =
       float_opr ? Instruction::FDIV :
-      unsigned_opr ? Instruction::UDIV : Instruction::SDIV;
+      signed_opr ? Instruction::SDIV : Instruction::UDIV;
       return left;
     case Operator::MODULUS:
       instructions[instruction_idx].type =
       float_opr ? Instruction::FMOD :
-      unsigned_opr ? Instruction::UMOD : Instruction::SMOD;
+      signed_opr ? Instruction::SMOD : Instruction::UMOD;
       return left;
     case Operator::LESS:
       instructions[instruction_idx].type =
       float_opr ? Instruction::FLESS :
-      unsigned_opr ? Instruction::ULESS : Instruction::SLESS;
+      signed_opr ? Instruction::SLESS : Instruction::ULESS;
       return left;
     case Operator::GREATER:
       instructions[instruction_idx].type =
       float_opr ? Instruction::FGTR :
-      unsigned_opr ? Instruction::UGTR : Instruction::SGTR;
+      signed_opr ? Instruction::SGTR : Instruction::UGTR;
       return left;
     case Operator::LESS_EQUAL:
       instructions[instruction_idx].type =
       float_opr ? Instruction::FLEQ :
-      unsigned_opr ? Instruction::ULEQ : Instruction::SLEQ;
+      signed_opr ? Instruction::SLEQ : Instruction::ULEQ;
       return left;
     case Operator::GREATER_EQUAL:
       instructions[instruction_idx].type =
       float_opr ? Instruction::FGEQ :
-      unsigned_opr ? Instruction::UGEQ : Instruction::SGEQ;
+      signed_opr ? Instruction::SGEQ : Instruction::UGEQ;
       return left;
     case Operator::AND:
       instructions[instruction_idx].type = Instruction::AND;
@@ -463,6 +462,12 @@ class Peeper {
     }
   }
 
+  [[nodiscard]] InstantiatedType
+  peepCondition() {
+    instructions.emplace_back(Instruction::UCAST, 1);
+    return peepExpression();
+  }
+
   void peepReturnStatement() {
     const auto return_type = current_function_type->returnType();
     if (nodes.pop_if_empty()) {
@@ -477,6 +482,8 @@ class Peeper {
 
     instructions.emplace_back(Instruction::ASSIGN, 0);
     instructions.emplace_back(Instruction::LOCAL, 0);
+
+    const auto cast_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
     const auto return_expression = peepExpression();
     if (return_type->isDevoid())
       throw ValidationError("Cannot return value from devoid function",
@@ -487,6 +494,16 @@ class Peeper {
        std::format("Scope return type is '{}' and expression type is '{}'", return_type->toString(), return_expression.toString()),
        current_line_number);
 
+
+    const auto bitwidth = return_type->bitwidth();
+    if (return_expression.type->isFloating()) [[unlikely]]
+      instructions[cast_idx].type = Instruction::FCAST;
+    else if (return_expression.type->isSignedIntegral())
+      instructions[cast_idx].type = Instruction::SCAST;
+    else [[likely]]
+      instructions[cast_idx].type = Instruction::UCAST;
+
+    instructions[cast_idx].value = bitwidth;
     current_block().set_ret();
   }
 
@@ -502,7 +519,7 @@ class Peeper {
     br_fallthrough();
     new_block();
     const u32_t condition_idx = current_block_index();
-    const auto condition = peepExpression();
+    const auto condition = peepCondition();
     if (not condition.type->isBool())
       throw ValidationError("While Loop condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
@@ -514,10 +531,10 @@ class Peeper {
     });
   }
 
-  void peepForLoop() {assert(false and "Not sure about for loop form yet");}
+  void peepForLoop() const {assert(false and "Not sure about for loop form yet");}
 
   void peepIfStatement() {
-    const auto condition = peepExpression();
+    const auto condition = peepCondition();
     if (not condition.type->isBool())
       throw ValidationError("If statement condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
@@ -572,7 +589,7 @@ class Peeper {
       table.addLocalVariable(std::move(name), declaration_type);
     }
 
-    const auto ext_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
+    const auto cast_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
     const auto init_expr = peepExpression();
     if (not init_expr.type->convertibleTo(declaration_type.type))
       throw ValidationError("Variable initialization's type is not compatible with variable type.",
@@ -581,13 +598,13 @@ class Peeper {
 
     const auto bitwidth = declaration_type.type->bitwidth();
     if (init_expr.type->isFloating())
-      instructions[ext_idx].type = Instruction::FCAST;
+      instructions[cast_idx].type = Instruction::FCAST;
     else if (init_expr.type->isSignedIntegral())
-      instructions[ext_idx].type = Instruction::SCAST;
+      instructions[cast_idx].type = Instruction::SCAST;
     else
-      instructions[ext_idx].type = Instruction::UCAST;
+      instructions[cast_idx].type = Instruction::UCAST;
 
-    instructions[ext_idx].value = bitwidth;
+    instructions[cast_idx].value = bitwidth;
     locals.emplace_back(declaration_type.type);
   }
 
@@ -658,15 +675,21 @@ class Peeper {
     while (not nodes.empty())
       peepStatement();
 
-    if (blocks.back().terminator_type == Block::Terminator::NONE and not return_type->isDevoid())
-      throw ValidationError("Function with non-devoid return type does not end in a return statement.", "PLACEHOLDER", current_line_number);
+    if (blocks.back().terminator_type == Block::Terminator::NONE) {
+      //if (not return_type->isDevoid())
+        //throw ValidationError("Function with non-devoid return type does not end in a return statement.", "PLACEHOLDER", current_line_number);
+
+      br_fallthrough();
+    }
 
     //set up return block
     new_block();
-    if (not return_type->isDevoid())
+    if (not return_type->isDevoid()) {
       instructions.emplace_back(Instruction::LOCAL, 0);
-    else
+    }
+    else {
       instructions.emplace_back(Instruction::NOOP, 0);
+    }
     current_block().set_ret();
 
     //turn ret into a br to the return block
@@ -752,7 +775,7 @@ void printPeepInstruction(Instruction instruction) {
   case UINT_LITERAL: return std::println("UINT_LITERAL {}", instruction.uint_value());
   case FLOAT_LITERAL: return std::println("FLOAT_LITERAL {}", instruction.float_value());
   case DOUBLE_LITERAL: return std::println("DOUBLE_LITERAL {}", instruction.double_value());
-  case BOOL_LITERAL: return std::println("BOOL_LITERAL {}", instruction.bool_value() ? "true" : "false");
+  case BOOL_LITERAL: return std::println("BOOL_LITERAL {}", instruction.bool_value());
   case CHAR_LITERAL: return std::println("CHAR_LITERAL {}", instruction.char_value());
   case STRING_LITERAL: return std::println("STRING_LITERAL {}", instruction.string_value());
   case ADD: return std::println("ADD");

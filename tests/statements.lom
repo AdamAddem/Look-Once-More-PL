@@ -1,9 +1,8 @@
 global mut bool condition = true;
 
 fn if_statements() {
+    i32 test = junk;
     if(condition) ;
-    if(true) {}
-    if(false) {}
     if(condition) { condition = false; }
     else if(condition) { condition = true; }
     elif(true) { condition = false; }

@@ -241,7 +241,7 @@ struct Body {
     }
 
     if (tokens.pop_if(TokenType::LPAREN)) {
-      const auto res = generateExpressionUntil(TokenType::RPAREN);
+      const auto res = generateExpressionBetweenParenthesis();
       return res;
     }
 
@@ -456,13 +456,25 @@ struct Body {
     return left;
   }
 
+
+  u16_t generateExpressionBetweenParenthesis() {
+    const TokenView until_ending = tokens.getTokensBetweenParenthesis();
+    const TokenView after_ending = tokens;
+    tokens = until_ending;
+    const auto res = generateAssignmentExpression();
+    if (not tokens.empty())
+      throw ParsingError(std::format("Expected {}", ")"), tokens.peek());
+    tokens = after_ending;
+    return res;
+  }
+
   u16_t generateExpressionUntil(TokenType ending_token) {
     const TokenView until_ending = tokens.getAllTokensUntilFirstOf(ending_token); tokens.pop();
     const TokenView after_ending = tokens;
     tokens = until_ending;
     const auto res = generateAssignmentExpression();
     if (not tokens.empty())
-      throw ParsingError(std::format("Expected {}", tokenTypeToString(ending_token)), tokens.peek());
+     throw ParsingError(std::format("Expected {}", tokenTypeToString(ending_token)), tokens.peek());
     tokens = after_ending;
     return res;
   }
@@ -537,13 +549,22 @@ struct Body {
       std::unreachable();
     }
   }
+
+  void parseExpressionBetweenParenthesis() {
+    expression_tree.reset();
+    if (tokens.pop_if(TokenType::RPAREN)) {
+      tree.emplace_back(ASTNode::Type::EMPTY);
+      return;
+    }
+    const auto idx = generateExpressionBetweenParenthesis();
+    translateExpression(idx);
+  }
   void parseExpressionUntil(TokenType ending_token) {
     expression_tree.reset();
     if (tokens.pop_if(ending_token)) {
       tree.emplace_back(ASTNode::Type::EMPTY);
       return;
     }
-
     const auto idx = generateExpressionUntil(ending_token);
     translateExpression(idx);
   }
@@ -577,7 +598,7 @@ struct Body {
     tree.emplace_back(ASTNode::IF, tokens.current_line_number());
     tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in if statement condition.");
     tokens.reject(TokenType::RPAREN, "Expected condition in if statement.");
-    parseExpressionUntil(TokenType::RPAREN);
+    parseExpressionBetweenParenthesis();
     parseScoped();
     if (tokens.pop_if(TokenType::KEYWORD_ELSE))
       parseStatement();
@@ -586,6 +607,8 @@ struct Body {
   }
 
   void parseFor() {
+    assert(false and "Sorry, unimplemented.");
+    /*
     tree.emplace_back(ASTNode::FOR, tokens.current_line_number());
     tokens.expect_then_pop(TokenType::LPAREN, "Expected opening patenthesis in for loop statement.");
     tokens.reject(TokenType::RPAREN, "Expected for loop header.");
@@ -593,7 +616,7 @@ struct Body {
     parseVarDecl();
     parseExpressionUntil(TokenType::SEMI_COLON);
     parseExpressionUntil(TokenType::RPAREN);
-    parseScoped();
+    parseScoped(); */
   }
 
   void parseWhile() {
@@ -601,7 +624,7 @@ struct Body {
     tokens.expect_then_pop(TokenType::LPAREN,"Expected open parenthesis in while loop condition.");
     tokens.reject(TokenType::RPAREN, "Expected while loop condition.");
 
-    parseExpressionUntil(TokenType::RPAREN);
+    parseExpressionBetweenParenthesis();
     parseScoped();
   }
 

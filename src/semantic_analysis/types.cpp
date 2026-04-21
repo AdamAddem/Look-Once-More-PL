@@ -18,7 +18,6 @@ bool Type::convertibleTo(const Type* other) const noexcept {
   if (derived_type not_eq other_type or flags not_eq other->flags)
     return false;
 
-
   switch (derived_type) {
   case DEVOID:
     std::unreachable(); //only one devoid instance allowed, so this should've returned earlier
@@ -94,6 +93,8 @@ std::string PrimitiveType::toString() const noexcept {
     return "i32";
   case I64:
     return "i64";
+  case U_:
+    return "u_";
   case U8:
     return "u8";
   case U16:

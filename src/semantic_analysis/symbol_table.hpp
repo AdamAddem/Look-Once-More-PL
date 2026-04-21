@@ -69,13 +69,10 @@ public:
     [[nodiscard]] std::pair<InstantiatedType, u32_t>
     getVariable(const char* name) const noexcept {
       assert(containsVariable(name));
-      const auto begin = locals.crbegin();
-      auto curr = begin;
-      const auto end = locals.crend();
-      while (curr not_eq end) {
-        if (std::strcmp(curr->name.get(), name) == 0)
-          return {curr->type, (curr - begin)};
-        ++curr;
+      sz_t n = locals.size();
+      while (n-- not_eq 0) {
+        if (std::strcmp(locals[n].name.get(), name) == 0)
+          return {locals[n].type, n};
       }
 
       std::unreachable();

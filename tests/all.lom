@@ -1,6 +1,5 @@
-global mut i32 mutable_global = junk;
+global mut i32 mutable_global = 2;
 global i32 immutable_global = 5;
-
 
 fn if_statements() {
     mut bool condition = true;
@@ -24,35 +23,76 @@ fn while_statements() {
     while(condition not_eq true) { mut i32 scoped = junk; }
 }
 
-fn operators() {
-    mut i32 x = 0;
 
+fn math_oprs() -> u8 {
+    mut i32 x = 0;
     5+5; x+5; 5+x; x+x;
     5-5; x-5; 5-x; x-x;
     5*5; x*5; 5*x; x*x;
     5/5; x/5; 5/x; x/x;
     5%5; x%5; 5%x; x%x;
-
     x=5; x=x;
-    bool condition =
-        (5<5) and (x<5) and (5<x) and (x<x) and
-        (5>5) or (x>5) or (5>x) or (x>x) xor
-        (5<=5) xor (x<=5) xor (5<=x) xor (x<=x) xor
-        (5>=5) eq (x>=5) not_eq (5>=x);
 
-    5 bitand 5; x bitand 5; 5 bitand x; x bitand x;
-    5 bitor 5; x bitor 5; 5 bitor x; x bitor x;
-    5 bitxor 5; x bitxor 5; 5 bitxor x; x bitxor x;
-    bitnot 5; bitnot x;
+    if(x not_eq 5) return 4;
+    if(++x not_eq 6) return 4;
+    if(x++ not_eq 6) return 4;
+    if(-x not_eq -7) return 4;
+    if(--x not_eq 6) return 4;
+    if(x-- not_eq 6) return 4;
 
-    not condition;
-    ++x; x++;
-    -x;
-    --x; x--;
+    return 0;
+}
+
+fn condition_oprs() -> u8 {
+    bool true_cond = true;
+    bool false_cond = false;
+    mut i32 x = 0;
+
+    if(false_cond) return 2;
+    if(not true_cond) return 2;
+
+    if(true_cond eq false_cond) return 2;
+    if(true_cond not_eq true_cond) return 2;
+    if(5 eq 6) return 2;
+    if(5 not_eq 5) return 2;
+    if(x not_eq x) return 2;
+
+    if(5<5) return 2;
+    if(5>5) return 2;
+    if(5>6 or 5>=6) return 2;
+    if(5<4 or 5<=4) return 2;
+    if(5>x and 5<x) return 2;
+    if(5<=x and 5>=x and (5 not_eq x)) return 2;
+
+    if( not (true_cond and true_cond)) return 2;
+    if(not (true_cond or true_cond)) return 2;
+    if(true_cond xor true_cond) return 2;
+
+    if(false_cond and false_cond) return 2;
+    if(false_cond or false_cond) return 2;
+    if(false_cond xor false_cond) return 2;
+
+    return 0;
+}
+
+fn bitwise_oprs() -> u8 {
+   mut i32 x = 5;
+   if( (5 bitand 5) not_eq 5 ) return 1;
+   if( (x bitand 5) not_eq (5 bitand x) ) return 1;
+   if( (x bitand x) not_eq x ) return 1;
+
+   if( (5 bitor 5) not_eq 5 ) return 1;
+   if( (x bitor 5) not_eq (5 bitor x) ) return 1;
+   if( (x bitor x) not_eq x ) return 1;
+
+   if( (5 bitxor 5) not_eq 0 ) return 1;
+   if( (x bitxor 5) not_eq (5 bitxor x) ) return 1;
+   if( (x bitxor x) not_eq 0 ) return 1;
+
+   return 0;
 }
 
 fn empty_function() {}
-fn parameter_function(i32 normal, <i32, f32> variant, mut i32 mut_normal, mut <i32, f32> mut_variant) {}
 fn return_type_function() -> bool { return true; }
 
 fn return_within_scope() -> bool {
@@ -60,8 +100,6 @@ fn return_within_scope() -> bool {
         return true;
     else
         return false;
-
-    return false;
 }
 
 fn zeroes() {

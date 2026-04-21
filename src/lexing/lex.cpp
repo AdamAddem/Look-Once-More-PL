@@ -198,7 +198,7 @@ void grabSymbol(FileInAnalysis &file) {
     return;
 
   default:
-    throw LexingError("Invalid symbol found.", std::to_string(static_cast<char>(c)), file.line_number);
+    throw LexingError("Invalid symbol found.", std::string(1, static_cast<char>(c)), file.line_number);
   }
 
   file.token_list.emplace_back(type, file.line_number);

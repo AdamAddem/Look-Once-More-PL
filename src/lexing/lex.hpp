@@ -105,11 +105,10 @@ class TokenView {
 
 public:
   explicit TokenView(std::vector<Token>& tokens) {
-    if (tokens.back().type not_eq TokenType::INVALID_TOKEN)
-      tokens.emplace_back(TokenType::INVALID_TOKEN, 0);
     begin = tokens.begin();
-    end = tokens.end() - 1;
+    end = tokens.end();
   }
+
   TokenView(TokenIter begin, TokenIter end) : begin(begin), end(end) {}
 
   [[nodiscard]] const Token& peek() const noexcept                            {return *begin;}
@@ -131,7 +130,7 @@ public:
 
 
   //expects that opening_token has already been popped
-  //does NOT include opening and closing token in returned Handler
+  //does NOT include opening or closing token in returned Handler
   //will pop closing_token, do not use for opening / closing tokens with a value that matters to you, it WILL be lost
   [[nodiscard]] TokenView getTokensBetween(TokenType opening_token, TokenType closing_token);
   [[nodiscard]] TokenView getTokensBetweenBraces() { return getTokensBetween(TokenType::LBRACE, TokenType::RBRACE); }
@@ -139,7 +138,7 @@ public:
   [[nodiscard]] TokenView getTokensBetweenBrackets() { return getTokensBetween(TokenType::LBRACKET, TokenType::RBRACKET); }
   [[nodiscard]] TokenView getTokensBetweenAngleBrackets() { return getTokensBetween(TokenType::LESS, TokenType::GTR); }
 
-  //Does not return the type specified, but will keep it
+  //Does not return the type specified and pops it
   [[nodiscard]] TokenView getAllTokensUntilFirstOf(TokenType type);
   [[nodiscard]] u64_t distanceFromFirstOf(TokenType type) const;
 };

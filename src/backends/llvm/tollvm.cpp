@@ -280,49 +280,85 @@ class TU final : public Backend {
 
     [[nodiscard]] llvm::Value*
     genUnary(PeepMIR::Instruction::Type type) noexcept {
-      const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
-      const auto var_type = var->getType();
-
       llvm::Value* res{};
       switch (type) {
       using enum PeepMIR::Instruction::Type;
-      case PRE_INC:
-        res = builder.CreateAdd(var, unsignedConstant(var_type, 1));
+      case PRE_INC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var_type = var->getAllocatedType();
+        res = builder.CreateAdd(
+          builder.CreateLoad(var_type, var),
+          unsignedConstant(var_type, 1));
         builder.CreateStore(res, var);
-        break;
-      case FPRE_INC:
-        res = builder.CreateFAdd(var, fpConstant(var_type, 1));
+        return var;
+      }
+      case FPRE_INC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var_type = var->getAllocatedType();
+        res = builder.CreateFAdd(
+          builder.CreateLoad(var_type, var),
+          fpConstant(var_type, 1));
         builder.CreateStore(res, var);
-        break;
-      case PRE_DEC:
-        res = builder.CreateSub(var, unsignedConstant(var_type, 1));
+        return var;
+      }
+      case PRE_DEC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var_type = var->getAllocatedType();
+        res = builder.CreateSub(
+          builder.CreateLoad(var_type, var),
+          unsignedConstant(var_type, 1));
         builder.CreateStore(res, var);
-        break;
-      case FPRE_DEC:
-        res = builder.CreateFSub(var, fpConstant(var_type, 1));
+        return var;
+      }
+      case FPRE_DEC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var_type = var->getAllocatedType();
+        res = builder.CreateFSub(
+          builder.CreateLoad(var_type, var),
+          fpConstant(var_type, 1));
         builder.CreateStore(res, var);
-        break;
-      case ADDRESS_OF: res = var; break;
-      case NEGATE: res = builder.CreateNeg(var); break;
-      case FNEGATE: res = builder.CreateFNeg(var); break;
-      case BITNOT: res = builder.CreateNot(var); break;
-      case POST_INC:
-        builder.CreateStore(builder.CreateAdd(var, unsignedConstant(var_type, 1)), var);
-        res = var;
-        break;
-      case FPOST_INC:
-        builder.CreateStore(builder.CreateFAdd(var, fpConstant(var_type, 1)), var);
-        res = var;
-        break;
-      case POST_DEC:
-        builder.CreateStore(builder.CreateSub(var, unsignedConstant(var_type, 1)), var);
-        res = var;
-        break;
-      case FPOST_DEC:
-        builder.CreateStore(builder.CreateFSub(var, fpConstant(var_type, 1)), var);
-        res = var;
-        break;
-
+        return var;
+      }
+      case ADDRESS_OF:
+        return llvm::cast<llvm::AllocaInst>(genExpression()); //cast exists only for the assertion, redundant otherwise
+      case NEGATE:
+        return builder.CreateNeg(genReadExpression());
+      case FNEGATE:
+        return builder.CreateFNeg(genReadExpression());
+      case BITNOT:
+        return builder.CreateNot(genReadExpression());
+      case POST_INC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var_type = var->getAllocatedType();
+        auto load = builder.CreateLoad(var_type, var);
+        res = builder.CreateAdd(load, unsignedConstant(var_type, 1));
+        builder.CreateStore(res, var);
+        return load;
+      }
+      case FPOST_INC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var_type = var->getAllocatedType();
+        auto load = builder.CreateLoad(var_type, var);
+        res = builder.CreateFAdd(load, fpConstant(var_type, 1));
+        builder.CreateStore(res, var);
+        return load;
+      }
+      case POST_DEC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var_type = var->getAllocatedType();
+        auto load = builder.CreateLoad(var_type, var);
+        res = builder.CreateSub(load, unsignedConstant(var_type, 1));
+        builder.CreateStore(res, var);
+        return load;
+      }
+      case FPOST_DEC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var_type = var->getAllocatedType();
+        auto load = builder.CreateLoad(var_type, var);
+        res = builder.CreateFSub(load, fpConstant(var_type, 1));
+        builder.CreateStore(res, var);
+        return load;
+      }
       default:
         std::unreachable();
       }
@@ -370,8 +406,8 @@ class TU final : public Backend {
       case SGEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SGE, left, right);
       case FGEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OGE, left, right);
 
-      case AND: return builder.CreateLogicalAnd(left, right);
-      case OR: return builder.CreateLogicalOr(left, right);
+      case AND: return builder.CreateLogicalAnd(builder.CreateTrunc(left, tu->i1), builder.CreateTrunc(right, tu->i1));
+      case OR: return builder.CreateLogicalOr(builder.CreateTrunc(left, tu->i1), builder.CreateTrunc(right, tu->i1));
       case BITAND: return builder.CreateAnd(left, right);
       case BITOR: return builder.CreateOr(left, right);
       case BITXOR: return builder.CreateXor(left, right);
@@ -396,6 +432,8 @@ class TU final : public Backend {
     genReadExpression() noexcept {
       const auto& instruction_type = instructions[instruction_idx].type;
       const auto res = genExpression();
+      if (llvm::isa<llvm::AllocaInst>(res))
+        return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
       if (instruction_type == PeepMIR::Instruction::GLOBAL) //this is disgusting
         return builder.CreateLoad(llvm::cast<llvm::GlobalVariable>(res)->getValueType(), res);
       if (instruction_type == PeepMIR::Instruction::LOCAL)
@@ -412,7 +450,8 @@ class TU final : public Backend {
       case NOOP:
         return nullptr;
       case GLOBAL: {
-        const auto global = (tu->module.getNamedGlobal(instruction.string_value())); assert(global);
+        const auto global = (tu->module.getNamedGlobal(instruction.global_name()));
+        assert(global);
         instruction.release_string_value().destroy_and_deallocate();
         return global;
       }
@@ -427,9 +466,11 @@ class TU final : public Backend {
         return function;
       }
       case INT_LITERAL:
-        return signedConstant(tu->typeForInteger(instruction.int_value()), instruction.int_value());
+        return llvm::ConstantInt::get(tu->i64, instruction.value, true);
+        //return signedConstant(tu->typeForInteger(instruction.int_value()), instruction.int_value());
       case UINT_LITERAL:
-        return unsignedConstant(tu->typeForUnsigned(instruction.uint_value()), instruction.uint_value());
+        return llvm::ConstantInt::get(tu->i64, instruction.value);
+        //return unsignedConstant(tu->typeForUnsigned(instruction.uint_value()), instruction.uint_value());
       case FLOAT_LITERAL:
         return llvm::ConstantFP::get(tu->f32, instruction.float_value());
       case DOUBLE_LITERAL:
@@ -501,7 +542,7 @@ class TU final : public Backend {
     void genBlock(u32_t instruction_cut_off) {
       llvm::Value* branch_value{};
       while (instruction_idx < instruction_cut_off)
-        branch_value = genExpression();
+        branch_value = genReadExpression();
 
       const auto& block = mir_blocks[block_idx];
       switch (block.terminator_type) {
@@ -549,21 +590,6 @@ class TU final : public Backend {
     }
   };
 
-  void genGlobals() {
-    /*
-    llvm::Constant* v = var.expr ?  genConstant(*var.expr) : llvm::Constant::getNullValue(translateType(var.type.type));
-    module.insertGlobalVariable(
-      new llvm::GlobalVariable(
-       translateType(var.type.type),
-       not var.type.details.is_mutable,
-       llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-       v,
-       var.ident
-       )
-     );
-     */
-  }
-
   void compileFunction(PeepMIR::Function& func) {
     Function lowering_function(func, this);
     lowering_function.codegenFunction();
@@ -572,8 +598,22 @@ class TU final : public Backend {
 public:
 
   void lowerToLLVM(PeepMIR::TU& tu) {
-    //for (const auto& v : tu.globals)
-      //void;
+    auto i{0uz};
+    for (auto& instruction : tu.global_instructions) {
+      if (instruction.type not_eq PeepMIR::Instruction::GLOBAL)
+        continue;
+
+      module.insertGlobalVariable(
+        new llvm::GlobalVariable(
+          translateType(tu.globals[i]),
+          false,
+          llvm::GlobalValue::LinkageTypes::ExternalLinkage,
+          nullptr,
+          instruction.global_name()
+          )
+        );
+      ++i;
+    }
 
     for (auto& func : tu.functions)
       compileFunction(func);

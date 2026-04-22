@@ -88,6 +88,8 @@ std::vector<std::filesystem::path> Settings::setArgs(const unsigned argc, const 
       output_lexer = true; break;
     case Args::OUTPUT_PARSER:
       output_parser = true; break;
+    case Args::OUTPUT_PEEP:
+      output_peep = true; break;
     case Args::OUTPUT_VALIDATION:
       output_validation = true; break;
     case Args::OUTPUT_LLVMIR:

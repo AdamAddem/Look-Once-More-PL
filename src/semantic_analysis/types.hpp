@@ -382,7 +382,7 @@ constexpr sz_t Type::bitwidth() const noexcept {
   case PRIMITIVE:
     return static_cast<const PrimitiveType*>(this)->bitwidth();
   case POINTER:
-    return 8;
+    return sizeof(void*) * 8;
   case VARIANT:
   case FUNCTION:
   case CUSTOM:

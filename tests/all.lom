@@ -133,5 +133,5 @@ fn _64bit() {
 
 fn main() -> i32 {
     zeroes(); _8bit(); _16bit(); _32bit(); _64bit();
-    return 0;
+    return bitwise_oprs() + condition_oprs() + math_oprs();
 }

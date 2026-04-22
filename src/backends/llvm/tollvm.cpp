@@ -20,25 +20,6 @@
 using namespace LOM;
 
 namespace {
-/*
-void finalizeFunction() {
-  if (not builder.GetInsertBlock()->back().isTerminator())
-    builder.CreateBr(return_block);
-  func->insert(func->end(), return_block);
-  builder.SetInsertPoint(return_block);
-  if (not return_type->isVoidTy()) {
-    llvm::Value* v = builder.CreateLoad(return_type, locals[retval_location_name]);
-    builder.CreateRet(v);
-  }
-  else
-    builder.CreateRetVoid();
-
-  if (verifyFunction(*func, &llvm::errs())) {
-    return_block->getModule()->print(llvm::outs(), nullptr);
-    throw BackendError("Failed to verify Function!", func->getName().str(), 0);
-  }
-} */
-
 
 using PeepMIR::released_string;
 using PeepMIR::released_span;
@@ -51,13 +32,8 @@ class TU final : public Backend {
   llvm::Module module;
 
   llvm::IntegerType* i1; llvm::ConstantInt* i1_0; llvm::ConstantInt* i1_1;
-  llvm::IntegerType* i8; llvm::ConstantInt* i8_0; llvm::ConstantInt* i8_1;
-  llvm::IntegerType* i16; llvm::ConstantInt* i16_0; llvm::ConstantInt* i16_1;
-  llvm::IntegerType* i32; llvm::ConstantInt* i32_0; llvm::ConstantInt* i32_1;
-  llvm::IntegerType* i64; llvm::ConstantInt* i64_0; llvm::ConstantInt* i64_1;
-  llvm::Type* f32;  llvm::Constant* f32_0; llvm::Constant* f32_1;
-  llvm::Type* f64; llvm::Constant* f64_0; llvm::Constant* f64_1;
-  llvm::Type* devoid;
+  llvm::IntegerType* i8; llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
+  llvm::Type* f32; llvm::Type* f64; llvm::Type* devoid; llvm::PointerType* ptr;
 
   [[nodiscard]] std::filesystem::path
   createASMFile(const std::filesystem::path &file) override {
@@ -153,10 +129,9 @@ class TU final : public Backend {
 
 
   [[nodiscard]] llvm::Type*
-  translateType(const Type* t) const {
+  translateType(const Type* t) {
     assert(not t->isCustom());
     assert(not t->isVariant());
-    assert(not t->isPointer());
     assert(t not_eq PrimitiveType::string());
 
     if (t->isIntegral()) {
@@ -185,17 +160,20 @@ class TU final : public Backend {
     if (t == PrimitiveType::bool_() or t == PrimitiveType::char_())
       return i8;
 
+    if (t->isPointer())
+      return ptr;
+
     std::unreachable();
   }
 
   [[nodiscard]] llvm::IntegerType*
-  typeForInteger(i64_t int_literal) const noexcept {
+  typeForInteger(i64_t int_literal) noexcept {
     return
     llvm::cast<llvm::IntegerType>(translateType(signedToLiteralInstance(int_literal).type));
   }
 
   [[nodiscard]] llvm::IntegerType*
-  typeForUnsigned(u64_t uint_literal) const noexcept {
+  typeForUnsigned(u64_t uint_literal) noexcept {
     return
     llvm::cast<llvm::IntegerType>(translateType(unsignedToLiteralInstance(uint_literal).type));
   }
@@ -320,7 +298,7 @@ class TU final : public Backend {
         return var;
       }
       case ADDRESS_OF:
-        return llvm::cast<llvm::AllocaInst>(genExpression()); //cast exists only for the assertion, redundant otherwise
+        return genExpression();
       case NEGATE:
         return builder.CreateNeg(genReadExpression());
       case FNEGATE:
@@ -362,20 +340,18 @@ class TU final : public Backend {
       default:
         std::unreachable();
       }
-
-      return res;
     }
 
     [[nodiscard]] llvm::Value*
     genBinary(PeepMIR::Instruction::Type type) noexcept {
       if (type == PeepMIR::Instruction::ASSIGN) {
         const auto left = genExpression();
-        const auto right = genReadExpression();
+        const auto right = genExpression();
         return builder.CreateStore(right, left);
       }
 
       const auto left = genReadExpression();
-      const auto right = genReadExpression();
+      const auto right = genExpression();
 
       switch (type) {
         using enum PeepMIR::Instruction::Type;
@@ -392,6 +368,8 @@ class TU final : public Backend {
       case UMOD: return builder.CreateURem(left, right);
       case SMOD: return builder.CreateSRem(left, right);
       case FMOD: return builder.CreateFRem(left, right);
+
+      case ASSIGN: return builder.CreateStore(right, left);
 
       case ULESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULT, left, right);
       case SLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLT, left, right);
@@ -430,15 +408,17 @@ class TU final : public Backend {
 
     [[nodiscard]] llvm::Value*
     genReadExpression() noexcept {
-      const auto& instruction_type = instructions[instruction_idx].type;
+      const auto instruction = instructions[instruction_idx];
       const auto res = genExpression();
       if (res == nullptr)
         return nullptr;
       if (llvm::isa<llvm::AllocaInst>(res))
         return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
-      if (instruction_type == PeepMIR::Instruction::GLOBAL) //this is disgusting
+      if (instruction.type == PeepMIR::Instruction::DEREFERENCE)
+        return builder.CreateLoad(tu->translateType(instruction.dereference_type()), res);
+      if (instruction.type == PeepMIR::Instruction::GLOBAL) //this is disgusting and probably also redundant
         return builder.CreateLoad(llvm::cast<llvm::GlobalVariable>(res)->getValueType(), res);
-      if (instruction_type == PeepMIR::Instruction::LOCAL)
+      if (instruction.type == PeepMIR::Instruction::LOCAL)
         return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
 
       return res;
@@ -514,6 +494,8 @@ class TU final : public Backend {
       case POST_INC: case FPOST_INC:
       case POST_DEC: case FPOST_DEC:
         return genUnary(instruction.type);
+      case DEREFERENCE:
+        return builder.CreateLoad(tu->ptr, genExpression());
 
       case UCAST:
         return builder.CreateZExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.value));
@@ -525,6 +507,8 @@ class TU final : public Backend {
           instruction.value == 32
           ? llvm::Type::getFloatTy(tu->context)
           : llvm::Type::getDoubleTy(tu->context));
+      case PCAST:
+        return genExpression();
       case CALL: {
         const auto fn = genExpression();
         llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
@@ -544,7 +528,7 @@ class TU final : public Backend {
     void genBlock(u32_t instruction_cut_off) {
       llvm::Value* branch_value{};
       while (instruction_idx < instruction_cut_off)
-        branch_value = genReadExpression();
+        branch_value = genExpression();
 
       const auto& block = mir_blocks[block_idx];
       switch (block.terminator_type) {
@@ -625,19 +609,14 @@ public:
   explicit TU(const std::string& filename)
   : module(filename, context) {
     i1 = llvm::Type::getInt1Ty(context); i1_0 = llvm::ConstantInt::get(i1, 0); i1_1 = llvm::ConstantInt::get(i1, 1);
-    i8 = llvm::Type::getInt8Ty(context); i8_0 = llvm::ConstantInt::get(i8, 0); i8_1 = llvm::ConstantInt::get(i8, 1);
-    i16 = llvm::Type::getInt16Ty(context); i16_0 = llvm::ConstantInt::get(i16, 0); i16_1 = llvm::ConstantInt::get(i16, 1);
-    i32 = llvm::Type::getInt32Ty(context); i32_0 = llvm::ConstantInt::get(i32, 0); i32_1 = llvm::ConstantInt::get(i32, 1);
-    i64 = llvm::Type::getInt64Ty(context); i64_0 = llvm::ConstantInt::get(i64, 0); i64_1 = llvm::ConstantInt::get(i64, 1);
-
-    f32 = llvm::Type::getFloatTy(context); f32_0 = llvm::ConstantFP::get(f32, 0); f32_1 = llvm::ConstantFP::get(f32, 1);
-    f64 = llvm::Type::getDoubleTy(context); f64_0 = llvm::ConstantFP::get(f64, 0); f64_1 = llvm::ConstantFP::get(f64, 1);
-    devoid = llvm::Type::getVoidTy(context);
+    i8 = llvm::Type::getInt8Ty(context); i16 = llvm::Type::getInt16Ty(context);
+    i32 = llvm::Type::getInt32Ty(context); i64 = llvm::Type::getInt64Ty(context);
+    f32 = llvm::Type::getFloatTy(context); f64 = llvm::Type::getDoubleTy(context);
+    devoid = llvm::Type::getVoidTy(context); ptr = llvm::PointerType::get(context, 0);
   }
 
   void printModule(llvm::raw_ostream& out = llvm::outs()) const
   { module.print(out, nullptr); }
-
 
 };
 }

@@ -30,20 +30,19 @@ Below are language features, only some of which are implemented currently, that 
     <string, devoid> first_member = getFirstClubMember();   //Nullable type represented 'devoid' keyword
     
     [string first, string last] person = ["Gabe", "Newell"]; //Tuple / Anonymous struct
-  
-    fn getNameOrError(u32 id) -> [string, ] {...}
 * Strict and explicit global variables
     ```
-    //Global variables must be defined before any functions
-    //Global variables may not be initialized using external to the Translation Unit
+    //Global variables must be defined before anything else.
+    //Global variables may not be junk initialized.
+    //Global variables are initialized at compile time.
 
-    global mut i32 x = junk;
+    global mut i32 x = junk; //error
     global mut f32 y = 4.0f;
   
     fn foo() {...}  
     
     global i32 not_allowed = 5; //error
-* 
+* Steal semantics
     ```
     fn foo(Resource param) {...}
   
@@ -52,16 +51,27 @@ Below are language features, only some of which are implemented currently, that 
         foo(steal x);
         x.doThing() //error: x no longer usable
     }
-* Miscellaneous
-    * Adopted devoid instead of void to better describe something without type or value
-    * Any function can be called with the . operator on the first parameter
-        * Ex:
-          ```
-          fn doThing(Resource arg) {...} 
-          fn main() -> i32 { Resource x; x.doThing(); }
+* Strong typing and simple promotion rules
+    ```
+    //No implicit conversions, with the exception of integer types which can hold all values of the previous type
+    //signed -> unsigned not allowed, unsigned -> signed allowed for signed types greater than current size
+  
+    mut i8 signed_8 = 0; mut u8 unsigned_8 = 0; mut i32 signed_32 = 0; mut u32 unsigned_32 = 0;
+    unsigned_32 = signed_8; //Error
+    unsigned_32 = unsigned_8;
+    signed_32 = unsigned_8;
+    signed_8 = unsigned_8; //Error
+  
+    //In math expressions, types are promoted to the leftmost type if such conversion is legal
+    signed_32 / unsigned_8; //Signed 32bit division
+    unsigned_32 + unsigned_8;
+    unsigned_8 + unsigned_32; //Error
 ---
-### Compiling
-Currently the only dependencies are LLVM version 20.1.8. 
+### How to Build
+Don't. <br>
+
+But if you want to for whatever reason: <br>
+Currently the only dependencies are LLVM 21. <br>
 Clone and compile as such:
 ```
 git clone --recurse-submodules https://github.com/AdamAddem/Look-Once-More-PL
@@ -80,7 +90,7 @@ The executable can be ran with the following arguments:
     -emit-parser                Prints the result of the parser.
     -emit-peep                  Validates the program and prints the peep MIR representation.
     -validate                   Prints whether the files are legal LOM programs.
-    -O0, O1, O2, O3             Does absolutely nothing.
+    -O0, O1, O2, O3             Does absolutely nothing at the moment.
     
     //May be used in conjunction but prevents linking
     -emit-obj                   Produces object files.
@@ -88,7 +98,7 @@ The executable can be ran with the following arguments:
     -emit-asm                   Compiles to assembly.
 ```
 As of right now, the module system is not implemented, and forward declarations are not a thing, so compiling multiple files is useless as they can't interact.
-Just come back in a month or two.
+Just come back in a month or two. or four.
 
 ---
 
@@ -104,15 +114,15 @@ C++'s overemphasis on backwards compatability has led to a mixed bag of features
 The lack of will to change / deprecate / remove what has already been added to the language leads to the creation of many new features with the sole purpose of improving the old. <br>
 
 Often times a new feature does improve the language, just to end up coexisting with the old feature it was intended to replace.
-Concepts are great example of this, despite one of the best recent C++ features. They don't fundamentally change metaprogramming, instead providing a moderately cleaner way of performing the same tasks,
-while still relying upon more archaic features like type traits to function.
+Concepts are great example of this, despite being one of the best recent C++ features. They don't fundamentally change metaprogramming, instead providing a cleaner way of performing the same tasks,
+while still relying upon archaic features like type traits to function.
 In other cases, a new feature can release just to end up being more inconvenient / wordy / restrictive than the old version, albiet with some situational benefits.
 
 Below are some major examples of the problems that C++ has accrued over the years that are a result of its 'less than progressive' development: 
 
 * Obscure / Esoteric syntax
   ```c++ 
-    int (Foo::*)(int (&)[5]) ptr; 
+    int (Foo::*)(int (&)[5]) ptr;
     requires requires { typename T::foo; };
     noexcept(noexcept(a.~T()))
 * Standard library features that should be features of the language
@@ -130,8 +140,8 @@ Below are some major examples of the problems that C++ has accrued over the year
 * Pointers and references can be unintuitive 
     ```c++
     int * const * x; //mutable pointer to const pointer to mutable int
-    int& foo() { static int* ptr = new int; return *ptr; } //dereference to create a reference but does not actually dereference
-    std::move(obj) //doesn't actually do anything beyond casting
+    int& foo() { static int* ptr = new int; return *ptr; } //dereference to create a reference that does not actually dereference
+    std::move(obj) //only casts the object, can silently fail
 * Bad defaults and too many implicit features
   * noexcept, const, constexpr, \[\[nodiscard\]\], and explicit are everywhere in modern codebases leading to long lines of text that just declare a single function
   * Implicit junk initialization for trivially constructible types ("int x;" and  "new int" both don't initialize at all) 
@@ -147,14 +157,14 @@ Many languages have been created in an attempt to replace or augment C++, althou
 
 Rust is likely the most popular C++ 'replacement'. When I first started developing Look Once More, I had essentially no knowledge of Rust beyond a basic understanding of the borrow checker.
 Coincidentally many of the ideas I had early on shared a striking resemblance to many of Rust's features, despite the fact that I had never used the language.
-Now having dug much deeper, there are many things I can admire about the language. However, its core philosophy is almost opposite to C++'s in many ways; it forces you into a particular
+Now having dug much deeper, there are many things I can admire about it. However, its core philosophy is almost opposite to C++'s in many ways; it forces you into a particular
 style of programming in order to even compile. Granted, this style is well justified, has workarounds, and comes with many benefits, but it is simply not enjoyable to me.
 
-I'm sure there may exist other low-level languages that I'd enjoy programming in, although I'm not quite sure that they'd ever scratch the same itch.
+I'm sure there may exist other low-level languages that I'd enjoy programming in, although I'm not quite sure that they would ever scratch the same itch.
 
 ### The Name
 The name 'C++' is a play on 'C', implying that it is the increment of C. I've always thought it was funny that the postfix ++ operator was used rather than the prefix.
-Ironically this choice implies that when someone uses 'C++', all they're really getting is C, and the addition is an afterthought - an idea I find thematically consistent with my experience of the language.
+Ironically this implies that when someone uses 'C++', all they're really getting is C, and the addition is an afterthought - an idea I find consistent with my experience of the language.
 So while C++ is really C again, I encourage us all to Look Once More (badumtss).
 
 The name is not just a pun though. 

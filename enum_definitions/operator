@@ -1,4 +1,4 @@
-Operator Expressions
+Operator LOM::AST
 
 !BEGIN BINARY_OPS
     ADD +
@@ -21,14 +21,9 @@ Operator Expressions
     NOT_EQUAL not_eq
 !END BINARY_OPS
 
-!BEGIN PREFIX_OPS
-    !BEGIN CASTS
-    CAST cast
-    CAST_IF cast_if
-    UNSAFE_CAST unsafe_cast
-!END CASTS
-
 !BEGIN UNARY_OPS
+
+!BEGIN PREFIX_OPS
     PRE_INCREMENT ++
     PRE_DECREMENT ---
     UNARY_MINUS --
@@ -37,8 +32,11 @@ Operator Expressions
     NOT not
 !END PREFIX_OPS
 
+!BEGIN POSTFIX_OPS
     POST_INCREMENT ++
     POST_DECREMENT ---
+    ARROW -->
+!END POSTFIX_OPS
 
 !END UNARY_OPS
 

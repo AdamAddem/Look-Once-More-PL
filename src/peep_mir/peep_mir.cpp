@@ -17,6 +17,19 @@ using namespace LOM::AST;
 
 namespace {
 
+[[nodiscard]] constexpr Instruction
+castForType(const Type* left_type, const Type* right_type) noexcept {
+  if (right_type->isPointer())
+    return {Instruction::PCAST, std::bit_cast<u64_t>(left_type)};
+  if (right_type->isSignedIntegral())
+    return {Instruction::SCAST, left_type->bitwidth()};
+  if (right_type->isFloating())
+    return {Instruction::FCAST, left_type->bitwidth()};
+
+  return {Instruction::UCAST, left_type->bitwidth()};
+
+  std::unreachable();
+}
 
 class TreeView {
   std::vector<ASTNode>::iterator begin;
@@ -217,21 +230,16 @@ class Peeper {
     const bool signed_opr = left.type->isSignedIntegral();
     const bool float_opr = left.type->isFloating();
     const auto right = peepExpression();
-    const bool signed_cast = right.type->isSignedIntegral();
-    const bool float_cast = right.type->isFloating();
 
-    if (not right.type->convertibleTo(left.type))
-      throw ValidationError("Binary operator used on differing types.",
-        std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
+    if (not right.type->convertibleTo(left.type)) [[unlikely]]
+      throw ValidationError("Right type in binary expression incompatable with left type.",
+        std::format("'{}' {} '{}'", left.type->toString(), operatorToString(opr), right.type->toString()), current_line_number);
 
-    if (left.type->isVariant()) //types should be same, so checking just one is sufficient
+    if (left.type->isVariant()) [[unlikely]] //types should be same, so checking just one is sufficient
       throw ValidationError("Binary operator used on variant types.",
         std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
 
-    instructions[cast_idx].type =
-    float_cast ? Instruction::FCAST :
-    (signed_cast ? Instruction::SCAST : Instruction::UCAST);
-    instructions[cast_idx].value = left.type->bitwidth();
+    instructions[cast_idx] = castForType(left.type, right.type);
 
     const bool arithmetic = left.type->isArithmetic();
     //first switch validates
@@ -365,6 +373,12 @@ class Peeper {
   }
 
   InstantiatedType peepUnaryExpression(const Operator opr) {
+    if (opr == Operator::ADDRESS_OF) {
+      instructions.emplace_back(Instruction::ADDRESS_OF, 0);
+      auto expression = peepExpression();
+      return {table.addRawPointer(expression), {}};
+    }
+
     const auto instruction_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
 
     auto expression = peepExpression();
@@ -384,9 +398,6 @@ class Peeper {
         throw ValidationError("Unary minus used on non-arithmetic expression.", expression.toString(), current_line_number);
       expression.details.is_mutable = false;
       break;
-    case Operator::ADDRESS_OF:
-      expression = {table.addRawPointer(expression), {}};
-      break;
     case Operator::BITNOT:
       if (not arithmetic)
         throw ValidationError("bitnot operator used non-arithmetic expression", expression.toString(), current_line_number);
@@ -403,7 +414,11 @@ class Peeper {
         throw ValidationError("Postfix decrement operator used on non-mutable expression.", expression.toString(), current_line_number);
       expression.details.is_mutable = false;
       break;
-
+    case Operator::ARROW:
+      if (not expression.type->isPointer())
+        throw ValidationError("Arrow operator used on non-pointer type.", expression.toString(), current_line_number);
+      expression = expression.type->castToPointer()->getSubtype();
+      break;
     default:
       std::unreachable();
     }
@@ -418,9 +433,6 @@ class Peeper {
     case Operator::UNARY_MINUS:
       instructions[instruction_idx].type = float_opr ? Instruction::FNEGATE : Instruction::NEGATE;
       return expression;
-    case Operator::ADDRESS_OF:
-      instructions[instruction_idx].type = Instruction::ADDRESS_OF;
-      return expression;
     case Operator::BITNOT:
     case Operator::NOT:
       instructions[instruction_idx].type = Instruction::BITNOT;
@@ -430,6 +442,10 @@ class Peeper {
       return expression;
     case Operator::POST_DECREMENT:
       instructions[instruction_idx].type = float_opr ? Instruction::FPOST_DEC : Instruction::POST_DEC;
+      return expression;
+    case Operator::ARROW:
+      instructions[instruction_idx].type = Instruction::DEREFERENCE;
+      instructions[instruction_idx].value = std::bit_cast<u64_t>(expression.type);
       return expression;
     default:
       std::unreachable();
@@ -495,10 +511,9 @@ class Peeper {
       std::format("Return value type is '{}'", return_expression.toString()), current_line_number);
 
     if (not return_expression.type->convertibleTo(return_type))
-      throw ValidationError("Return statement's type is not compatible with return type of scope.",
-       std::format("Scope return type is '{}' and expression type is '{}'", return_type->toString(), return_expression.toString()),
+      throw ValidationError("Return statement's type is not compatible with function return type.",
+       std::format("Function return type is '{}' and expression is of type '{}'", return_type->toString(), return_expression.type->toString()),
        current_line_number);
-
 
     const auto bitwidth = return_type->bitwidth();
     if (return_expression.type->isFloating()) [[unlikely]]
@@ -603,15 +618,7 @@ class Peeper {
         std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
         name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", init_expr.toString()), current_line_number);
 
-    const auto bitwidth = declaration_type.type->bitwidth();
-    if (init_expr.type->isFloating())
-      instructions[cast_idx].type = Instruction::FCAST;
-    else if (init_expr.type->isSignedIntegral())
-      instructions[cast_idx].type = Instruction::SCAST;
-    else
-      instructions[cast_idx].type = Instruction::UCAST;
-
-    instructions[cast_idx].value = bitwidth;
+    instructions[cast_idx] = castForType(declaration_type.type, init_expr.type);
     locals.emplace_back(declaration_type.type);
   }
 
@@ -828,10 +835,13 @@ void printPeepInstruction(Instruction instruction) {
   case FPOST_INC: return std::println("FPOST_INC");
   case POST_DEC: return std::println("POST_DEC");
   case FPOST_DEC: return std::println("FPOST_DEC");
+  case DEREFERENCE: return std::println("DEREFERENCE TO {}", instruction.dereference_type()->toString());
 
   case UCAST: return std::println("UCAST TO {}b", instruction.value);
   case SCAST: return std::println("SCAST TO {}b", instruction.value);
   case FCAST: return std::println("FCAST TO {}b", instruction.value);
+  case PCAST: return std::println("PCAST TO {}", instruction.pcast_type()->toString());
+
 
   case CALL: return std::println("CALL");
   default:

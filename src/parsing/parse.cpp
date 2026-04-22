@@ -260,21 +260,19 @@ struct Body {
       case TokenType::MINUSMINUS:
         value = static_cast<u64_t>(Operator::POST_DECREMENT);
         break;
-
+      case TokenType::ARROW:
+        value = static_cast<u64_t>(Operator::ARROW);
+        break;
       case TokenType::LPAREN: {
         tokens.pop();
         const u16_t parameters = tokens.pop_if(TokenType::RPAREN) ? 0 : generateParameters();
-        left = expression_tree.create(
-          ASTNode::CALLING, 0,
-          left, parameters);
+        left = expression_tree.create(ASTNode::CALLING, 0, left, parameters); //pretty sure the 0 is supposed to be a placeholder but its been working so wtv
         continue;
       }
       case TokenType::LBRACKET:
         tokens.pop();
         tokens.reject(TokenType::RBRACKET, "Expected expression within brackets.");
-        left = expression_tree.create(
-          ASTNode::SUBSCRIPT, 0,
-          left, generateSubscript());
+        left = expression_tree.create(ASTNode::SUBSCRIPT, 0, left, generateSubscript());
         continue;
       default:
         return left;
@@ -455,7 +453,6 @@ struct Body {
 
     return left;
   }
-
 
   u16_t generateExpressionBetweenParenthesis() {
     const TokenView until_ending = tokens.getTokensBetweenParenthesis();

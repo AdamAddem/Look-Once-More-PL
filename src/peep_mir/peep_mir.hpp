@@ -1,6 +1,6 @@
 #pragma once
-#include "edenlib/typedefs.hpp"
 #include "edenlib/releasing_vector.hpp"
+#include "edenlib/typedefs.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 #include "settings.hpp"
 
@@ -27,7 +27,7 @@ struct Instruction {
     //look you've read my codebase you get the memo by now
     INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
 
-    //value indeterminate for operators
+    //value indeterminate for most operators
     ADD, FADD,
     SUB, FSUB,
     MULT, FMULT,
@@ -47,9 +47,11 @@ struct Instruction {
     BITNOT,
     POST_INC, FPOST_INC,
     POST_DEC, FPOST_DEC,
+    DEREFERENCE, //value contains const AST::Type*
 
     //value contains bitwidth to extend / truncate to
     UCAST, SCAST, FCAST,
+    PCAST, //pointer cast, value contains const AST::Type* although this is not used
 
     CALL // value equals number of parameters
   }type;
@@ -101,6 +103,14 @@ struct Instruction {
   [[nodiscard]] constexpr u64_t
   num_params() const noexcept
   {assume_assert(type == CALL); return value;}
+
+  [[nodiscard]] constexpr const LOM::Type*
+  dereference_type() const noexcept
+  {assume_assert(type == DEREFERENCE); return std::bit_cast<const LOM::Type*>(value);}
+
+  [[nodiscard]] constexpr const LOM::Type*
+  pcast_type() const noexcept
+  {assume_assert(type == PCAST); return std::bit_cast<const LOM::Type*>(value);}
 
   [[nodiscard]] constexpr eden::releasing_string::released_ptr
   release_string_value() noexcept {

@@ -1,6 +1,6 @@
 #include "codegen.hpp"
-#include "llvm/tollvm.hpp"
 #include "settings.hpp"
+#include "llvm/tollvm.hpp"
 
 #include <cassert>
 #include <iostream>
@@ -26,7 +26,7 @@ void Backend::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
 #elif defined(__GNUC__)
   std::string compiler{"gcc"};
 #else
-  throw std::runtime_error("Linking objects is currently not supported without clang or gcc. You're probably on windows, in which case, godspeed soldier.");
+  throw std::runtime_error("Linking objects is currently not supported without clang or gcc. You're probably on windows, in which case, godspeed.");
 #endif
 
   for (const auto& file : obj_paths) {

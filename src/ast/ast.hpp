@@ -31,9 +31,6 @@ enum class Operator : u8_t {
   BITXOR,
   EQUAL,
   NOT_EQUAL,
-  CAST,
-  CAST_IF,
-  UNSAFE_CAST,
   PRE_INCREMENT,
   PRE_DECREMENT,
   UNARY_MINUS,
@@ -42,57 +39,40 @@ enum class Operator : u8_t {
   NOT,
   POST_INCREMENT,
   POST_DECREMENT,
+  ARROW,
 };
 
 inline const std::unordered_map<std::string, Operator> stringToOperator{
+	  {"+", Operator::ADD}, {"-", Operator::SUBTRACT}, {"*", Operator::MULTIPLY},
+          {"/", Operator::DIVIDE}, {"%", Operator::MODULUS}, {"=", Operator::ASSIGN},
+          {"<", Operator::LESS}, {">", Operator::GREATER}, {"<=", Operator::LESS_EQUAL},
+          {">=", Operator::GREATER_EQUAL}, {"and", Operator::AND}, {"or", Operator::OR},
+          {"xor", Operator::XOR}, {"bitand", Operator::BITAND}, {"bitor", Operator::BITOR},
+          {"bitxor", Operator::BITXOR}, {"eq", Operator::EQUAL}, {"not_eq", Operator::NOT_EQUAL},
+          {"++", Operator::PRE_INCREMENT}, {"--", Operator::PRE_DECREMENT}, {"-", Operator::UNARY_MINUS},
+          {"@", Operator::ADDRESS_OF}, {"bitnot", Operator::BITNOT}, {"not", Operator::NOT},
+          {"++", Operator::POST_INCREMENT}, {"--", Operator::POST_DECREMENT}, {"->", Operator::ARROW},
+};
 
-      {"+", Operator::ADD},
-      {"-", Operator::SUBTRACT},
-      {"*", Operator::MULTIPLY},
-      {"/", Operator::DIVIDE},
-      {"%", Operator::MODULUS},
-      {"=", Operator::ASSIGN},
-      {"<", Operator::LESS},
-      {">", Operator::GREATER},
-      {"<=", Operator::LESS_EQUAL},
-      {">=", Operator::GREATER_EQUAL},
-      {"and", Operator::AND},
-      {"or", Operator::OR},
-      {"xor", Operator::XOR},
-      {"bitand", Operator::BITAND},
-      {"bitor", Operator::BITOR},
-      {"bitxor", Operator::BITXOR},
-      {"eq", Operator::EQUAL},
-      {"not_eq", Operator::NOT_EQUAL},
-      {"cast", Operator::CAST},
-      {"cast_if", Operator::CAST_IF},
-      {"unsafe_cast", Operator::UNSAFE_CAST},
-      {"++", Operator::PRE_INCREMENT},
-      {"--", Operator::PRE_DECREMENT},
-      {"-", Operator::UNARY_MINUS},
-      {"@", Operator::ADDRESS_OF},
-      {"bitnot", Operator::BITNOT},
-      {"not", Operator::NOT},
-      {"++", Operator::POST_INCREMENT},
-      {"--", Operator::POST_DECREMENT},
-  };
-
-constexpr const char *operatorToString(const Operator e) {
-  constexpr const char *toString[] = {
-
-    "+",      "-",    "*",       "/",            "%",
-    "=",      "<",    ">",       "<=",          ">=",     "and",
-    "or",     "xor",  "bitand",  "bitor",       "bitxor", "eq",
-    "not_eq", "cast", "cast_if", "unsafe_cast", "++",     "--",
-    "-",      "@",    "bitnot",  "not",         "++",     "--",
+constexpr const char* operatorToString(const Operator e) {
+  constexpr const char* toString[] = {
+    "+","-","*",
+    "/","%","=",
+    "<",">","<=",
+    ">=","and","or",
+    "xor","bitand","bitor",
+    "bitxor","eq","not_eq",
+    "++","--","-",
+    "@","bitnot","not",
+    "++","--","->",
 };
   return toString[std::to_underlying(e)];
 }
+constexpr bool isCategoryBINARY_OPS(const Operator e) { return std::to_underlying(e) < 18; }
+constexpr bool isCategoryPREFIX_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 24; }
+constexpr bool isCategoryPOSTFIX_OPS(const Operator e) { return std::to_underlying(e) >= 24 && std::to_underlying(e) < 27; }
+constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 27; }
 
-constexpr bool isCategoryBINARY_OPS(const Operator e) {return std::to_underlying(e) < 18;}
-constexpr bool isCategoryCASTS(const Operator e) {return std::to_underlying(e) >= 18 && std::to_underlying(e) < 21;}
-constexpr bool isCategoryPREFIX_OPS(const Operator e) {return std::to_underlying(e) >= 18 && std::to_underlying(e) < 27;}
-constexpr bool isCategoryUNARY_OPS(const Operator e) {return std::to_underlying(e) >= 21;}
 
 class ASTNode;
 struct SyntaxTree {

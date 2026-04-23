@@ -1,46 +1,21 @@
-#include <iostream>
-#include <stdexcept>
-
-#include "edenlib/lifetime_observer.hpp"
 #include "ast/ast.hpp"
-#include "backends/codegen.hpp"
-#include "error.hpp"
-#include "lexing/lex.hpp"
-#include "parsing/parse.hpp"
-#include "peep_mir/peep_mir.hpp"
+#include "build_system/build.hpp"
+#include "edenlib/lifetime_observer.hpp"
 #include "settings.hpp"
 
-#include <filesystem>
-
-using namespace LOM::Lexer;
-using namespace LOM::Parser;
-using namespace LOM::PeepMIR;
-using namespace LOM;
-
-
-
-[[maybe_unused]] static std::unique_ptr<Backend>
-processLOMFile(const std::filesystem::path& filename)
-try {
-  return Backend::codegen(
-                  lowerToPeep(
-                  parseTokens(
-                  tokenizeFile(filename)
-                  )),filename.stem()); }
-catch (LOMError& e) { std::cout << e.error_message << std::endl; std::quick_exit(1); }
-
+#include <print>
 
 int main(const int argc, const char* argv[]) {
   if(argc < 2)
-    throw std::runtime_error("Arguments required");
-  std::vector<std::filesystem::path> filepaths = Settings::setArgs(argc, argv);
-  if (filepaths.empty())
-    throw std::runtime_error("At least one file name must be specified");
+    std::println("LookOnceMore: Arguments required."), std::quick_exit(0);
 
+  LOM::Settings::setArgs(argc, argv);
+  LOM::build();
+
+  /*
   const bool output_asm = Settings::doOutputASM();
   const bool output_ir = Settings::doOutputIR();
   const bool output_obj = Settings::doOutputOBJ() or Settings::doLinking();
-
   for (auto& filename : filepaths) {
     const auto compiled = processLOMFile(filename);
     if (output_asm)
@@ -52,7 +27,7 @@ int main(const int argc, const char* argv[]) {
   }
 
   if (Settings::doLinking())
-    Backend::linkObjects(filepaths);
+    Backend::linkObjects(filepaths); */
 
   return 0;
 }

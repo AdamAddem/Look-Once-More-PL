@@ -9,13 +9,7 @@
 using namespace LOM;
 
 std::unique_ptr<Backend> Backend::codegen(PeepMIR::TU&& vtu, const std::filesystem::path& file) {
-  switch (Settings::chosenBackend()) {
-  case Settings::Backend::LLVM:
-    return ToLLVM::codegen(std::move(vtu), file);
-
-  default:
-    std::unreachable();
-  }
+  return ToLLVM::codegen(std::move(vtu), file);
 }
 
 

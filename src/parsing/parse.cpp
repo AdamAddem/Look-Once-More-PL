@@ -32,7 +32,7 @@ InstantiatedType::InstanceDetails parseTypeDetails(TokenView& tokens) {
   return details;
 }
 
-InstantiatedType parseType(TokenView& tokens, SymbolTable& table) {
+InstantiatedType parseType(TokenView& tokens, Module& table) {
   const auto details = parseTypeDetails(tokens);
   Token token = tokens.take();
 
@@ -169,10 +169,10 @@ struct Body {
 
   std::vector<ASTNode> tree;
   TokenView tokens;
-  SymbolTable& table;
+  Module& table;
   ExpressionTree& expression_tree;
 
-  Body(TokenView tokens, SymbolTable& table, ExpressionTree& expression_tree)
+  Body(TokenView tokens, Module& table, ExpressionTree& expression_tree)
   : tokens(tokens), table(table), expression_tree(expression_tree) {}
 
   u16_t generateParameters() {
@@ -704,7 +704,7 @@ bool parseGlobal(Body& global_body) {
 
 void parseFunctions(Body& global_body, std::vector<Function>& functions) {
   TokenView& tokens = global_body.tokens;
-  SymbolTable& table = global_body.table;
+  Module& table = global_body.table;
   std::vector<TokenView> function_tokens;
 
   //just parses the declarations to load into symbol table
@@ -715,7 +715,7 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
     function.name = parseIdentifier(tokens);
     tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
 
-    SymbolTable::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
+    Module::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
     sz_t num_parameters{};
     if (not tokens.pop_if(TokenType::RPAREN))
       while (true) {
@@ -755,12 +755,10 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
   }
 }
 
-void printFunction(const Function& func, SymbolTable& table) {
+void printFunction(const Function& func, Module& table) {
   std::cout << '\n' << func.line_number << ":\t";
   std::cout << "fn " << func.name.get() << "(";
-  auto& function = table.getFunction(func.name.get());
-  const auto parameters = function.parameters();
-  const auto return_type = function.returnType();
+  auto [parameters, return_type] = table.getFunction(func.name.get());
 
   for (auto &parameter : parameters) {
     std::cout << parameter.type.toString();
@@ -780,20 +778,24 @@ void printFunction(const Function& func, SymbolTable& table) {
   std::cout << "\n}";
 }
 
-void printTU(TU& ptu) {
-  ptu.global_tree.print(1);
-  std::cout << '\n';
+}
+
+void Parser::printTU(TU& ptu) {
+  if (not ptu.global_tree.nodes.empty()) {
+    ptu.global_tree.print(1);
+    std::cout << '\n';
+  }
   for (const auto &f : ptu.functions) {
-    printFunction(f, ptu.table);
+    printFunction(f, *ptu.table);
     std::cout << "\n";
   }
 }
 
-}
-TU Parser::parseTokens(std::vector<Token> &&token_list) {
+
+TU Parser::parseTokens(std::vector<Token>& token_list, Module* table) {
   Body::ExpressionTree expression_tree;
-  TU ptu;
-  Body global_body(TokenView{token_list}, ptu.table, expression_tree);
+  TU ptu; ptu.table = table;
+  Body global_body(TokenView{token_list}, *ptu.table, expression_tree);
 
   while (parseGlobal(global_body)) {}
   ptu.global_tree.nodes = std::move(global_body.tree);

@@ -74,7 +74,7 @@ public:
 
 template <bool global_peeping>
 class Peeper {
-  SymbolTable& table;
+  Module& table;
 
   eden::releasing_vector<const Type*> locals;
   eden::releasing_vector<Instruction> instructions;
@@ -162,8 +162,8 @@ class Peeper {
 
   InstantiatedType peepIdentifier(eden::releasing_string::released_ptr identifier) {
     if constexpr(not global_peeping) {
-      if (table.containsLocalVariable(identifier.get())) {
-        auto variable = table.localVariable(identifier.get());
+      if (table.containsLocal(identifier.get())) {
+        auto variable = table.getLocal(identifier.get());
         instructions.emplace_back(Instruction::LOCAL, variable.second + 1);
         identifier.destroy_and_deallocate();
         return variable.first;
@@ -171,13 +171,12 @@ class Peeper {
 
       if (table.containsFunction(identifier.get())) {
         instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier.get()));
-        auto function_instance_type = table.instanceTypeOfFunction(identifier.get());
-        return function_instance_type;
+        return {table.typeOfFunction(identifier.get()), {}};
       }
     }
 
-    if (table.containsGlobalVariable(identifier.get())) {
-      auto variable = table.globalVariable(identifier.get());
+    if (table.containsGlobal(identifier.get())) {
+      auto variable = table.getGlobal(identifier.get());
       instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(identifier.release()));
       return variable;
     }
@@ -585,11 +584,11 @@ class Peeper {
     char* name_cstr = name.get();
 
     if constexpr (global_peeping) {
-      if (table.containsGlobalVariable(name_cstr))
+      if (table.containsGlobal(name_cstr))
         throw ValidationError("Redefinition of global variable.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
     }
     else {
-      if (table.containsLocalVariable(name_cstr))
+      if (table.containsLocal(name_cstr))
         throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
     }
 
@@ -732,7 +731,7 @@ class Peeper {
 
   Peeper(
     SyntaxTree& tree,
-    SymbolTable& table,
+    Module& table,
     const FunctionType* function_type)
   : table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(function_type) {
     locals.emplace_back(function_type->returnType());
@@ -740,11 +739,11 @@ class Peeper {
       locals.emplace_back(parameter_type);
   }
 
-  Peeper(SyntaxTree& tree, SymbolTable& table)
+  Peeper(SyntaxTree& tree, Module& table)
   : table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(nullptr) {}
 public:
 
-  static void peepFunction(TU& tu, Parser::Function &func, SymbolTable& table)
+  static void peepFunction(TU& tu, Parser::Function &func, Module& table)
   requires (not global_peeping) {
     const auto function_type = table.enterFunctionScope(func.name.get());
     Peeper function_peeper(func.body, table, function_type);
@@ -758,7 +757,7 @@ public:
     table.leaveFunctionScope();
   }
 
-  static void peepGlobals(TU& tu, SyntaxTree& global_tree, SymbolTable& table)
+  static void peepGlobals(TU& tu, SyntaxTree& global_tree, Module& table)
   requires global_peeping {
     assume_assert(tu.globals == nullptr);
     assume_assert(tu.global_instructions == nullptr);
@@ -889,7 +888,6 @@ void printPeepBlocks(released_span<Block>& blocks, released_ptr<Instruction>& in
 }
 
 void printPeepFunction(Function& func) {
-  std::println("{} Block(s).", func.blocks.size() - 1);
   std::println("fn {}{} {{", func.name.get(), func.type->toString());
 
   std::cout << "Return Type: " << func.locals[0]->toString() << std::endl;
@@ -901,21 +899,28 @@ void printPeepFunction(Function& func) {
   std::cout << std::endl;
 
   printPeepBlocks(func.blocks, func.instructions);
-  std::cout << "\n}" << std::endl;
+  std::cout << "}" << std::endl;
 }
 
-void printPeep(TU& tu) {
+}
+
+void PeepMIR::printPeep(TU& tu) {
+  std::println("--- Global Body ---");
+  for (const auto instruction : tu.global_instructions) {
+    printPeepInstruction(instruction);
+  }
+  std::println("--- Global Body ---\n");
+
   for (auto& func : tu.functions) {
     printPeepFunction(func);
   }
-}
 }
 
 using GlobalPeeper = Peeper<true>;
 using FunctionPeeper = Peeper<false>;
 
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
-  SymbolTable& table = parsed_tu.table;
+  Module& table = *parsed_tu.table;
   TU tu(table.takeTypeContext());
   tu.functions.reserve(parsed_tu.functions.size());
 
@@ -930,12 +935,6 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   }
 
   if (Settings::doOutputPeep()) {
-    std::cout << "--- Global Body ---\n";
-    for (const auto instruction : tu.global_instructions) {
-      printPeepInstruction(instruction);
-    }
-    std::cout << "--- Global Body ---\n\n";
-
     printPeep(tu);
     std::quick_exit(0);
   }

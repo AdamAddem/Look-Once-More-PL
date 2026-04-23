@@ -1,11 +1,13 @@
 #include "settings.hpp"
 
+#include "edenlib/typedefs.hpp"
+
 #include <cassert>
 #include <iostream>
 #include <unordered_map>
 #include <utility>
 
-enum class Args : unsigned {
+enum class Args : u32_t {
   OUTPUT_LEXER,
   OUTPUT_PARSER,
   OUTPUT_PEEP,
@@ -39,31 +41,35 @@ static bool output_validation{false};
 static bool output_llvmir{false};
 static bool output_asm{false};
 static bool output_obj{false};
-static auto chosen_backend{Settings::Backend::LLVM};
-static uint8_t optimization_level{0};
-
+static u8_t optimization_level{0};
 static std::string output_name;
+static std::string build_location{"build/"};
 
-static std::string build_location{"lom_build/"};
+bool Settings::doOutputLexer() noexcept                   {return output_lexer;}
+bool Settings::doOutputParser() noexcept                  {return output_parser;}
+bool Settings::doOutputPeep() noexcept                    {return output_peep;}
+bool Settings::doOutputValidation() noexcept              {return output_validation;}
+bool Settings::doOutputIR() noexcept                      {return output_llvmir;}
+bool Settings::doOutputASM() noexcept                     {return output_asm;}
+bool Settings::doOutputOBJ() noexcept                     {return output_obj;}
+bool Settings::doLinking() noexcept                       {return not output_obj and not output_asm and not output_llvmir;}
+const std::string& Settings::getExecutableName()          {return output_name;}
+const std::string& Settings::getBuildLocation()           {return build_location;}
+uint8_t Settings::getOptimizationLevel()                  {return optimization_level;}
 
-
-bool Settings::doOutputLexer() noexcept                   { return output_lexer; }
-bool Settings::doOutputParser() noexcept                  { return output_parser; }
-bool Settings::doOutputPeep() noexcept                    { return output_peep; }
-bool Settings::doOutputValidation() noexcept              { return output_validation; }
-bool Settings::doOutputIR() noexcept                      { return output_llvmir; }
-bool Settings::doOutputASM() noexcept                    { return output_asm; }
-bool Settings::doOutputOBJ() noexcept                     { return output_obj; }
-bool Settings::doLinking() noexcept                       { return not output_obj and not output_asm and not output_llvmir; }
-auto Settings::chosenBackend() noexcept -> Backend { return chosen_backend; }
-
-const std::string& Settings::getExecutableName() { return output_name; }
-const std::string& Settings::getBuildLocation()  { return build_location; }
-uint8_t Settings::getOptimizationLevel()         { return optimization_level; }
-
-std::vector<std::filesystem::path> Settings::setArgs(const unsigned argc, const char* argv[]) {
+#include <fstream>
+void Settings::setArgs(const unsigned argc, const char* argv[]) {
   using Filepath = std::filesystem::path;
-  std::vector<Filepath> filepaths;
+  if (std::string_view(argv[1]) == "init") {
+    std::filesystem::create_directory("build");
+    std::filesystem::create_directory("external");
+    std::filesystem::create_directory("src");
+    std::ofstream main_lom_file("src/main.lom");
+    main_lom_file << "\n\nfn main() -> i32 {\n\treturn 0;\n}";
+    main_lom_file.close();
+    std::quick_exit(0); std::unreachable();
+  }
+
   for (auto i{1uz}; i < argc; ++i) {
     using namespace Settings;
     if (not stringToArgs.contains(argv[i])) {
@@ -78,7 +84,6 @@ std::vector<std::filesystem::path> Settings::setArgs(const unsigned argc, const 
         std::quick_exit(1);
       }
 
-      filepaths.emplace_back(std::move(filepath));
       continue;
     }
 
@@ -137,6 +142,4 @@ std::vector<std::filesystem::path> Settings::setArgs(const unsigned argc, const 
 #else
       output_name = "lom.out";
 #endif
-
-  return filepaths;
 }

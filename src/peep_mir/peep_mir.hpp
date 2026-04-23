@@ -186,6 +186,8 @@ struct TU {
   }
 };
 
-TU lowerToPeep(Parser::TU &&);
+void printPeep(TU&);
+
+[[nodiscard]] TU lowerToPeep(Parser::TU &&);
 
 };

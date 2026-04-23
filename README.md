@@ -68,7 +68,7 @@ Below are language features, only some of which are implemented currently, that 
     unsigned_8 + unsigned_32; //Error
 ---
 ### How to Build
-Don't. <br>
+Don't. Not yet anyways. <br>
 
 But if you want to for whatever reason: <br>
 Currently the only dependencies are LLVM 21. <br>
@@ -78,7 +78,7 @@ git clone --recurse-submodules https://github.com/AdamAddem/Look-Once-More-PL
 mkdir build && cd build && cmake .. && make
 ```
 Either clang or gcc are required to support linking objects into an executable. <br> 
-Windows support is currently very iffy, as there are some problems with cmake and llvm. <br>
+Windows may or may not be supported. <br>
 
 ### Running
 The executable can be ran with the following arguments:

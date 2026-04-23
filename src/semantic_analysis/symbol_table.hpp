@@ -11,7 +11,7 @@
 
 namespace LOM {
 
-class SymbolTable final {
+class Module final {
 public:
   struct Variable {
     InstantiatedType type;
@@ -24,11 +24,12 @@ public:
     ~Variable() {name.destroy_and_deallocate();}
   };
 
+private:
   class Function {
     std::vector<Variable> locals;
     const FunctionType* type;
 
-    friend class SymbolTable;
+    friend class Module;
     explicit Function(std::span<Variable> parameters, const FunctionType* type)
    : type(type) {
       assert(parameters.size() == type->numParameters());
@@ -79,16 +80,17 @@ public:
     }
   };
 
-private:
-  using Symbol = std::variant<InstantiatedType, Function>;
-  std::unordered_map<std::string_view, Symbol> globals;
+  class PrivateFunction : public Function {};
+  class PrivateGlobal : public InstantiatedType {};
+
+  using Symbol = std::variant<InstantiatedType, Function, PrivateGlobal, PrivateFunction>;
+  std::unordered_map<std::string_view, Symbol> symbols;
   Function* current_scope{nullptr};
   TypeContext types;
 
 public:
-
-  SymbolTable() = default;
-  SymbolTable(SymbolTable&& other) noexcept = default;
+  Module() noexcept = default;
+  Module(Module&&) noexcept = default;
 
   //once called, this table may not be used to create any new types.
   //the addFunction, addRawPointer, addUniquePointer, and addVariant methods must not be called.
@@ -113,116 +115,104 @@ public:
   addVariant(std::vector<const Type*> subtypes, bool nullable) noexcept
   {return types.addVariant(std::move(subtypes), nullable);}
 
-  void addGlobalVariable(std::string_view name, InstantiatedType type) {
-    assert(not globals.contains(name));
-    globals.emplace(name, type);
+  void addGlobalVariable(std::string_view name, InstantiatedType type, bool is_public = false) noexcept {
+    assert(not symbols.contains(name));
+    if (is_public) {
+      symbols.emplace(std::piecewise_construct,
+      std::forward_as_tuple(name),
+      std::forward_as_tuple(std::in_place_type<InstantiatedType>, type));
+      return;
+    }
+
+    symbols.emplace( std::piecewise_construct,
+    std::forward_as_tuple(name),
+    std::forward_as_tuple(std::in_place_type<PrivateGlobal>, type));
   }
+
   void addLocalVariable(eden::releasing_string::released_ptr name, InstantiatedType type) const noexcept {
     assume_assert(current_scope not_eq nullptr);
     current_scope->addVariable(std::move(name), type);
   }
 
   [[nodiscard]] bool
-  containsVariable(const char* name) const noexcept {
-    if (current_scope && current_scope->containsVariable(name))
-      return true;
-    if (not globals.contains(name))
-      return false;
-    return std::holds_alternative<InstantiatedType>(globals.at(name));
-  }
-
-  [[nodiscard]] bool
-  containsLocalVariable(const char* name) const noexcept {
+  containsLocal(const char* name) noexcept {
     assume_assert(current_scope);
     return current_scope->containsVariable(name);
   }
 
   [[nodiscard]] bool
-  containsGlobalVariable(const char* name) const noexcept {
-    if (not globals.contains(name))
+  containsGlobal(const char* name) noexcept {
+    if (not symbols.contains(name))
       return false;
-    return std::holds_alternative<InstantiatedType>(globals.at(name));
+    return std::holds_alternative<InstantiatedType>(symbols[name]) or std::holds_alternative<PrivateGlobal>(symbols[name]);
+  }
+
+  [[nodiscard]] bool
+  containsPublicGlobal(const char* name) noexcept {
+    if (not symbols.contains(name))
+      return false;
+    return std::holds_alternative<InstantiatedType>(symbols[name]);
   }
 
   [[nodiscard]] auto
-  localVariable(const char* name) noexcept {
+  getLocal(const char* name) noexcept {
     assume_assert(current_scope);
     return current_scope->getVariable(name);
   }
 
   [[nodiscard]] InstantiatedType
-  globalVariable(const char* name) noexcept {
-    assert(containsGlobalVariable(name));
-    return std::get<InstantiatedType>(globals[name]);
+  getGlobal(const char* name) noexcept {
+    if (std::holds_alternative<InstantiatedType>(symbols[name]))
+      return std::get<InstantiatedType>(symbols[name]);
+    if (std::holds_alternative<PrivateGlobal>(symbols[name]))
+      return std::get<PrivateGlobal>(symbols[name]);
+    std::unreachable();
+  }
+
+  [[nodiscard]] InstantiatedType
+  getPublicGlobal(const char* name) noexcept {
+    assert(std::holds_alternative<InstantiatedType>(symbols[name]));
+    return std::get<InstantiatedType>(symbols[name]);
   }
 
   [[nodiscard]] bool
   containsFunction(const char* name) noexcept {
-    if (globals.contains(name))
-      return std::holds_alternative<Function>(globals[name]);
+    if (symbols.contains(name))
+      return std::holds_alternative<Function>(symbols[name]) or std::holds_alternative<PrivateFunction>(symbols[name]);
+    return false;
+  }
+
+  [[nodiscard]] bool
+  containsPublicFunction(const char* name) noexcept {
+    if (symbols.contains(name))
+      return std::holds_alternative<Function>(symbols[name]);
     return false;
   }
 
   [[nodiscard]] const FunctionType*
   typeOfFunction(const char* name) noexcept {
     assert(containsFunction(name));
-    return std::get<Function>(globals[name]).type;
+    return std::get<Function>(symbols[name]).type;
   }
 
-  [[nodiscard]] InstantiatedType
-  instanceTypeOfFunction(const char* name) noexcept {
-    return {typeOfFunction(name), {}};
-  }
-
-  [[nodiscard]] std::span<const Variable>
-  parametersOfFunction(const char* name) noexcept {
-    assert(containsFunction(name));
-    return std::get<Function>(globals[name]).parameters();
-  }
-
-  [[nodiscard]] const Type*
-  returnTypeOfFunction(const char* name) noexcept {
-    assert(containsFunction(name));
-    return std::get<Function>(globals[name]).returnType();
-  }
-
-  [[nodiscard]] const Function&
+  [[nodiscard]] std::pair<std::span<const Variable>, const Type*>
   getFunction(const char* name) noexcept {
-    assert(globals.contains(name));
-    assert(std::holds_alternative<Function>(globals[name]));
-    return std::get<Function>(globals[name]);
-  }
-
-  [[nodiscard]] bool
-  containsSymbol(const char* name) noexcept
-  {return containsVariable(name) or containsFunction(name);}
-
-  [[nodiscard]] bool
-  isClosestSymbolAVariable(const char* name) noexcept {
-    if (containsVariable(name))
-      return true;
-
-    assert(containsFunction(name));
-    return false;
+    assert(symbols.contains(name));
+    assert(std::holds_alternative<Function>(symbols[name]));
+    const auto & f = std::get<Function>(symbols[name]);
+    return {f.parameters(), f.returnType()};
   }
 
   const FunctionType*
   enterFunctionScope(const char* function_name) noexcept {
-    assume_assert(current_scope == nullptr);
-    assert(containsFunction(function_name));
-    current_scope = &std::get<Function>(globals[function_name]);
+    assume_assert(current_scope == nullptr); assert(containsFunction(function_name));
+    current_scope = &std::get<Function>(symbols[function_name]);
     return current_scope->type;
   }
 
   void leaveFunctionScope() noexcept {
     assume_assert(current_scope);
     current_scope = nullptr;
-  }
-
-  [[nodiscard]] const Type*
-  returnTypeOfCurrentFunction() const noexcept {
-    assume_assert(current_scope);
-    return current_scope->returnType();
   }
 };
 

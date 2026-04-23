@@ -143,5 +143,5 @@ public:
   [[nodiscard]] u64_t distanceFromFirstOf(TokenType type) const;
 };
 
-[[nodiscard]] std::vector<Token> tokenizeFile(const std::filesystem::path &file_path);
+void tokenizeFile(std::vector<Token>& out_tokens, const std::filesystem::path &file_path);
 } // namespace Lexer

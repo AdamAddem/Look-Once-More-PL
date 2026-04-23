@@ -16,11 +16,13 @@ struct Function {
 };
 
 struct TU {
-  SymbolTable table;
+  Module* table;
   AST::SyntaxTree global_tree;
   std::vector<Function> functions;
 };
 
+void printTU(TU&);
 
-[[nodiscard]] TU parseTokens(std::vector<Lexer::Token> &&tokens);
+[[nodiscard]] TU
+parseTokens(std::vector<Lexer::Token>& tokens, Module* table);
 } // namespace Parser

@@ -36,6 +36,8 @@ add_executable(LookOnceMore
         src/backends/codegen.cpp
         src/backends/llvm/tollvm.hpp
         src/backends/llvm/tollvm.cpp
+        src/build_system/build.cpp
+        src/build_system/build.hpp
 )
 
 

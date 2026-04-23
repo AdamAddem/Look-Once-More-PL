@@ -21,7 +21,11 @@ struct FileInAnalysis {
   std::ifstream stream;
   u32_t needs_closing_paren{0};
   u32_t line_number{1};
-  std::vector<Token> token_list;
+  std::vector<Token>& token_list;
+  bool has_declared_functions{false};
+
+  FileInAnalysis(const std::filesystem::path& file_path, std::vector<Token>& token_list)
+  : stream(file_path), token_list(token_list) {}
 };
 
 void grabNumber(FileInAnalysis& file);
@@ -279,7 +283,14 @@ void grabIdentOrKeyword(FileInAnalysis &file) {
   file.stream.putback(static_cast<char>(c));
 
   if (stringToTokenType.contains(word)) {
-    file.token_list.emplace_back(stringToTokenType.at(word), file.line_number);
+    auto token_type = stringToTokenType.at(word);
+    file.token_list.emplace_back(token_type, file.line_number);
+    if (token_type == TokenType::KEYWORD_GLOBAL) {
+      if (file.has_declared_functions) [[unlikely]]
+        throw ParsingError("Global variable declared after function!", file.token_list.back());
+    }
+    else if (token_type == TokenType::KEYWORD_FN)
+      file.has_declared_functions = true;
     return;
   }
   if (word == "elif") [[unlikely]] {
@@ -330,11 +341,8 @@ canStartIdentifier(int c)
 {return std::isalpha(c) or c == '_';}
 }
 
-std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
-  FileInAnalysis file;
-  file.stream.open(file_path);
-  const auto sz = std::filesystem::file_size(file_path);
-  file.token_list.reserve(sz / 4);
+void Lexer::tokenizeFile(std::vector<Token>& out_tokens, const std::filesystem::path &file_path) {
+  FileInAnalysis file(file_path, out_tokens);
   if (not file.stream)
     throw LexingError("File not found.", file_path.string(), 0);
 
@@ -363,5 +371,4 @@ std::vector<Token> Lexer::tokenizeFile(const std::filesystem::path &file_path) {
     std::quick_exit(0);
   }
 
-  return std::move(file.token_list);
 }

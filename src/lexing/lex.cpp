@@ -165,6 +165,7 @@ void grabSymbol(FileInAnalysis &file) {
   case ']':
   case '@':
   case ',':
+  case '.':
     type = stringToTokenType.at(symbol);
     break;
 

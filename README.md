@@ -1,5 +1,5 @@
 ## Look Once More
-LOM is an ahead-of-time compiled, statically typed, multi-paradigm systems level language inspired by C++ and supported by
+LOM is an ahead-of-time compiled, statically typed, systems level language inspired by C++ and supported by
 a LLVM backend; It is written as a passion project, and successfully compiles with a very (very) limited featureset.
 
 My main goal is to create a language that mirrors the performance and freedom that C++ provides while ditching many of the legacy practices.

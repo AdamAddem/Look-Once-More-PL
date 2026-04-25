@@ -4,7 +4,6 @@
 #include "edenlib/typedefs.hpp"
 #include "tokentype.hpp"
 
-#include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>

@@ -1,10 +1,10 @@
 #include "parse.hpp"
 
-#include "ast/ast.hpp"
+#include "ast.hpp"
 #include "error.hpp"
 #include "lexing/lex.hpp"
-#include "settings.hpp"
 #include "semantic_analysis/symbol_table.hpp"
+#include "settings.hpp"
 
 #include <iostream>
 #include <unordered_set>
@@ -20,11 +20,14 @@ namespace {
 
 InstantiatedType::InstanceDetails parseTypeDetails(TokenView& tokens) {
   InstantiatedType::InstanceDetails details;
+  if (tokens.pop_if(TokenType::KEYWORD_PUB))
+    details.is_public = true;
+
   if (tokens.peek().isTypeModifier()) {
     if (tokens.peek_is(TokenType::KEYWORD_MUT))
       details.is_mutable = true;
     else
-      throw ParsingError("Type modifier not implemented yet, soz.", tokens.peek());
+      std::unreachable();
 
     tokens.pop();
   }
@@ -179,8 +182,6 @@ struct Body {
     const auto parameter = generateAssignmentExpression();
     if (tokens.pop_if(TokenType::RPAREN))
       return expression_tree.create(ASTNode::EMPTY, 0, parameter, 0);
-
-
     tokens.expect_then_pop(TokenType::COMMA, "Expected comma in call expression.");
     return expression_tree.create(ASTNode::EMPTY, 0, parameter, generateParameters());
   }
@@ -188,6 +189,17 @@ struct Body {
   u16_t generateSubscript() {
     const auto res = generateAssignmentExpression();
     tokens.expect_then_pop(TokenType::RBRACKET, "Expected closing bracket in subscript expression.");
+    return res;
+  }
+
+  u16_t generateIdentifier() {
+    tokens.expect(TokenType::IDENTIFIER, "Expected identifier.");
+    const auto identifier_value = std::bit_cast<u64_t>(tokens.take().takeString().get());
+    const auto res = expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
+    if (tokens.pop_if(TokenType::DOT)) {
+      expression_tree.data[res].type = ASTNode::DOT_IDENTIFIER;
+      generateIdentifier();
+    }
     return res;
   }
 
@@ -245,8 +257,7 @@ struct Body {
       return res;
     }
 
-    const auto identifier_value = std::bit_cast<u64_t>(tokens.take().takeString().get());
-    return expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
+    return generateIdentifier();
   }
 
   u16_t generatePostfixExpression() {
@@ -525,12 +536,27 @@ struct Body {
       return;
     }
     case SUBSCRIPT:
+      std::unreachable();
       tree.emplace_back(SUBSCRIPT, expression.value);
       translateExpression(expression.left_idx);
       translateExpression(expression.right_idx);
       return;
 
+    case DOT_IDENTIFIER:
+      tree.emplace_back(DOT_IDENTIFIER, expression.value);
+      translateExpression(idx + 1);
+      return;
+      /*
+      loop: //heheehehehehehe
+      expression = expression_tree.data[++idx];
+      if (expression.type == DOT_IDENTIFIER) {
+        tree.emplace_back(DOT_IDENTIFIER, expression.value);
+        goto loop;
+      }
+      assert(expression.type == IDENTIFIER); [[fallthrough]]; */
     case IDENTIFIER:
+      tree.emplace_back(IDENTIFIER, expression.value);
+      return;
     case INTEGER_LITERAL:
     case SIGNED_LITERAL:
     case UNSIGNED_LITERAL:
@@ -692,9 +718,20 @@ struct Body {
   }
 };
 
-bool parseGlobal(Body& global_body) {
+bool parseImports(TU& tu, Body& global_body) {
   TokenView& tokens = global_body.tokens;
-  if (tokens.peek_is(TokenType::KEYWORD_FN) or tokens.empty())
+  if (not tokens.pop_if(TokenType::KEYWORD_IMPORT))
+    return false;
+
+  tokens.expect(TokenType::IDENTIFIER, "Expected module name.");
+  tu.imports.emplace_back(tokens.take().takeString());
+  tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon.");
+  return true;
+}
+
+bool parseGlobals(Body& global_body) {
+  TokenView& tokens = global_body.tokens;
+  if (tokens.peek_is(TokenType::KEYWORD_FN) or tokens.peek_is(TokenType::KEYWORD_PUB) or tokens.empty())
     return false;
 
   tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.");
@@ -710,7 +747,9 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
   //just parses the declarations to load into symbol table
   while (not tokens.empty()) {
     Function& function = functions.emplace_back();
-    function.line_number = tokens.current_line_number();
+    const bool is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
+    function.is_public = is_public;
+
     tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function declaration.");
     function.name = parseIdentifier(tokens);
     tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
@@ -738,7 +777,7 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
 
     tokens.expect_then_pop(TokenType::LBRACE, "Expected function definition.");
     function_tokens.emplace_back(tokens.getTokensBetweenBraces());
-    table.addFunction(function.name, std::span(parameters, num_parameters), return_type);
+    table.addFunction(function.name, std::span(parameters, num_parameters), return_type, is_public);
   }
 
   //actually parse the function bodies
@@ -756,7 +795,6 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
 }
 
 void printFunction(const Function& func, Module& table) {
-  std::cout << '\n' << func.line_number << ":\t";
   std::cout << "fn " << func.name.get() << "(";
   auto [parameters, return_type] = table.getFunction(func.name.get());
 
@@ -774,30 +812,35 @@ void printFunction(const Function& func, Module& table) {
     std::cout << return_type->toString();
   }
   std::cout << " { ";
-  func.body.print(func.line_number + 1);
+  func.body.print(0);
   std::cout << "\n}";
 }
 
 }
 
+#include <print>
 void Parser::printTU(TU& ptu) {
+  for (auto& import : ptu.imports) {
+    std::println("import {};", std::string_view(import));
+  }
   if (not ptu.global_tree.nodes.empty()) {
     ptu.global_tree.print(1);
-    std::cout << '\n';
+    std::println();
   }
   for (const auto &f : ptu.functions) {
     printFunction(f, *ptu.table);
-    std::cout << "\n";
+    std::println();
   }
 }
-
 
 TU Parser::parseTokens(std::vector<Token>& token_list, Module* table) {
   Body::ExpressionTree expression_tree;
   TU ptu; ptu.table = table;
   Body global_body(TokenView{token_list}, *ptu.table, expression_tree);
 
-  while (parseGlobal(global_body)) {}
+  while (parseImports(ptu, global_body)) {}
+  while (parseGlobals(global_body)) {}
+
   ptu.global_tree.nodes = std::move(global_body.tree);
   parseFunctions(global_body, ptu.functions);
 

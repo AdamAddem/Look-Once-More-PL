@@ -1,7 +1,7 @@
-#include "ast/ast.hpp"
 #include "build_system/build.hpp"
 #include "edenlib/lifetime_observer.hpp"
 #include "settings.hpp"
+#include "src/parsing/ast.hpp"
 
 #include <print>
 

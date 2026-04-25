@@ -1,6 +1,7 @@
 #include "peep_mir.hpp"
 
-#include "ast/ast.hpp"
+#include "../parsing/ast.hpp"
+#include "build_system/build.hpp"
 #include "edenlib/typedefs.hpp"
 #include "error.hpp"
 #include "parsing/parse.hpp"
@@ -10,6 +11,8 @@
 #include <cassert>
 #include <format>
 #include <iostream>
+
+#include <print>
 
 using namespace LOM;
 using namespace LOM::PeepMIR;
@@ -74,7 +77,7 @@ public:
 
 template <bool global_peeping>
 class Peeper {
-  Module& table;
+  Module* table;
 
   eden::releasing_vector<const Type*> locals;
   eden::releasing_vector<Instruction> instructions;
@@ -160,25 +163,50 @@ class Peeper {
     }
   }
 
+  InstantiatedType peepDotIdentifier(eden::releasing_string::released_ptr identifier) {
+    if constexpr(global_peeping)
+      throw ValidationError("Module usage not allowed during global initialization.", identifier.get(), current_line_number);
+
+    eden::releasing_string name{std::move(identifier)};
+    const auto module = getModule(name.to_stringview());
+    auto sub_identifier = nodes.pop().take_identifier();
+    auto i{0uz};
+    name.push_back('.');
+    while (sub_identifier[i] not_eq '\0') {
+      name.push_back(sub_identifier[i]);
+      ++i;
+    }
+
+    if (const auto global = module->getPublicGlobal(sub_identifier.get())) {
+      instructions.emplace_back(Instruction::IMPORTED_GLOBAL, std::bit_cast<u64_t>(name.release().get()));
+      return global.value();
+    }
+    if (auto func = module->getPublicFunction(sub_identifier.get())) {
+      instructions.emplace_back(Instruction::IMPORTED_FUNCTION, std::bit_cast<u64_t>(name.release().get()));
+      return {func.value(), {}};
+    }
+    throw ValidationError("Identifier not a public member of module.",
+      std::format("Module: {}, Identifier: |{}|", name.release().get(), sub_identifier.get()),
+      current_line_number);
+  }
+
   InstantiatedType peepIdentifier(eden::releasing_string::released_ptr identifier) {
     if constexpr(not global_peeping) {
-      if (table.containsLocal(identifier.get())) {
-        auto variable = table.getLocal(identifier.get());
-        instructions.emplace_back(Instruction::LOCAL, variable.second + 1);
+      if (const auto variable = table->getLocal(identifier.get())) {
+        instructions.emplace_back(Instruction::LOCAL, variable->second + 1);
         identifier.destroy_and_deallocate();
-        return variable.first;
+        return variable->first;
       }
 
-      if (table.containsFunction(identifier.get())) {
+      if (auto func = table->typeOfFunction(identifier.get())) {
         instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier.get()));
-        return {table.typeOfFunction(identifier.get()), {}};
+        return {func.value(), {}};
       }
     }
 
-    if (table.containsGlobal(identifier.get())) {
-      auto variable = table.getGlobal(identifier.get());
+    if (const auto global = table->getGlobal(identifier.get())) {
       instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(identifier.release()));
-      return variable;
+      return global.value();
     }
 
     throw ValidationError("Undeclared Identifier.", identifier.get(), current_line_number);
@@ -375,7 +403,7 @@ class Peeper {
     if (opr == Operator::ADDRESS_OF) {
       instructions.emplace_back(Instruction::ADDRESS_OF, 0);
       auto expression = peepExpression();
-      return {table.addRawPointer(expression), {}};
+      return {table->addRawPointer(expression), {}};
     }
 
     const auto instruction_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
@@ -464,6 +492,8 @@ class Peeper {
       return peepCallingExpression(node.parameter_count());
     case SUBSCRIPT:
       assert(false);
+    case DOT_IDENTIFIER:
+      return peepDotIdentifier(node.take_identifier());
     case IDENTIFIER:
       return peepIdentifier(node.take_identifier());
     case INTEGER_LITERAL:
@@ -584,11 +614,11 @@ class Peeper {
     char* name_cstr = name.get();
 
     if constexpr (global_peeping) {
-      if (table.containsGlobal(name_cstr))
+      if (table->containsGlobal(name_cstr))
         throw ValidationError("Redefinition of global variable.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
     }
     else {
-      if (table.containsLocal(name_cstr))
+      if (table->containsLocal(name_cstr))
         throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
     }
 
@@ -596,18 +626,18 @@ class Peeper {
       if constexpr(global_peeping)
         throw ValidationError("Global variable may not be junk initialized.", name_cstr, current_line_number);
       else
-        table.addLocalVariable(std::move(name), declaration_type);
+        table->addLocalVariable(std::move(name), declaration_type);
       return;
     }
 
     instructions.emplace_back(Instruction::ASSIGN, 0);
     if constexpr(global_peeping) {
       instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(name_cstr));
-      table.addGlobalVariable(name, declaration_type);
+      table->addGlobalVariable(name, declaration_type);
     }
     else {
       instructions.emplace_back(Instruction::LOCAL, locals.size());
-      table.addLocalVariable(std::move(name), declaration_type);
+      table->addLocalVariable(std::move(name), declaration_type);
     }
 
     const auto cast_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
@@ -731,7 +761,7 @@ class Peeper {
 
   Peeper(
     SyntaxTree& tree,
-    Module& table,
+    Module* table,
     const FunctionType* function_type)
   : table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(function_type) {
     locals.emplace_back(function_type->returnType());
@@ -739,41 +769,39 @@ class Peeper {
       locals.emplace_back(parameter_type);
   }
 
-  Peeper(SyntaxTree& tree, Module& table)
+  Peeper(SyntaxTree& tree, Module* table)
   : table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(nullptr) {}
 public:
 
-  static void peepFunction(TU& tu, Parser::Function &func, Module& table)
+  static void peepFunction(TU& tu, Parser::Function &func, Module* table)
   requires (not global_peeping) {
-    const auto function_type = table.enterFunctionScope(func.name.get());
+    const auto function_type = table->enterFunctionScope(func.name.get());
     Peeper function_peeper(func.body, table, function_type);
     function_peeper.peepUntilEmpty();
     tu.functions.emplace_back(
       std::move(func.name), function_type,
       function_peeper.locals.release_span(),
       function_peeper.instructions.release(),
-      function_peeper.blocks.release_span());
+      function_peeper.blocks.release_span(), func.is_public);
 
-    table.leaveFunctionScope();
+    table->leaveFunctionScope();
   }
 
-  static void peepGlobals(TU& tu, SyntaxTree& global_tree, Module& table)
+  static void peepGlobals(TU& tu, SyntaxTree& global_tree, Module* table)
   requires global_peeping {
-    assume_assert(tu.globals == nullptr);
-    assume_assert(tu.global_instructions == nullptr);
-
+    assume_assert(tu.globals.empty());
+    assert(false);
     Peeper<true> global_peeper(global_tree, table);
     while (not global_peeper.nodes.empty())
       global_peeper.peepStatement();
 
-    tu.globals = global_peeper.locals.release();
-    tu.global_instructions = global_peeper.instructions.release_span();
+    //tu.globals = global_peeper.locals.release();
+    //tu.global_instructions = global_peeper.instructions.release_span();
   }
 };
 
 }
 
-#include <print>
 //printing functions
 namespace {
 
@@ -782,8 +810,10 @@ void printPeepInstruction(Instruction instruction) {
     using enum Instruction::Type;
   case NOOP: return std::println("NOOP");
   case GLOBAL: return std::println("GLOBAL {}", instruction.global_name());
-  case LOCAL: return std::println("LOCAL {}", instruction.local_idx());
   case FUNCTION: return std::println("FUNCTION {}", instruction.function_name());
+  case IMPORTED_GLOBAL: return std::println("IMPORTED GLOBAL {}", instruction.imported_global_name());
+  case IMPORTED_FUNCTION: return std::println("IMPORTED FUNCTION {}", instruction.imported_function_name());
+  case LOCAL: return std::println("LOCAL {}", instruction.local_idx());
   case INT_LITERAL: return std::println("INT_LITERAL {}", instruction.int_value());
   case UINT_LITERAL: return std::println("UINT_LITERAL {}", instruction.uint_value());
   case FLOAT_LITERAL: return std::println("FLOAT_LITERAL {}", instruction.float_value());
@@ -842,7 +872,7 @@ void printPeepInstruction(Instruction instruction) {
   case PCAST: return std::println("PCAST TO {}", instruction.pcast_type()->toString());
 
 
-  case CALL: return std::println("CALL");
+  case CALL: return std::println("CALL WITH {} PARAMETER(S)", instruction.num_params());
   default:
     std::unreachable();
   }
@@ -888,28 +918,29 @@ void printPeepBlocks(released_span<Block>& blocks, released_ptr<Instruction>& in
 }
 
 void printPeepFunction(Function& func) {
+  std::println("{}", func.is_public ? "pub " : "");
   std::println("fn {}{} {{", func.name.get(), func.type->toString());
 
-  std::cout << "Return Type: " << func.locals[0]->toString() << std::endl;
-  std::cout << "| Locals: | ";
+  std::println("Return Type: {}", func.locals[0]->toString());
+  std::print("| Locals: | ");
   auto num_locals = func.locals.size() - 1;
   for (auto i{0uz}; i<num_locals; ++i) {
     std::print("{}: {} | ", i + 1, func.locals[i + 1]->toString());
   }
-  std::cout << std::endl;
+  std::println();
 
   printPeepBlocks(func.blocks, func.instructions);
-  std::cout << "}" << std::endl;
+  std::println("}}");
 }
 
 }
 
 void PeepMIR::printPeep(TU& tu) {
-  std::println("--- Global Body ---");
-  for (const auto instruction : tu.global_instructions) {
-    printPeepInstruction(instruction);
+  std::println("--- Global ---");
+  for (const auto global : tu.globals) {
+    std::println("{}", global.name);
   }
-  std::println("--- Global Body ---\n");
+  std::println("--- Globals ---\n");
 
   for (auto& func : tu.functions) {
     printPeepFunction(func);
@@ -920,11 +951,11 @@ using GlobalPeeper = Peeper<true>;
 using FunctionPeeper = Peeper<false>;
 
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
-  Module& table = *parsed_tu.table;
-  TU tu(table.takeTypeContext());
+  TU tu(parsed_tu.table);
+  Module* table = tu.table;
   tu.functions.reserve(parsed_tu.functions.size());
 
-  GlobalPeeper::peepGlobals(tu, parsed_tu.global_tree, table);
+  //GlobalPeeper::peepGlobals(tu, parsed_tu.global_tree, table);
 
   for (auto &func : parsed_tu.functions)
     FunctionPeeper::peepFunction(tu, func, table);

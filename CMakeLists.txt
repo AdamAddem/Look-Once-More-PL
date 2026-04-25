@@ -20,9 +20,8 @@ add_executable(LookOnceMore
 
         src/parsing/parse.hpp
         src/parsing/parse.cpp
-
-        src/ast/ast.hpp
-        src/ast/ast.cpp
+        src/parsing/ast.hpp
+        src/parsing/ast.cpp
 
         src/semantic_analysis/types.hpp
         src/semantic_analysis/types.cpp

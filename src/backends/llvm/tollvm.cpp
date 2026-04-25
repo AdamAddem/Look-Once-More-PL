@@ -1,5 +1,6 @@
 #include "tollvm.hpp"
-#include "ast/ast.hpp"
+#include "../../parsing/ast.hpp"
+#include "build_system/build.hpp"
 #include "error.hpp"
 #include "peep_mir/peep_mir.hpp"
 #include "settings.hpp"
@@ -34,6 +35,8 @@ class TU final : public Backend {
   llvm::IntegerType* i1; llvm::ConstantInt* i1_0; llvm::ConstantInt* i1_1;
   llvm::IntegerType* i8; llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
   llvm::Type* f32; llvm::Type* f64; llvm::Type* devoid; llvm::PointerType* ptr;
+
+  std::unordered_map<std::string_view, llvm::Value*> imports;
 
   [[nodiscard]] std::filesystem::path
   createASMFile(const std::filesystem::path &file) override {
@@ -127,6 +130,43 @@ class TU final : public Backend {
     delete target_machine;
   }
 
+  [[nodiscard]] llvm::Value*
+  getFunctionImport(const char* name) {
+    std::string_view name_view(name);
+    if (imports.contains(name_view))
+      return imports[name_view];
+
+    char buff[256];
+    auto i{0uz};
+    while (name[i] not_eq '.') {
+      buff[i] = name[i];
+      ++i;
+    }
+
+    const char* func_name = name+i+1;
+    auto m = getModule({buff, i});
+    auto func = m->getPublicFunction(func_name); assert(func);
+    auto function_type = translateFunctionType(func.value());
+    return imports[name_view] = module.getOrInsertFunction(func_name, function_type).getCallee();
+  }
+
+  [[nodiscard]] llvm::FunctionType*
+  translateFunctionType(const FunctionType* t) {
+    llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
+    auto num_params{0uz};
+    for (const auto param_type : t->parameterTypes()) {
+      arg_types[num_params] = translateType(param_type);
+      ++num_params;
+    }
+
+    //hack
+    auto return_type =
+    t->returnType()->isBool()
+    ? i1
+    : translateType(t->returnType());
+
+    return llvm::FunctionType::get(return_type, {arg_types, num_params}, false);
+  }
 
   [[nodiscard]] llvm::Type*
   translateType(const Type* t) {
@@ -205,10 +245,13 @@ class TU final : public Backend {
 
       //hack
       return_type =
-        function_type->returnType()->isBool() ? tu->i1 : tu->translateType(function_type->returnType());
+      function_type->returnType()->isBool()
+      ? tu->i1
+      : tu->translateType(function_type->returnType());
 
       const auto func_type = llvm::FunctionType::get(return_type, {arg_types, num_params}, false);
-      llvmfunc = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, 0, std::string_view(func.name), &tu->module);
+      const auto linkage = func.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
+      llvmfunc = llvm::Function::Create(func_type, linkage, 0, std::string_view(func.name), &tu->module);
 
       const auto entry = llvm::BasicBlock::Create(tu->context, "", llvmfunc);
       builder.SetInsertPoint(entry);
@@ -232,13 +275,13 @@ class TU final : public Backend {
       }
 
       const auto num_locals = func.locals.size();
-        for (auto i{num_params + 1}; i<num_locals; ++i) {
+      for (auto i{num_params + 1}; i<num_locals; ++i) {
           locals.emplace_back(
             builder.CreateAlloca(tu->translateType(func.locals[i]), nullptr)
             );
       }
 
-      func.name.destroy_and_deallocate();
+      //func.name.destroy_and_deallocate();
       func.locals.destroy_and_deallocate();
       instructions = std::move(func.instructions);
       mir_blocks = std::move(func.blocks);
@@ -407,7 +450,7 @@ class TU final : public Backend {
     }
 
     [[nodiscard]] llvm::Value*
-    genReadExpression() noexcept {
+    genReadExpression() noexcept { //this whole function is so stupid
       const auto instruction = instructions[instruction_idx];
       const auto res = genExpression();
       if (res == nullptr)
@@ -416,7 +459,7 @@ class TU final : public Backend {
         return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
       if (instruction.type == PeepMIR::Instruction::DEREFERENCE)
         return builder.CreateLoad(tu->translateType(instruction.dereference_type()), res);
-      if (instruction.type == PeepMIR::Instruction::GLOBAL) //this is disgusting and probably also redundant
+      if (instruction.type == PeepMIR::Instruction::GLOBAL)
         return builder.CreateLoad(llvm::cast<llvm::GlobalVariable>(res)->getValueType(), res);
       if (instruction.type == PeepMIR::Instruction::LOCAL)
         return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
@@ -437,15 +480,21 @@ class TU final : public Backend {
         instruction.release_string_value().destroy_and_deallocate();
         return global;
       }
-      case LOCAL: {
-        assert(instruction.local_idx() < locals.size());
-        const auto local = (locals[instruction.local_idx()]);
-        return local;
-      }
       case FUNCTION: {
         const auto function = (tu->module.getFunction(instruction.function_name())); assert(function);
         instruction.release_string_value().destroy_and_deallocate();
         return function;
+      }
+      case IMPORTED_GLOBAL:
+        assert(false);
+      case IMPORTED_FUNCTION: {
+        return tu->getFunctionImport(instruction.imported_function_name());
+      }
+
+      case LOCAL: {
+        assert(instruction.local_idx() < locals.size());
+        const auto local = (locals[instruction.local_idx()]);
+        return local;
       }
       case INT_LITERAL:
         return llvm::ConstantInt::get(tu->i64, instruction.value, true);
@@ -584,7 +633,7 @@ class TU final : public Backend {
 public:
 
   void lowerToLLVM(PeepMIR::TU& tu) {
-    auto i{0uz};
+    /* auto i{0uz};
     for (auto& instruction : tu.global_instructions) {
       if (instruction.type not_eq PeepMIR::Instruction::GLOBAL)
         continue;
@@ -600,7 +649,7 @@ public:
         );
       ++i;
       instruction.release_string_value().destroy_and_deallocate();
-    }
+    }*/
 
     for (auto& func : tu.functions)
       compileFunction(func);

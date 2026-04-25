@@ -40,6 +40,7 @@ enum class Operator : u8_t {
   POST_INCREMENT,
   POST_DECREMENT,
   ARROW,
+  DOT,
 };
 
 inline const std::unordered_map<std::string, Operator> stringToOperator{
@@ -52,6 +53,7 @@ inline const std::unordered_map<std::string, Operator> stringToOperator{
           {"++", Operator::PRE_INCREMENT}, {"--", Operator::PRE_DECREMENT}, {"-", Operator::UNARY_MINUS},
           {"@", Operator::ADDRESS_OF}, {"bitnot", Operator::BITNOT}, {"not", Operator::NOT},
           {"++", Operator::POST_INCREMENT}, {"--", Operator::POST_DECREMENT}, {"->", Operator::ARROW},
+          {".", Operator::DOT}
 };
 
 constexpr const char* operatorToString(const Operator e) {
@@ -64,14 +66,14 @@ constexpr const char* operatorToString(const Operator e) {
     "bitxor","eq","not_eq",
     "++","--","-",
     "@","bitnot","not",
-    "++","--","->",
+    "++","--","->", "."
 };
   return toString[std::to_underlying(e)];
 }
 constexpr bool isCategoryBINARY_OPS(const Operator e) { return std::to_underlying(e) < 18; }
 constexpr bool isCategoryPREFIX_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 24; }
-constexpr bool isCategoryPOSTFIX_OPS(const Operator e) { return std::to_underlying(e) >= 24 && std::to_underlying(e) < 27; }
-constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 27; }
+constexpr bool isCategoryPOSTFIX_OPS(const Operator e) { return std::to_underlying(e) >= 24 && std::to_underlying(e) < 28; }
+constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 28; }
 
 
 class ASTNode;
@@ -99,20 +101,21 @@ public:
     EMPTY,
                  // HAS <value>    | <Following Nodes...>
     //Statements:
-    DECLARATION, // HAS LN         | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
-    IF,          // HAS LN         | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STMT
-    FOR,         // HAS LN         | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
-    WHILE,       // HAS LN         | CONDITION_EXPR, SCOPED
-    SCOPED,      // HAS NUM        | SUB_STATEMENTS... * NUM
-    RETURN,      // HAS LN         | EMPTY or EXPRESSION
-    EXPR_STMT,   // HAS LN         | EMPTY or EXPRESSION
+    DECLARATION,    // LN          | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
+    IF,             // LN          | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STMT
+    FOR,            // LN          | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
+    WHILE,          // LN          | CONDITION_EXPR, SCOPED
+    SCOPED,         // NUM         | SUB_STATEMENTS... * NUM
+    RETURN,         // LN          | EMPTY or EXPRESSION
+    EXPR_STMT,      // LN          | EMPTY or EXPRESSION
 
     //Expressions:
-    UNARY,       // HAS OPERATOR   | EXPRESSION
-    BINARY,      // HAS OPERATOR   | LEFT_EXPRESSION, RIGHT_EXPRESSION
-    CALLING,     // HAS NUM        | CALLED_EXPRESSION, PARAMETERS... * NUM
-    SUBSCRIPT,   // HAS N/A        | ARRAY_EXPRESSION, INSIDE_EXPRESSION
-    IDENTIFIER,  // HAS CHAR*      |
+    UNARY,          // OPERATOR    | EXPRESSION
+    BINARY,         // OPERATOR    | LEFT_EXPRESSION, RIGHT_EXPRESSION
+    CALLING,        // NUM         | CALLED_EXPRESSION, PARAMETERS... * NUM
+    SUBSCRIPT,      // N/A         | ARRAY_EXPRESSION, INSIDE_EXPRESSION
+    DOT_IDENTIFIER, // CHAR*       | DOT_IDENTIFIER or IDENTIFIER
+    IDENTIFIER,     // CHAR*       |
 
     //value holds the bitwise representation of their respective type
     INTEGER_LITERAL,
@@ -134,16 +137,22 @@ public:
   constexpr explicit ASTNode(InstantiatedType instantiated) {std::construct_at<InstantiatedType>(reinterpret_cast<InstantiatedType *>(data), instantiated);}
 
   [[nodiscard]] constexpr u64_t&
-  value() noexcept {return *std::launder(reinterpret_cast<u64_t*>(data + 8));}
+  value() noexcept
+  {return *std::launder(reinterpret_cast<u64_t*>(data + 8));}
 
   [[nodiscard]] constexpr u64_t
-  value() const noexcept {return *std::launder(reinterpret_cast<const u64_t*>(data + 8));}
+  value() const noexcept
+  {return *std::launder(reinterpret_cast<const u64_t*>(data + 8));}
 
   [[nodiscard]] constexpr Type
-  type() const noexcept {return static_cast<Type>(data[0]);}
+  type() const noexcept
+  {return static_cast<Type>(data[0]);}
 
   [[nodiscard]] constexpr u64_t
-  line_number() const noexcept {return value();}
+  line_number() const noexcept {
+    assert(not eden::enumBetween(type(), UNARY, STRING_LITERAL) and type() not_eq SCOPED);
+    return value();
+  }
 
   [[nodiscard]] constexpr u64_t
   sub_statements() const noexcept {assert(type() == SCOPED); return value();}
@@ -164,67 +173,53 @@ public:
 
   [[nodiscard]] constexpr char*
   identifier() const noexcept {
-    assert(type() == IDENTIFIER);
+    assert(type() == IDENTIFIER or type() == DOT_IDENTIFIER);
     return std::bit_cast<char*>(value());
   }
 
   [[nodiscard]] constexpr eden::releasing_string::released_ptr
   take_identifier() noexcept {
-    assert(type() == IDENTIFIER);
-    char* name = std::bit_cast<char*>(value());
+    assert(type() == IDENTIFIER or type() == DOT_IDENTIFIER);
+    char* const name = std::bit_cast<char*>(value());
     value() = 0;
     return eden::releasing_string::released_ptr(name);
   }
 
   [[nodiscard]] constexpr i64_t
-  signed_val() const noexcept {
-    assert(type() == SIGNED_LITERAL);
-    return std::bit_cast<i64_t>(value());
-  }
+  signed_val() const noexcept
+  {assert(type() == SIGNED_LITERAL); return std::bit_cast<i64_t>(value()); }
 
   [[nodiscard]] constexpr u64_t
-  unsigned_val() const noexcept {
-    assert(type() == UNSIGNED_LITERAL);
-    return value();
-  }
+  unsigned_val() const noexcept
+  {assert(type() == UNSIGNED_LITERAL); return value();}
 
   static_assert(sizeof(float) == sizeof(u32_t));
   [[nodiscard]] constexpr float
-  float_val() const noexcept {
-    assert(type() == FLOAT_LITERAL);
-    return std::bit_cast<float>(static_cast<u32_t>(value()));
-  }
+  float_val() const noexcept
+  {assert(type() == FLOAT_LITERAL); return std::bit_cast<float>(static_cast<u32_t>(value()));}
 
   static_assert(sizeof(double) == sizeof(u64_t));
   [[nodiscard]] constexpr double
-  double_val() const noexcept {
-    assert(type() == DOUBLE_LITERAL);
-    return std::bit_cast<double>(value());
-  }
+  double_val() const noexcept
+  {assert(type() == DOUBLE_LITERAL); return std::bit_cast<double>(value());}
 
   [[nodiscard]] constexpr bool
-  bool_val() const noexcept {
-    assert(type() == BOOL_LITERAL);
-    return value();
-  }
+  bool_val() const noexcept
+  {assert(type() == BOOL_LITERAL); return value();}
 
   [[nodiscard]] constexpr char
-  char_val() const noexcept {
-    assert(type() == CHAR_LITERAL);
-    return static_cast<char>(value());
-  }
+  char_val() const noexcept
+  {assert(type() == CHAR_LITERAL); return static_cast<char>(value());}
 
   static_assert(sizeof(u64_t) >= sizeof(void*));
   [[nodiscard]] constexpr char*
-  string_val() const noexcept {
-    assert(type() == STRING_LITERAL);
-    return std::bit_cast<char*>(value());
-  }
+  string_val() const noexcept
+  {assert(type() == STRING_LITERAL); return std::bit_cast<char*>(value());}
 
   [[nodiscard]] constexpr eden::releasing_string::released_ptr
   take_string_val() noexcept {
     assert(type() == STRING_LITERAL);
-    char* str = std::bit_cast<char*>(value());
+    char* const str = std::bit_cast<char*>(value());
     value() = 0;
     return eden::releasing_string::released_ptr(str);
   }

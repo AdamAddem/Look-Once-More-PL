@@ -79,6 +79,7 @@ struct InstantiatedType {
 
   struct InstanceDetails {
     bool is_mutable : 1 = false;
+    bool is_public : 1 = false;
 
     constexpr InstanceDetails() = default;
     constexpr explicit InstanceDetails(const bool is_mutable) : is_mutable(is_mutable) {}
@@ -103,7 +104,7 @@ struct InstantiatedType {
 
   [[nodiscard]] constexpr std::string
   toString() const noexcept
-  {return (details.is_mutable ? "mut " : "") + type->toString();}
+  {return std::string(details.is_public ? "pub " : "") + (details.is_mutable ? "mut " : "") + type->toString();}
 };
 
 class PrimitiveType final : public Type {

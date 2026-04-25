@@ -20,9 +20,12 @@ using released_ptr = eden::releasing_vector<T>::released_ptr;
 struct Instruction {
   enum Type : u8_t {
     NOOP,
-    GLOBAL, //value is char*
+    GLOBAL, //value is char* to global name
+    FUNCTION, //value is char* to function name
+    IMPORTED_GLOBAL, //value is char* to global name (module1.module2.name)
+    IMPORTED_FUNCTION, //value is char* to function name (module1.module2.name)
+
     LOCAL, //value is local idx
-    FUNCTION, //value is char*
 
     //look you've read my codebase you get the memo by now
     INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
@@ -47,11 +50,11 @@ struct Instruction {
     BITNOT,
     POST_INC, FPOST_INC,
     POST_DEC, FPOST_DEC,
-    DEREFERENCE, //value contains const AST::Type*
+    DEREFERENCE, //value contains const Type*
 
     //value contains bitwidth to extend / truncate to
     UCAST, SCAST, FCAST,
-    PCAST, //pointer cast, value contains const AST::Type* although this is not used
+    PCAST, //pointer cast, value contains const Type* although this is not used
 
     CALL // value equals number of parameters
   }type;
@@ -92,6 +95,10 @@ struct Instruction {
   global_name() const noexcept
   {assume_assert(type == GLOBAL); return std::bit_cast<char*>(value);}
 
+  [[nodiscard]] constexpr char*
+  imported_global_name() const noexcept
+  {assume_assert(type == IMPORTED_GLOBAL); return std::bit_cast<char*>(value);}
+
   [[nodiscard]] constexpr u64_t
   local_idx() const noexcept
   {assume_assert(type == LOCAL); return value;}
@@ -99,6 +106,10 @@ struct Instruction {
   [[nodiscard]] constexpr char*
   function_name() const noexcept
   {assume_assert(type == FUNCTION); return std::bit_cast<char*>(value);}
+
+  [[nodiscard]] constexpr char*
+  imported_function_name() const noexcept
+  {assume_assert(type == IMPORTED_FUNCTION); return std::bit_cast<char*>(value);}
 
   [[nodiscard]] constexpr u64_t
   num_params() const noexcept
@@ -168,22 +179,20 @@ struct Function {
   released_span<const Type*> locals;
   released_ptr<Instruction> instructions;
   released_span<Block> blocks;
+  bool is_public;
 };
 
 struct TU {
-  explicit TU(TypeContext&& types) noexcept
-  : types(std::move(types)) {}
-  TU(TU&& other) noexcept = default;
+  explicit TU(Module* table) noexcept : table(table) {}
 
-  TypeContext types;
-  released_ptr<const Type*> globals;
-  released_span<Instruction> global_instructions;
+  Module* table;
+  struct Global {
+    std::string_view name;
+    u64_t value; //change this bih eventually
+  };
+  std::vector<Global> globals;
   std::vector<Function> functions;
 
-  ~TU() {
-    globals.destroy_and_deallocate();
-    global_instructions.destroy_and_deallocate();
-  }
 };
 
 void printPeep(TU&);

@@ -1,5 +1,5 @@
 #pragma once
-#include "ast/ast.hpp"
+#include "ast.hpp"
 #include "edenlib/owned.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 
@@ -12,12 +12,13 @@ namespace LOM::Parser {
 struct Function {
   eden::releasing_string::released_span name;
   AST::SyntaxTree body;
-  u64_t line_number{};
+  bool is_public;
 };
 
 struct TU {
   Module* table;
   AST::SyntaxTree global_tree;
+  std::vector<eden::releasing_string::released_span> imports;
   std::vector<Function> functions;
 };
 

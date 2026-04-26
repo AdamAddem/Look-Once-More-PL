@@ -68,11 +68,16 @@ private:
   using Symbol = std::variant<InstantiatedType, Function>;
   std::unordered_map<std::string_view, Symbol> symbols;
   Function* current_scope{nullptr};
+  std::string_view name;
   TypeContext types;
 
 public:
-  Module() noexcept = default;
+
+  explicit Module(std::string_view module_name) noexcept : name(module_name) {}
   Module(Module&&) noexcept = default;
+
+  [[nodiscard]] std::string_view
+  getName() const noexcept {return name;}
 
   //once called, this table may not be used to create any new types.
   //the addFunction, addRawPointer, addUniquePointer, and addVariant methods must not be called.

@@ -147,7 +147,7 @@ class TU final : public Backend {
     auto m = getModule({buff, i});
     auto func = m->getPublicFunction(func_name); assert(func);
     auto function_type = translateFunctionType(func.value());
-    return imports[name_view] = module.getOrInsertFunction(func_name, function_type).getCallee();
+    return imports[name_view] = module.getOrInsertFunction(name, function_type).getCallee();
   }
 
   [[nodiscard]] llvm::FunctionType*
@@ -625,14 +625,26 @@ class TU final : public Backend {
     }
   };
 
-  void compileFunction(PeepMIR::Function& func) {
+  llvm::Function* compileFunction(PeepMIR::Function& func) {
     Function lowering_function(func, this);
     lowering_function.codegenFunction();
+    return lowering_function.llvmfunc;
   }
 
 public:
 
   void lowerToLLVM(PeepMIR::TU& tu) {
+    char buff[256];
+    const auto module_name = tu.table->getName();
+    auto i{0uz};
+    if (not module_name.empty()) [[likely]] {
+      for (const auto c : module_name) {
+        buff[i] = c;
+        ++i;
+      }
+      buff[i++] = '.'; buff[i] = '\0';
+    }
+
     /* auto i{0uz};
     for (auto& instruction : tu.global_instructions) {
       if (instruction.type not_eq PeepMIR::Instruction::GLOBAL)
@@ -651,8 +663,23 @@ public:
       instruction.release_string_value().destroy_and_deallocate();
     }*/
 
-    for (auto& func : tu.functions)
-      compileFunction(func);
+    std::vector<llvm::Function*> public_functions;
+    public_functions.reserve(tu.functions.size());
+    for (auto& func : tu.functions) {
+      auto x = compileFunction(func);
+      if (func.is_public)
+        public_functions.push_back(x);
+    }
+
+    for (auto func : public_functions) {
+      auto j{0uz};
+      for (auto c : func->getName()) {
+        buff[i + j] = c;
+        ++j;
+      }
+      buff[i + j] = '\0';
+      func->setName(buff);
+    }
   }
 
   explicit TU(const std::string& filename)

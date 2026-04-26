@@ -35,8 +35,9 @@ lex_and_parse_module(const fs::path& directory) {
   const auto key = new char[n]; //purposeful memory leak
   std::strcpy(key, directory.filename().c_str());
   const std::string_view key_view(key, n-1);
+  auto [pair, _] = modules.emplace(std::pair(key_view, Module{key_view}));
 
-  const auto module_ptr = &modules[key_view];
+  const auto module_ptr = &pair->second;
   return Parser::parseTokens(tokens, module_ptr);
 }
 
@@ -59,9 +60,9 @@ try {
       has_main = true;
       std::vector<Lexer::Token> main_tokens;
       Lexer::tokenizeFile(main_tokens, entry);
-      static Module test;
+      static Module main_module("");
       module_names.emplace_back(entry.path().filename());
-      parsed_tus.emplace_back(Parser::parseTokens(main_tokens, &test));
+      parsed_tus.emplace_back(Parser::parseTokens(main_tokens, &main_module));
     }
     else if (entry.is_directory()) {
       module_names.emplace_back(entry.path().filename());

@@ -5,6 +5,7 @@
 
 namespace LOM::Lexer {
 
+
 enum class TokenType : unsigned {
   INVALID_TOKEN,
   IDENTIFIER,
@@ -94,6 +95,8 @@ enum class TokenType : unsigned {
   KEYWORD_FN,
   KEYWORD_PUB,
   KEYWORD_IMPORT,
+  DUNDER_CEXTERN,
+  DUNDER_VA,
 };
 
 
@@ -128,9 +131,8 @@ inline const std::unordered_map<std::string_view, TokenType> stringToTokenType{
 	{"allocate", TokenType::KEYWORD_ALLOCATE}, {"construct", TokenType::KEYWORD_CONSTRUCT}, {"from", TokenType::KEYWORD_FROM},
 	{"as", TokenType::KEYWORD_AS}, {"global", TokenType::KEYWORD_GLOBAL}, {"null", TokenType::KEYWORD_NULL},
 	{"junk", TokenType::KEYWORD_JUNK}, {"fn", TokenType::KEYWORD_FN}, {"pub", TokenType::KEYWORD_PUB},
-	{"import", TokenType::KEYWORD_IMPORT},
+	{"import", TokenType::KEYWORD_IMPORT}, {"__C", TokenType::DUNDER_CEXTERN}, {"__va", TokenType::DUNDER_VA},
 };
-
 
 constexpr const char* tokenTypeToString(const TokenType e) {
 constexpr const char* toString[] = {
@@ -164,7 +166,7 @@ constexpr const char* toString[] = {
 	"allocate","construct","from",
 	"as","global","null",
 	"junk","fn","pub",
-	"import",
+	"import","__C","__va",
 };
 	return toString[std::to_underlying(e)];
 }
@@ -179,5 +181,6 @@ constexpr bool isCategoryCAST(const TokenType e) { return std::to_underlying(e) 
 constexpr bool isCategoryALLOC_LIFETIMES(const TokenType e) { return std::to_underlying(e) >= 76 && std::to_underlying(e) < 80; }
 constexpr bool isCategoryMODULE(const TokenType e) { return std::to_underlying(e) >= 86 && std::to_underlying(e) < 88; }
 constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 33 && std::to_underlying(e) < 88; }
+constexpr bool isCategoryDUNDER(const TokenType e) { return std::to_underlying(e) >= 88 && std::to_underlying(e) < 90; }
 
 }; //namespace LOM::Lexer

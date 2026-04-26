@@ -1,6 +1,7 @@
 #include "parse.hpp"
 
 #include "ast.hpp"
+#include "build_system/build.hpp"
 #include "error.hpp"
 #include "lexing/lex.hpp"
 #include "semantic_analysis/symbol_table.hpp"
@@ -174,6 +175,8 @@ struct Body {
   TokenView tokens;
   Module& table;
   ExpressionTree& expression_tree;
+  inline static releasing_string dunder_cextern_name_vec{"__C"};
+  inline static releasing_string::released_ptr dunder_cextern_name{dunder_cextern_name_vec.release()};
 
   Body(TokenView tokens, Module& table, ExpressionTree& expression_tree)
   : tokens(tokens), table(table), expression_tree(expression_tree) {}
@@ -193,8 +196,14 @@ struct Body {
   }
 
   u16_t generateIdentifier() {
-    tokens.expect(TokenType::IDENTIFIER, "Expected identifier.");
-    const auto identifier_value = std::bit_cast<u64_t>(tokens.take().takeString().get());
+    u64_t identifier_value;
+    if (tokens.pop_if(TokenType::DUNDER_CEXTERN))
+      identifier_value = std::bit_cast<u64_t>(dunder_cextern_name.get());
+    else {
+      tokens.expect(TokenType::IDENTIFIER, "Expected identifier.");
+      identifier_value = std::bit_cast<u64_t>(tokens.take().takeString().get());
+    }
+
     const auto res = expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
     if (tokens.pop_if(TokenType::DOT)) {
       expression_tree.data[res].type = ASTNode::DOT_IDENTIFIER;
@@ -718,8 +727,55 @@ struct Body {
   }
 };
 
+void parseCExtern(TU& tu, Body& global_body) {
+  // __fd name(...) -> ...;
+  auto& tokens = global_body.tokens;
+  auto& table = *tu.table;
+  auto name = parseIdentifier(tokens);
+  tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
+
+  std::vector<Module::Variable> parameters; parameters.reserve(4);
+  bool is_variadic = false;
+  if (not tokens.pop_if(TokenType::RPAREN))
+    while (true) {
+      if (tokens.pop_if(TokenType::DUNDER_VA)) {
+        is_variadic = true;
+        tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
+        break;
+      }
+
+      auto type = parseType(tokens, table);
+      parameters.emplace_back(type, parseIdentifier(tokens));
+
+      if (not tokens.pop_if(TokenType::COMMA)) {
+        tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
+        break;
+      }
+    }
+
+  const Type* return_type = Type::devoid();
+  if (tokens.pop_if(TokenType::ARROW)) {
+    InstantiatedType type = parseType(tokens, table);
+    if (not type.isPlain())
+      throw ParsingError("Return type may not have type qualifiers.", type.toString(), tokens.current_line_number());
+    return_type = type.type;
+  }
+
+  tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semi-colon.");
+
+  getModule("__C")->addFunction(
+    eden::owned_stringview(name.get(), name.size() - 1),
+    std::span(parameters), return_type,
+    true, is_variadic);
+}
+
 bool parseImports(TU& tu, Body& global_body) {
   TokenView& tokens = global_body.tokens;
+  if (tokens.pop_if(TokenType::DUNDER_CEXTERN)) {
+    parseCExtern(tu, global_body);
+    return true;
+  }
+
   if (not tokens.pop_if(TokenType::KEYWORD_IMPORT))
     return false;
 
@@ -754,13 +810,13 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
     function.name = parseIdentifier(tokens);
     tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
 
-    Module::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
-    sz_t num_parameters{};
+    std::vector<Module::Variable> parameters; parameters.reserve(4);
     if (not tokens.pop_if(TokenType::RPAREN))
       while (true) {
-        parameters[num_parameters].type = parseType(tokens, table);
-        parameters[num_parameters].name = parseIdentifier(tokens);
-        ++num_parameters;
+        auto type = parseType(tokens, table);
+        auto name = parseIdentifier(tokens);
+        parameters.emplace_back(type, std::move(name));
+
         if (not tokens.pop_if(TokenType::COMMA)) {
           tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
           break;
@@ -777,7 +833,7 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
 
     tokens.expect_then_pop(TokenType::LBRACE, "Expected function definition.");
     function_tokens.emplace_back(tokens.getTokensBetweenBraces());
-    table.addFunction(function.name, std::span(parameters, num_parameters), return_type, is_public);
+    table.addFunction(function.name, std::span(parameters), return_type, is_public);
   }
 
   //actually parse the function bodies

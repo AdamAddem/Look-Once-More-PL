@@ -88,7 +88,7 @@ public:
   const FunctionType* addFunction(
     const eden::owned_stringview& name,
     std::span<Variable> parameters,
-    const Type* return_type, bool is_public) noexcept;
+    const Type* return_type, bool is_public, bool is_variadic = false) noexcept;
 
   [[nodiscard]] const Type*
   addRawPointer(InstantiatedType subtype) noexcept

@@ -12,7 +12,7 @@
 #include <vector>
 
 namespace LOM::Lexer {
-struct Token;
+class Token;
 }
 
 namespace LOM {
@@ -143,6 +143,15 @@ public:
   isBool() const noexcept
   {return primitive_type == BOOL;}
 
+  [[nodiscard]] constexpr bool
+  isString() const noexcept
+  {return primitive_type == STRING;}
+
+  [[nodiscard]] constexpr bool
+  isLiteral() const noexcept
+  {return primitive_type == U_;}
+
+
   [[nodiscard]] constexpr sz_t
   bitwidth() const noexcept {
     switch (primitive_type) {
@@ -234,7 +243,7 @@ public:
 #define type_singleton(type_name, type_enum) \
   static consteval const PrimitiveType* \
   type_name() noexcept \
-  {static constexpr PrimitiveType type_name{type_enum}; return &type_name;}
+  {static constexpr PrimitiveType type_name{type_enum}; return &(type_name);}
 
   type_singleton(i8, I8)
   type_singleton(i16, I16)
@@ -331,44 +340,46 @@ public:
 class FunctionType final : public Type {
   friend class TypeContext;
 
-  u8_t num_parameters;
-  const Type* parameter_types[Settings::MAX_FUNCTION_PARAMETERS]{nullptr};
-  const Type* return_type;
+  bool is_variadic;
+  std::vector<const Type*> subtypes; //last is return type
 
 public:
-  constexpr FunctionType(std::span<const Type*> parameters, const Type* return_type)
-  : Type(FUNCTION), num_parameters(parameters.size()), return_type(return_type) {
-    assume_assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
+  constexpr FunctionType(std::span<const Type*> parameters, const Type* return_type, bool is_variadic)
+  : Type(FUNCTION), is_variadic(is_variadic) {
     setCallable();
-    for (auto i{0uz}; i < num_parameters; ++i)
-      parameter_types[i] = parameters[i];
+    for (auto p : parameters)
+      subtypes.push_back(p);
+    subtypes.push_back(return_type);
   }
 
-  [[nodiscard]] constexpr u8_t
-  numParameters() const noexcept {return num_parameters;}
+  [[nodiscard]] constexpr sz_t
+  numParameters() const noexcept {return subtypes.size() - 1;}
+
+  [[nodiscard]] constexpr bool
+  isVariadic() const noexcept {return is_variadic;}
 
   [[nodiscard]] constexpr std::span<const Type* const>
-  parameterTypes() const noexcept {return std::span(parameter_types, num_parameters);}
+  parameterTypes() const noexcept {return std::span(subtypes.data(), subtypes.size() - 1);}
 
   [[nodiscard]] constexpr const Type*
-  returnType() const noexcept {return return_type;}
+  returnType() const noexcept {return subtypes.back();}
 
   [[nodiscard]] std::string
   toString() const noexcept;
 
   [[nodiscard]] constexpr bool
-  sameAs(std::span<const Type*> parameters, const Type* ret_type) const noexcept {
-    if (parameters.size() not_eq num_parameters or return_type not_eq ret_type)
+  sameAs(std::span<const Type*> parameters, const Type* ret_type, bool variadic) const noexcept {
+    if (parameters.size() not_eq subtypes.size()-1 or subtypes.back() not_eq ret_type or is_variadic not_eq variadic)
       return false;
 
     for (auto i{0uz}; i < parameters.size(); ++i)
-      if (parameters[i] not_eq parameter_types[i])
+      if (parameters[i] not_eq subtypes[i])
         return false;
 
     return true;
   }
 
-  [[nodiscard]] bool isValidCall(std::span<InstantiatedType> parameters) const noexcept;
+  void validateCall(std::span<InstantiatedType> parameters) const;
 
 };
 
@@ -464,7 +475,7 @@ class TypeContext {
     const auto end = types.rend();
     while (curr not_eq end) {
       const auto type = *curr;
-      if (type->sameAs(args...)) {
+      if (type->sameAs(std::forward<Args>(args)...)) {
         std::swap(types.back(), *curr);
         return type;
       }
@@ -494,12 +505,14 @@ public:
   {return returnExistingOrNew(variants, std::move(subtypes), nullable);}
 
   [[nodiscard]] const FunctionType*
-  addFunction(std::span<const Type*> parameter_types, const Type* return_type) noexcept
-  {return returnExistingOrNew(functions, parameter_types, return_type);}
+  addFunction(std::span<const Type*> parameter_types, const Type* return_type, bool is_variadic = false) noexcept
+  {return returnExistingOrNew(functions, parameter_types, return_type, is_variadic);}
 
-  ~TypeContext() {
-    for (const auto variant : variants) //necessary because variants contain vectors
+  ~TypeContext() { //not sure if this is necessary. Type Context will only be destroyed at the end of the program
+    for (const auto variant : variants)
       std::destroy_at(variant);
+    for (const auto function : functions)
+      std::destroy_at(function);
   }
 };
 

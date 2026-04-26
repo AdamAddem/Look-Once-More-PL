@@ -11,6 +11,8 @@
 #include <print>
 using namespace LOM;
 
+static Module main_module("");
+
 static std::unordered_map<std::string_view, Module> modules;
 
 [[nodiscard]] Module*
@@ -41,13 +43,22 @@ lex_and_parse_module(const fs::path& directory) {
   return Parser::parseTokens(tokens, module_ptr);
 }
 
+static void setup_std() {
+  //static constinit eden::TemplateString std_module_name{"std"};
+  //static constinit eden::owned_stringview x(std_module_name.data.data(), 3);
+  //static constinit Module::Variable y[4]{{}, {}, {}, {}};
+
+  modules.emplace(std::pair(std::string_view("__C"), Module{"__C"}));
+
+  //standard_lib.addFunction(x, , nullptr, true);
+}
+
 void LOM::build()
 try {
-  //1: Lex each file seperately, filling up one total list of tokens
-  //2: Parse tokens together as one module
-  //3: When all modules have been parsed, then peeping can begin
   if (not fs::exists("src"))
     throw std::runtime_error("LookOnceMore: src directory not found!");
+
+  setup_std();
 
   std::vector<Parser::TU> parsed_tus;
   std::vector<fs::path> module_names; bool has_main = false;
@@ -60,7 +71,6 @@ try {
       has_main = true;
       std::vector<Lexer::Token> main_tokens;
       Lexer::tokenizeFile(main_tokens, entry);
-      static Module main_module("");
       module_names.emplace_back(entry.path().filename());
       parsed_tus.emplace_back(Parser::parseTokens(main_tokens, &main_module));
     }

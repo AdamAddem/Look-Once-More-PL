@@ -1,10 +1,9 @@
 #pragma once
 #include "ast.hpp"
-#include "edenlib/owned.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 
 namespace LOM::Lexer {
-struct Token;
+class Token;
 }
 
 namespace LOM::Parser {

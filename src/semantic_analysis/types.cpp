@@ -1,5 +1,7 @@
 #include "types.hpp"
+
 #include "edenlib/assume_assert.hpp"
+#include "error.hpp"
 #include "lexing/lex.hpp"
 
 using namespace LOM;
@@ -15,8 +17,17 @@ bool Type::convertibleTo(const Type* other) const noexcept {
   if (other_type == VARIANT)
     return other->castToVariant()->contains(this);
 
+  if (derived_type == PRIMITIVE and castToPrimitive()->isString()) {
+    if (other->isPointer()) {
+      auto other_subtype = other->castToPointer()->getSubtype();
+      if (other_subtype.details.is_mutable == false and other_subtype.type == PrimitiveType::char_())
+        return true;
+    }
+  }
+
   if (derived_type not_eq other_type or flags not_eq other->flags)
     return false;
+
 
   switch (derived_type) {
   case DEVOID:
@@ -76,8 +87,14 @@ bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
   case F64:
   case BOOL:
   case CHAR:
-  case STRING:
     return false; //only converts to the same type which has been checked already
+  case STRING: //only converts to char pointer
+    if (other->isPointer()) {
+      auto other_subtype = other->castToPointer()->getSubtype();
+      if (other_subtype.details.is_mutable == false and other_subtype.type == char_())
+        return true;
+    }
+    return false;
   default:
     std::unreachable();
   }
@@ -180,32 +197,40 @@ bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, bool nullabl
 
 std::string FunctionType::toString() const noexcept {
   std::string string_rep("(");
-  auto parameter_typesx = parameterTypes();
-  for (auto param_type : parameter_typesx) {
-    string_rep.append(param_type->toString());
+  for (auto i{0uz}; i<subtypes.size(); ++i) {
+    string_rep.append(subtypes[i]->toString());
     string_rep.append(", ");
   }
-  if (num_parameters not_eq 0) {
+
+  if (is_variadic) {
+    string_rep.append("...");
+  }
+  else if (subtypes.size() == 1) {
     string_rep.pop_back();
     string_rep.pop_back();
   }
+
   string_rep.push_back(')');
-  if (not return_type->isDevoid()) {
+  if (not subtypes.back()->isDevoid()) {
     string_rep.append(" -> ");
-    string_rep.append(return_type->toString());
+    string_rep.append(subtypes.back()->toString());
   }
 
   return string_rep;
 }
 
-bool FunctionType::isValidCall(std::span<InstantiatedType> parameters) const noexcept {
-  assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
-  const auto num_params = parameters.size();
+void FunctionType::validateCall(std::span<InstantiatedType> parameters) const {
+  const auto num_params = subtypes.size() - 1;
+  if (parameters.size() < num_params)
+    throw ValidationError("Too few parameters for function call.", "PLACEHOLDER", 0);
+  if (parameters.size() > num_params and (not is_variadic))
+    throw ValidationError("Too many parameters for function call.", "PLACEHOLDER", 0);
+
   for (auto i{0uz}; i < num_params; ++i) {
-    if (parameter_types[i] == nullptr)
-      return false;
-    if (not parameters[i].type->convertibleTo(parameter_types[i]))
-      return false;
+    if (not parameters[i].type->convertibleTo(subtypes[i]))
+      throw ValidationError("Cannot convert parameter to parameter type.",
+      std::format("Parameter of type '{}' cannot convert to type '{}'", parameters[i].toString(), subtypes[i]->toString()),
+      0);
   }
-  return true;
+
 }

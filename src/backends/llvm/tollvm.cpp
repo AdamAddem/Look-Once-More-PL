@@ -136,17 +136,17 @@ class TU final : public Backend {
     if (imports.contains(name_view))
       return imports[name_view];
 
-    char buff[256];
     auto i{0uz};
     while (name[i] not_eq '.') {
-      buff[i] = name[i];
       ++i;
     }
+    const std::string_view module_name(name, i);
 
     const char* func_name = name+i+1;
-    auto m = getModule({buff, i});
+    auto m = getModule(module_name);
     auto func = m->getPublicFunction(func_name); assert(func);
     auto function_type = translateFunctionType(func.value());
+    if (module_name == "__C") {name = func_name;}
     return imports[name_view] = module.getOrInsertFunction(name, function_type).getCallee();
   }
 
@@ -165,7 +165,7 @@ class TU final : public Backend {
     ? i1
     : translateType(t->returnType());
 
-    return llvm::FunctionType::get(return_type, {arg_types, num_params}, false);
+    return llvm::FunctionType::get(return_type, {arg_types, num_params}, t->isVariadic());
   }
 
   [[nodiscard]] llvm::Type*
@@ -511,7 +511,8 @@ class TU final : public Backend {
       case CHAR_LITERAL:
         return llvm::ConstantInt::get(tu->i8, instruction.char_value());
       case STRING_LITERAL: {
-        const auto str_lit = llvm::ConstantDataArray::getString(tu->context, instruction.string_value());
+        const auto str_lit = builder.CreateGlobalString(instruction.string_value());
+          //llvm::ConstantDataArray::getString(tu->context, instruction.string_value());
         instruction.release_string_value().destroy_and_deallocate();
         return str_lit;
       }
@@ -557,6 +558,7 @@ class TU final : public Backend {
           ? llvm::Type::getFloatTy(tu->context)
           : llvm::Type::getDoubleTy(tu->context));
       case PCAST:
+      case NCAST:
         return genExpression();
       case CALL: {
         const auto fn = genExpression();

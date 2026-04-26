@@ -55,6 +55,7 @@ struct Instruction {
     //value contains bitwidth to extend / truncate to
     UCAST, SCAST, FCAST,
     PCAST, //pointer cast, value contains const Type* although this is not used
+    NCAST, //do nothing
 
     CALL // value equals number of parameters
   }type;
@@ -183,13 +184,15 @@ struct Function {
 };
 
 struct TU {
-  explicit TU(Module* table) noexcept : table(table) {}
+  explicit TU(Parser::TU&) noexcept;
 
   Module* table;
   struct Global {
     std::string_view name;
     u64_t value; //change this bih eventually
   };
+
+  std::unordered_map<std::string_view, Module*> imports;
   std::vector<Global> globals;
   std::vector<Function> functions;
 

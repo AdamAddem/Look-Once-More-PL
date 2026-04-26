@@ -21,15 +21,20 @@ using namespace LOM::AST;
 namespace {
 
 [[nodiscard]] constexpr Instruction
-castForType(const Type* left_type, const Type* right_type) noexcept {
-  if (right_type->isPointer())
-    return {Instruction::PCAST, std::bit_cast<u64_t>(left_type)};
-  if (right_type->isSignedIntegral())
-    return {Instruction::SCAST, left_type->bitwidth()};
-  if (right_type->isFloating())
-    return {Instruction::FCAST, left_type->bitwidth()};
+castForType(const Type* given_type, const Type* expected_type) noexcept {
+  if (expected_type->isPointer())
+    return {Instruction::PCAST, std::bit_cast<u64_t>(given_type)};
+  if (expected_type->isIntegral()) {
+    auto as_primitive = expected_type->castToPrimitive();
+    if (as_primitive->isLiteral())
+      return {Instruction::UCAST, given_type->bitwidth()};
+    if (as_primitive->isSignedIntegral())
+      return {Instruction::SCAST, expected_type->bitwidth()};
+    if (as_primitive->isFloating())
+      return {Instruction::FCAST, expected_type->bitwidth()};
+  }
 
-  return {Instruction::UCAST, left_type->bitwidth()};
+  return {Instruction::UCAST, expected_type->bitwidth()};
 
   std::unreachable();
 }
@@ -78,6 +83,7 @@ public:
 template <bool global_peeping>
 class Peeper {
   Module* table;
+  std::unordered_map<std::string_view, Module*>& imports;
 
   eden::releasing_vector<const Type*> locals;
   eden::releasing_vector<Instruction> instructions;
@@ -167,8 +173,12 @@ class Peeper {
     if constexpr(global_peeping)
       throw ValidationError("Module usage not allowed during global initialization.", identifier.get(), current_line_number);
 
+    const auto import_view = std::string_view(identifier.get(), identifier.size() - 1);
+    if (not imports.contains(import_view))
+      throw ValidationError("Module not imported!", import_view.data(), current_line_number);
+
     eden::releasing_string name{std::move(identifier)};
-    const auto module = getModule(name.to_stringview());
+    const auto module = imports[import_view];
     auto sub_identifier = nodes.pop().take_identifier();
     auto i{0uz};
     name.push_back('.');
@@ -186,7 +196,7 @@ class Peeper {
       return {func.value(), {}};
     }
     throw ValidationError("Identifier not a public member of module.",
-      std::format("Module: {}, Identifier: |{}|", name.release().get(), sub_identifier.get()),
+      std::format("Module: {}, Identifier: {}", name.release().get(), sub_identifier.get()),
       current_line_number);
   }
 
@@ -227,22 +237,20 @@ class Peeper {
       throw ValidationError("Callable non-functions not implemented.", "Woopsie", current_line_number);
 
     const FunctionType* function_type = called.type->castToFunction();
-    auto parameter_types = function_type->parameterTypes();
+    const auto parameter_types = function_type->parameterTypes();
+    const auto func_parameter_count = parameter_types.size();
+    std::vector<InstantiatedType> expressions; expressions.reserve(parameter_count);
     for (auto i{0uz}; i<parameter_count; ++i) {
       const auto cast_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
-      const auto parameter = peepExpression();
-      if (not parameter.type->convertibleTo(parameter_types[i]))
-        throw ValidationError("Cannot convert parameter to parameter type.",
-          std::format("Parameter of type '{}' cannot convert to type '{}'", parameter.toString(), parameter_types[i]->toString()),
-          current_line_number);
+      const auto parameter = peepExpression(); expressions.push_back(parameter);
 
-      const bool unsigned_cast = parameter.type->isUnsignedIntegral();
-      const bool float_cast = parameter.type->isFloating();
-      instructions[cast_idx].type =
-      float_cast ? Instruction::FCAST :
-      unsigned_cast ? Instruction::UCAST : Instruction::SCAST;
-      instructions[cast_idx].value = parameter_types[i]->bitwidth();
+      if (i >= func_parameter_count) {
+        instructions[cast_idx] = {Instruction::NCAST, 0};
+      }
+      else
+        instructions[cast_idx] = castForType(parameter.type, parameter_types[i]);
     }
+    function_type->validateCall(expressions);
 
     const auto result = function_type->returnType();
     return {result, {}};
@@ -266,7 +274,7 @@ class Peeper {
       throw ValidationError("Binary operator used on variant types.",
         std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
 
-    instructions[cast_idx] = castForType(left.type, right.type);
+    instructions[cast_idx] = castForType(right.type, left.type);
 
     const bool arithmetic = left.type->isArithmetic();
     //first switch validates
@@ -760,23 +768,25 @@ class Peeper {
   }
 
   Peeper(
+    TU& tu,
     SyntaxTree& tree,
-    Module* table,
     const FunctionType* function_type)
-  : table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(function_type) {
+  : table(tu.table), imports(tu.imports),
+    nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(function_type) {
     locals.emplace_back(function_type->returnType());
     for (auto parameter_type : function_type->parameterTypes())
       locals.emplace_back(parameter_type);
   }
 
-  Peeper(SyntaxTree& tree, Module* table)
-  : table(table), nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(nullptr) {}
+  Peeper(TU& tu, SyntaxTree& tree)
+  : table(tu.table), imports(tu.imports),
+    nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(nullptr) {}
 public:
 
-  static void peepFunction(TU& tu, Parser::Function &func, Module* table)
+  static void peepFunction(TU& tu, Parser::Function &func)
   requires (not global_peeping) {
-    const auto function_type = table->enterFunctionScope(func.name.get());
-    Peeper function_peeper(func.body, table, function_type);
+    const auto function_type = tu.table->enterFunctionScope(func.name.get());
+    Peeper function_peeper(tu, func.body, function_type);
     function_peeper.peepUntilEmpty();
     tu.functions.emplace_back(
       std::move(func.name), function_type,
@@ -784,22 +794,27 @@ public:
       function_peeper.instructions.release(),
       function_peeper.blocks.release_span(), func.is_public);
 
-    table->leaveFunctionScope();
+    tu.table->leaveFunctionScope();
   }
 
-  static void peepGlobals(TU& tu, SyntaxTree& global_tree, Module* table)
+  static void peepGlobals(TU& tu, SyntaxTree& global_tree)
   requires global_peeping {
-    assume_assert(tu.globals.empty());
     assert(false);
-    Peeper<true> global_peeper(global_tree, table);
+    Peeper<true> global_peeper(tu, global_tree);
     while (not global_peeper.nodes.empty())
       global_peeper.peepStatement();
 
-    //tu.globals = global_peeper.locals.release();
-    //tu.global_instructions = global_peeper.instructions.release_span();
   }
 };
 
+}
+
+TU::TU(Parser::TU& ptu) noexcept : table(ptu.table) {
+  for (auto& i : ptu.imports) {
+    std::string_view import_view = i;
+    auto m = getModule(import_view);
+    imports.emplace(std::pair(import_view, m));
+  }
 }
 
 //printing functions
@@ -870,6 +885,7 @@ void printPeepInstruction(Instruction instruction) {
   case SCAST: return std::println("SCAST TO {}b", instruction.value);
   case FCAST: return std::println("FCAST TO {}b", instruction.value);
   case PCAST: return std::println("PCAST TO {}", instruction.pcast_type()->toString());
+  case NCAST: return std::println("NCAST");
 
 
   case CALL: return std::println("CALL WITH {} PARAMETER(S)", instruction.num_params());
@@ -951,14 +967,14 @@ using GlobalPeeper = Peeper<true>;
 using FunctionPeeper = Peeper<false>;
 
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
-  TU tu(parsed_tu.table);
-  Module* table = tu.table;
+  TU tu(parsed_tu);
+  tu.imports.emplace(std::pair(std::string_view("__C"), getModule("__C")));
   tu.functions.reserve(parsed_tu.functions.size());
 
   //GlobalPeeper::peepGlobals(tu, parsed_tu.global_tree, table);
 
   for (auto &func : parsed_tu.functions)
-    FunctionPeeper::peepFunction(tu, func, table);
+    FunctionPeeper::peepFunction(tu, func);
 
   if (Settings::doOutputValidation()) {
     std::cout << "Validation Passed!\n\n";

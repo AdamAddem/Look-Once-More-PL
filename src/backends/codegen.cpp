@@ -28,7 +28,7 @@ void Backend::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
     compiler.append(file.string());
   }
 
-  const std::string executable = Settings::getBuildLocation() + Settings::getExecutableName();
+  const std::string executable = "build/" + Settings::getExecutableName();
   compiler.append(" -o ");
   compiler.append(executable);
 
@@ -36,6 +36,4 @@ void Backend::linkObjects(const std::vector<std::filesystem::path>& obj_paths) {
     std::cerr << "Error calling compiler with command: " << compiler;
     std::quick_exit(1);
   }
-
-  std::cout << "Compilation succeded!\n";
 }

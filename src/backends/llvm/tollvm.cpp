@@ -40,7 +40,7 @@ class TU final : public Backend {
 
   [[nodiscard]] std::filesystem::path
   createASMFile(const std::filesystem::path &file) override {
-    static const std::filesystem::path asm_folder = Settings::getBuildLocation() + "asm/";
+    static const std::filesystem::path asm_folder = "build/asm/";
     std::filesystem::path asm_path = asm_folder;
     asm_path.append(file.string());
     std::filesystem::create_directories(asm_path.parent_path());
@@ -56,7 +56,7 @@ class TU final : public Backend {
 
   [[nodiscard]] std::filesystem::path
   createIRFile(const std::filesystem::path &file) override {
-    static const std::filesystem::path ir_path = Settings::getBuildLocation() + "llvm_ir/";
+    static const std::filesystem::path ir_path = "build/llvm_ir/";
     std::filesystem::path file_path = ir_path;
     file_path.append(file.string());
     std::filesystem::create_directories(file_path.parent_path());
@@ -75,7 +75,7 @@ class TU final : public Backend {
 
   [[nodiscard]] std::filesystem::path
   createObjectFile(const std::filesystem::path &file) override {
-    static const std::filesystem::path object_folder = Settings::getBuildLocation() + "obj/";
+    static const std::filesystem::path object_folder = "build/obj/";
     std::filesystem::path obj_path = object_folder;
     obj_path.append(file.string());
     std::filesystem::create_directories(obj_path.parent_path());

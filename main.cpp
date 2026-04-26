@@ -10,24 +10,8 @@ int main(const int argc, const char* argv[]) {
     std::println("LookOnceMore: Arguments required."), std::quick_exit(0);
 
   LOM::Settings::setArgs(argc, argv);
-  LOM::build();
-
-  /*
-  const bool output_asm = Settings::doOutputASM();
-  const bool output_ir = Settings::doOutputIR();
-  const bool output_obj = Settings::doOutputOBJ() or Settings::doLinking();
-  for (auto& filename : filepaths) {
-    const auto compiled = processLOMFile(filename);
-    if (output_asm)
-      compiled->createASMFile(filename);
-    if (output_ir)
-      compiled->createIRFile(filename);
-    if (output_obj)
-      filename = compiled->createObjectFile(filename);
-  }
-
-  if (Settings::doLinking())
-    Backend::linkObjects(filepaths); */
+  if (LOM::Settings::doBuild())
+    LOM::build();
 
   return 0;
 }

@@ -7,6 +7,7 @@
 #include "settings.hpp"
 
 #include <cassert>
+#include <limits>
 #include <span>
 #include <utility>
 #include <vector>

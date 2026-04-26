@@ -68,9 +68,6 @@ Below are language features, only some of which are implemented currently, that 
     unsigned_8 + unsigned_32; //Error
 ---
 ### How to Build
-Don't. Not yet anyways. <br>
-
-But if you want to for whatever reason: <br>
 Currently the only dependencies are LLVM 21. <br>
 Clone and compile as such:
 ```
@@ -78,94 +75,44 @@ git clone --recurse-submodules https://github.com/AdamAddem/Look-Once-More-PL
 mkdir build && cd build && cmake .. && make
 ```
 Either clang or gcc are required to support linking objects into an executable. <br> 
-Windows may or may not be supported. <br>
+Windows support hasn't been tested but feel free to try. <br>
 
 ### Running
 The executable can be ran with the following arguments:
 ```
-    <filenames>.lom             Specifies filenames for compilation.
+    -init                       Creates a project template.
+    -build                      Builds the project.
     -o <output>                 Specifies output file name.
-    -build-location <location>  Specifies the folder for all outputs.
-    -emit-lexer                 Prints the result of the lexer.
-    -emit-parser                Prints the result of the parser.
-    -emit-peep                  Validates the program and prints the peep MIR representation.
     -validate                   Prints whether the files are legal LOM programs.
-    -O0, O1, O2, O3             Does absolutely nothing at the moment.
+    -O0, O1, O2, O3             Does absolutely nothing for now.
     
-    //May be used in conjunction but prevents linking
     -emit-obj                   Produces object files.
-    -emit-llvm                  Compiles to LLVM IR.
-    -emit-asm                   Compiles to assembly.
+    -emit-llvm                  Produces the LLVM IR representation of the source code.
+    -emit-asm                   Produces the assembly representation of the source code.
 ```
-As of right now, the module system is not implemented, and forward declarations are not a thing, so compiling multiple files is useless as they can't interact.
-Just come back in a month or two. or four.
+
+### Getting Started
+Run `LookOnceMore init` to set up a project template within the current directory.
+You should see src, external, and build folders.
+The src folder holds all source files organized via module, as will be explained below.
+The external folder is not implemented currently.
+The build folder contains the outputs of all 'emit' commands. <br>
+
+LookOnceMore uses a module system. 
+A module contains one or more .lom files, which are all compiled together into one translation unit.
+To create a module, simply create a directory within 'src'. The module's name is taken directly from the directory's name.
+All files within that directory will be compiled as part of the module.
+
+Only one .lom file may exist in the top level src directory, and that is main.lom.
+main.lom is required at the moment, although in the future will not be required for compiling libraries.
+
+To build your project, just do `LookOnceMore build` within the project directory.
 
 ---
-
-### Disclaimer
-Below is a large amount of what may be colloquially referred to as 'yap'. You probably have better things to do, but
-if you'd like to hear me hate on C++ feel free to read ahead. Otherwise, the TL;DR is that making a programming language is fun and C++ sucks.
-
-### Motivation
-I have a love / hate relationship with C++, and I am certainly not special in that regard. Although it has many quirks that I think make it beautiful,
-much of that beauty comes from how clever the language is about working around itself rather than the quality of its feature-set.
-
-C++'s overemphasis on backwards compatability has led to a mixed bag of features with a massive age gap. 
-The lack of will to change / deprecate / remove what has already been added to the language leads to the creation of many new features with the sole purpose of improving the old. <br>
-
-Often times a new feature does improve the language, just to end up coexisting with the old feature it was intended to replace.
-Concepts are great example of this, despite being one of the best recent C++ features. They don't fundamentally change metaprogramming, instead providing a cleaner way of performing the same tasks,
-while still relying upon archaic features like type traits to function.
-In other cases, a new feature can release just to end up being more inconvenient / wordy / restrictive than the old version, albiet with some situational benefits.
-
-Below are some major examples of the problems that C++ has accrued over the years that are a result of its 'less than progressive' development: 
-
-* Obscure / Esoteric syntax
-  ```c++ 
-    int (Foo::*)(int (&)[5]) ptr;
-    requires requires { typename T::foo; };
-    noexcept(noexcept(a.~T()))
-* Standard library features that should be features of the language
-  * unique_ptr
-  * many type-traits and concepts
-  * variant
-  * move
-  * tuple
-
-* Operators and Keywords with varying meanings in varying contexts
-  * \* used for multiplication, pointer declaration, and pointer dereference
-  * new, operator new, placement new
-  * 'static' and 'inline' could have their own markdown dedicated solely to this subject
-
-* Pointers and references can be unintuitive 
-    ```c++
-    int * const * x; //mutable pointer to const pointer to mutable int
-    int& foo() { static int* ptr = new int; return *ptr; } //dereference to create a reference that does not actually dereference
-    std::move(obj) //only casts the object, can silently fail
-* Bad defaults and too many implicit features
-  * noexcept, const, constexpr, \[\[nodiscard\]\], and explicit are everywhere in modern codebases leading to long lines of text that just declare a single function
-  * Implicit junk initialization for trivially constructible types ("int x;" and  "new int" both don't initialize at all) 
-* Header/source files and build systems
-  * Modules are a thing, yes, but if a feature is released in a standard and noone is around to use it, does it really exist?
-
-### Why not use X language instead?
-As much as i've dragged C++, I really do love it. The amount of freedom it provides to the user is essentially unparalleled by anything but C and ASM.
-Do you want to interpret the bits of an integer pointer as a Car? Go ahead. Matter of fact, declare that the fourth bit of that car represents whether the windshield wipers are activated, who cares.
-While you're at it, use multiple layers of function-like macros to declare an enum and create mappings between that enum and its string equivalent. 
-C++ won't give you an easy or pretty way of doing it, but if you really want to then thy will be done.
-Many languages have been created in an attempt to replace or augment C++, although from what I've seen none have quite replicated the same philosophy of freedom.
-
-Rust is likely the most popular C++ 'replacement'. When I first started developing Look Once More, I had essentially no knowledge of Rust beyond a basic understanding of the borrow checker.
-Coincidentally many of the ideas I had early on shared a striking resemblance to many of Rust's features, despite the fact that I had never used the language.
-Now having dug much deeper, there are many things I can admire about it. However, its core philosophy is almost opposite to C++'s in many ways; it forces you into a particular
-style of programming in order to even compile. Granted, this style is well justified, has workarounds, and comes with many benefits, but it is simply not enjoyable to me.
-
-I'm sure there may exist other low-level languages that I'd enjoy programming in, although I'm not quite sure that they would ever scratch the same itch.
-
 ### The Name
 The name 'C++' is a play on 'C', implying that it is the increment of C. I've always thought it was funny that the postfix ++ operator was used rather than the prefix.
 Ironically this implies that when someone uses 'C++', all they're really getting is C, and the addition is an afterthought - an idea I find consistent with my experience of the language.
-So while C++ is really C again, I encourage us all to Look Once More (badumtss).
+So while C++ is really C again, I encourage us all to look once more. (badumtss)
 
 The name is not just a pun though. 
 It represents the goal of the language: to not let things of the past keep their relevance purely for the purposes of comfort or 'backwards compatability'.

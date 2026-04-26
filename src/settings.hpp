@@ -1,8 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <filesystem>
 #include <string>
-#include <vector>
 
 namespace LOM::Settings {
 
@@ -14,9 +12,9 @@ namespace LOM::Settings {
 [[nodiscard]] bool doOutputASM()noexcept;
 [[nodiscard]] bool doOutputOBJ()noexcept;
 [[nodiscard]] bool doLinking()noexcept;
+[[nodiscard]] bool doBuild() noexcept;
 
 const std::string& getExecutableName();
-const std::string& getBuildLocation();
 uint8_t getOptimizationLevel();
 
 void setArgs(unsigned argc, const char* argv[]);

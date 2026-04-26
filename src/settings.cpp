@@ -6,6 +6,8 @@
 #include <iostream>
 #include <unordered_map>
 #include <utility>
+#include <fstream>
+#include <filesystem>
 
 enum class Args : u32_t {
   OUTPUT_LEXER,
@@ -16,7 +18,7 @@ enum class Args : u32_t {
   OUTPUT_ASM,
   OUTPUT_OBJ,
   EXECUTABLE_NAME,
-  BUILD_LOCATION,
+  BUILD,
   O0,
   O1,
   O2,
@@ -26,7 +28,7 @@ enum class Args : u32_t {
 inline const std::unordered_map<std::string, Args> stringToArgs{
 	    {"-emit-lexer", Args::OUTPUT_LEXER}, {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP}, {"-validate", Args::OUTPUT_VALIDATION},
             {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
-            {"-o", Args::EXECUTABLE_NAME},{"-build-location", Args::BUILD_LOCATION},
+            {"-o", Args::EXECUTABLE_NAME},{"build", Args::BUILD},
             {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2},
             {"-O3", Args::O3},
 };
@@ -41,9 +43,9 @@ static bool output_validation{false};
 static bool output_llvmir{false};
 static bool output_asm{false};
 static bool output_obj{false};
+static bool build{false};
 static u8_t optimization_level{0};
 static std::string output_name;
-static std::string build_location{"build/"};
 
 bool Settings::doOutputLexer() noexcept                   {return output_lexer;}
 bool Settings::doOutputParser() noexcept                  {return output_parser;}
@@ -53,11 +55,10 @@ bool Settings::doOutputIR() noexcept                      {return output_llvmir;
 bool Settings::doOutputASM() noexcept                     {return output_asm;}
 bool Settings::doOutputOBJ() noexcept                     {return output_obj;}
 bool Settings::doLinking() noexcept                       {return not output_obj and not output_asm and not output_llvmir;}
+bool Settings::doBuild() noexcept                         {return build;}
 const std::string& Settings::getExecutableName()          {return output_name;}
-const std::string& Settings::getBuildLocation()           {return build_location;}
 uint8_t Settings::getOptimizationLevel()                  {return optimization_level;}
 
-#include <fstream>
 void Settings::setArgs(const unsigned argc, const char* argv[]) {
   using Filepath = std::filesystem::path;
   if (std::string_view(argv[1]) == "init") {
@@ -65,9 +66,14 @@ void Settings::setArgs(const unsigned argc, const char* argv[]) {
     std::filesystem::create_directory("external");
     std::filesystem::create_directory("src");
     std::ofstream main_lom_file("src/main.lom");
-    main_lom_file << "\n\nfn main() -> i32 {\n\treturn 0;\n}";
+    main_lom_file << "\n\n"
+                     "__C puts(raw -> char str) -> i32;\n\n"
+                     "pub fn main() -> i32 {\n"
+                     "\t__C.puts(\"Hello, World!\");\n"
+                     "\treturn 0;"
+                     "\n}";
     main_lom_file.close();
-    std::quick_exit(0); std::unreachable();
+    std::quick_exit(0);
   }
 
   for (auto i{1uz}; i < argc; ++i) {
@@ -112,16 +118,11 @@ void Settings::setArgs(const unsigned argc, const char* argv[]) {
         std::cout << "Multiple output names specified, maybe don't do that" << std::endl;
         std::quick_exit(1);
       }
-
       output_name = argv[i];
       ++i; break;
-    case Args::BUILD_LOCATION:
-      if (++i == argc) {
-        std::cout << "Expected build location name after -build-location" << std::endl;
-        std::quick_exit(1);
-      }
-      build_location = argv[i];
-      ++i; break;
+
+    case Args::BUILD:
+      build = true; break;
     case Args::O0:
       optimization_level = 0; break;
     case Args::O1:

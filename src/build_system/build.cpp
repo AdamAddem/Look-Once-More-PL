@@ -44,13 +44,7 @@ lex_and_parse_module(const fs::path& directory) {
 }
 
 static void setup_std() {
-  //static constinit eden::TemplateString std_module_name{"std"};
-  //static constinit eden::owned_stringview x(std_module_name.data.data(), 3);
-  //static constinit Module::Variable y[4]{{}, {}, {}, {}};
-
   modules.emplace(std::pair(std::string_view("__C"), Module{"__C"}));
-
-  //standard_lib.addFunction(x, , nullptr, true);
 }
 
 void LOM::build()
@@ -80,6 +74,9 @@ try {
     }
   }
 
+  if (not has_main)
+    throw std::runtime_error("Expected src/main.lom.");
+
   const bool output_asm = Settings::doOutputASM();
   const bool output_ir = Settings::doOutputIR();
   const bool output_obj = Settings::doOutputOBJ() or Settings::doLinking();
@@ -99,7 +96,7 @@ try {
       module_name = compiled->createObjectFile(module_name);
   }
 
-  if (Settings::doLinking() and has_main)
+  if (Settings::doLinking())
     Backend::linkObjects(module_names);
 }
 catch (LOMError& e) { std::cout << e.error_message << std::endl; std::quick_exit(1); }

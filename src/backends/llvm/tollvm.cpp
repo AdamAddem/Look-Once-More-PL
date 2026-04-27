@@ -146,7 +146,9 @@ class TU final : public Backend {
     auto m = getModule(module_name);
     auto func = m->getPublicFunction(func_name); assert(func);
     auto function_type = translateFunctionType(func.value());
-    if (module_name == "__C") {name = func_name;}
+    if (module_name == "__C") {
+      name = func_name;
+    }
     return imports[name_view] = module.getOrInsertFunction(name, function_type).getCallee();
   }
 
@@ -271,7 +273,7 @@ class TU final : public Backend {
         llvm::AllocaInst* param_alloca = builder.CreateAlloca(arg_types[i], nullptr);
         builder.CreateStore(arg, param_alloca);
         locals.emplace_back(param_alloca);
-        ++arg, ++i;
+        ++arg;
       }
 
       const auto num_locals = func.locals.size();
@@ -281,7 +283,6 @@ class TU final : public Backend {
             );
       }
 
-      //func.name.destroy_and_deallocate();
       func.locals.destroy_and_deallocate();
       instructions = std::move(func.instructions);
       mir_blocks = std::move(func.blocks);
@@ -469,7 +470,7 @@ class TU final : public Backend {
 
     [[nodiscard]] llvm::Value*
     genExpression() noexcept {
-      auto& instruction = instructions[instruction_idx++];
+      auto const& instruction = instructions[instruction_idx++];
       switch (instruction.type) {
       using enum PeepMIR::Instruction::Type;
       case NOOP:
@@ -477,12 +478,10 @@ class TU final : public Backend {
       case GLOBAL: {
         const auto global = (tu->module.getNamedGlobal(instruction.global_name()));
         assert(global);
-        instruction.release_string_value().destroy_and_deallocate();
         return global;
       }
       case FUNCTION: {
         const auto function = (tu->module.getFunction(instruction.function_name())); assert(function);
-        instruction.release_string_value().destroy_and_deallocate();
         return function;
       }
       case IMPORTED_GLOBAL:
@@ -492,7 +491,11 @@ class TU final : public Backend {
       }
 
       case LOCAL: {
-        assert(instruction.local_idx() < locals.size());
+        if(instruction.local_idx() >= locals.size()) {
+          llvmfunc->print(llvm::outs());
+          //std::cout << llvmfunc->getName().str() << std::endl;
+          std::quick_exit(1);
+        }
         const auto local = (locals[instruction.local_idx()]);
         return local;
       }
@@ -513,7 +516,6 @@ class TU final : public Backend {
       case STRING_LITERAL: {
         const auto str_lit = builder.CreateGlobalString(instruction.string_value());
           //llvm::ConstantDataArray::getString(tu->context, instruction.string_value());
-        instruction.release_string_value().destroy_and_deallocate();
         return str_lit;
       }
 
@@ -559,7 +561,7 @@ class TU final : public Backend {
           : llvm::Type::getDoubleTy(tu->context));
       case PCAST:
       case NCAST:
-        return genExpression();
+        return genReadExpression();
       case CALL: {
         const auto fn = genExpression();
         llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];

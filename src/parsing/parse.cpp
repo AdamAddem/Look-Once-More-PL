@@ -5,7 +5,6 @@
 #include "error.hpp"
 #include "lexing/lex.hpp"
 #include "semantic_analysis/symbol_table.hpp"
-#include "settings.hpp"
 
 #include <iostream>
 #include <unordered_set>
@@ -139,10 +138,10 @@ InstantiatedType parseType(TokenView& tokens, Module& table) {
   throw ParsingError("Expected typename.", token);
 }
 
-releasing_string::released_ptr parseIdentifier(TokenView& tokens) {
+char* parseIdentifier(TokenView& tokens) {
   Token token = tokens.take();
   token.throw_if_not(TokenType::IDENTIFIER, "Expected identifier.");
-  return token.takeString();
+  return token.getString();
 }
 
 struct Body {
@@ -175,8 +174,6 @@ struct Body {
   TokenView tokens;
   Module& table;
   ExpressionTree& expression_tree;
-  inline static releasing_string dunder_cextern_name_vec{"__C"};
-  inline static releasing_string::released_ptr dunder_cextern_name{dunder_cextern_name_vec.release()};
 
   Body(TokenView tokens, Module& table, ExpressionTree& expression_tree)
   : tokens(tokens), table(table), expression_tree(expression_tree) {}
@@ -197,11 +194,13 @@ struct Body {
 
   u16_t generateIdentifier() {
     u64_t identifier_value;
-    if (tokens.pop_if(TokenType::DUNDER_CEXTERN))
-      identifier_value = std::bit_cast<u64_t>(dunder_cextern_name.get());
+    if (tokens.pop_if(TokenType::DUNDER_CEXTERN)) {
+      releasing_string x("__C");
+      identifier_value = std::bit_cast<u64_t>(x.release().get());
+    }
     else {
       tokens.expect(TokenType::IDENTIFIER, "Expected identifier.");
-      identifier_value = std::bit_cast<u64_t>(tokens.take().takeString().get());
+      identifier_value = std::bit_cast<u64_t>(tokens.take().getString());
     }
 
     const auto res = expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
@@ -252,7 +251,7 @@ struct Body {
         break;
       case TokenType::STRING_LITERAL:
         literal_type = ASTNode::STRING_LITERAL;
-        literal_value = std::bit_cast<u64_t>(token.takeString().get());
+        literal_value = std::bit_cast<u64_t>(token.getString());
         break;
       default:
         std::unreachable();
@@ -613,7 +612,7 @@ struct Body {
     tree.emplace_back(ASTNode::DECLARATION, tokens.current_line_number());
     tree.emplace_back(parseType(tokens, table));
 
-    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(parseIdentifier(tokens).get()));
+    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(parseIdentifier(tokens)));
     tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.");
 
     if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
@@ -730,7 +729,7 @@ struct Body {
 void parseCExtern(TU& tu, Body& global_body) {
   // __fd name(...) -> ...;
   auto& tokens = global_body.tokens;
-  auto& table = *tu.table;
+  auto& table = *tu.module;
   auto name = parseIdentifier(tokens);
   tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
 
@@ -763,31 +762,28 @@ void parseCExtern(TU& tu, Body& global_body) {
 
   tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semi-colon.");
 
-  getModule("__C")->addFunction(
-    eden::owned_stringview(name.get(), name.size() - 1),
-    std::span(parameters), return_type,
-    true, is_variadic);
+  getModule("__C")->addFunction(name, std::span(parameters), return_type, true, is_variadic);
 }
 
 bool parseImports(TU& tu, Body& global_body) {
   TokenView& tokens = global_body.tokens;
-  if (tokens.pop_if(TokenType::DUNDER_CEXTERN)) {
-    parseCExtern(tu, global_body);
-    return true;
-  }
 
   if (not tokens.pop_if(TokenType::KEYWORD_IMPORT))
     return false;
 
   tokens.expect(TokenType::IDENTIFIER, "Expected module name.");
-  tu.imports.emplace_back(tokens.take().takeString());
+  auto name = tokens.take().getString();
+  if (tu.name == name)
+    throw ValidationError("Cannot import from current module!", name, 0);
+
+  tu.imports.emplace_back(name);
   tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon.");
   return true;
 }
 
 bool parseGlobals(Body& global_body) {
   TokenView& tokens = global_body.tokens;
-  if (tokens.peek_is(TokenType::KEYWORD_FN) or tokens.peek_is(TokenType::KEYWORD_PUB) or tokens.empty())
+  if (tokens.peek_is(TokenType::KEYWORD_FN) or tokens.peek_is(TokenType::KEYWORD_PUB) or tokens.peek_is(TokenType::DUNDER_CEXTERN) or tokens.empty())
     return false;
 
   tokens.expect_then_pop(TokenType::KEYWORD_GLOBAL, "Expected global keyword before declaration.");
@@ -795,13 +791,18 @@ bool parseGlobals(Body& global_body) {
   return true;
 }
 
-void parseFunctions(Body& global_body, std::vector<Function>& functions) {
+void parseFunctions(TU& tu, Body& global_body, std::vector<Function>& functions) {
   TokenView& tokens = global_body.tokens;
   Module& table = global_body.table;
   std::vector<TokenView> function_tokens;
 
-  //just parses the declarations to load into symbol table
+  //parses the declarations to load into symbol table
   while (not tokens.empty()) {
+    if (tokens.pop_if(TokenType::DUNDER_CEXTERN)) {
+      parseCExtern(tu, global_body);
+      continue;
+    }
+
     Function& function = functions.emplace_back();
     const bool is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
     function.is_public = is_public;
@@ -843,20 +844,20 @@ void parseFunctions(Body& global_body, std::vector<Function>& functions) {
     Body function_body
     (function_tokens[i], table, global_body.expression_tree);
 
-    table.enterFunctionScope(functions[i].name.get());
+    table.enterFunctionScope(functions[i].name);
     function_body.parseStatementsUntilEmpty();
     table.leaveFunctionScope();
     functions[i].body.nodes = std::move(function_body.tree);
   }
 }
 
-void printFunction(const Function& func, Module& table) {
-  std::cout << "fn " << func.name.get() << "(";
-  auto [parameters, return_type] = table.getFunction(func.name.get());
+void printFunction(const Function& func, Module& table, u64_t ln) {
+  std::cout << "fn " << func.name << "(";
+  auto [parameters, return_type] = table.getFunction(func.name);
 
   for (auto &parameter : parameters) {
     std::cout << parameter.type.toString();
-    std::cout << " " << parameter.name.get() << ", ";
+    std::cout << " " << parameter.name << ", ";
   }
 
   if (not parameters.empty())
@@ -868,7 +869,7 @@ void printFunction(const Function& func, Module& table) {
     std::cout << return_type->toString();
   }
   std::cout << " { ";
-  func.body.print(0);
+  func.body.print(ln);
   std::cout << "\n}";
 }
 
@@ -884,28 +885,19 @@ void Parser::printTU(TU& ptu) {
     std::println();
   }
   for (const auto &f : ptu.functions) {
-    printFunction(f, *ptu.table);
+    printFunction(f, *ptu.module, 1);
     std::println();
   }
 }
 
-TU Parser::parseTokens(std::vector<Token>& token_list, Module* table) {
+void Parser::parseTokens(TU& tu, TokenIter begin, TokenIter end) {
   Body::ExpressionTree expression_tree;
-  TU ptu; ptu.table = table;
-  Body global_body(TokenView{token_list}, *ptu.table, expression_tree);
+  Body global_body(TokenView{begin, end}, *tu.module, expression_tree);
 
-  while (parseImports(ptu, global_body)) {}
+  while (parseImports(tu, global_body)) {}
   while (parseGlobals(global_body)) {}
 
-  ptu.global_tree.nodes = std::move(global_body.tree);
-  parseFunctions(global_body, ptu.functions);
+  tu.global_tree.nodes = std::move(global_body.tree);
+  parseFunctions(tu, global_body, tu.functions);
 
-  if (Settings::doOutputParser()) [[unlikely]] {
-    std::cout << "\n--- Parser Output ---\n";
-    printTU(ptu);
-    std::cout << "--- Parser Output ---\n";
-    std::quick_exit(0);
-  }
-
-  return ptu;
 }

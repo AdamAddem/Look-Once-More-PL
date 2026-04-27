@@ -1,9 +1,10 @@
 #include "peep_mir.hpp"
 
-#include "../parsing/ast.hpp"
 #include "build_system/build.hpp"
 #include "edenlib/typedefs.hpp"
+#include "edenlib/string_utils.hpp"
 #include "error.hpp"
+#include "parsing/ast.hpp"
 #include "parsing/parse.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 #include "settings.hpp"
@@ -30,13 +31,30 @@ castForType(const Type* given_type, const Type* expected_type) noexcept {
       return {Instruction::UCAST, given_type->bitwidth()};
     if (as_primitive->isSignedIntegral())
       return {Instruction::SCAST, expected_type->bitwidth()};
-    if (as_primitive->isFloating())
-      return {Instruction::FCAST, expected_type->bitwidth()};
   }
+
+  if (expected_type->isFloating())
+    return {Instruction::FCAST, expected_type->bitwidth()};
 
   return {Instruction::UCAST, expected_type->bitwidth()};
 
   std::unreachable();
+}
+
+[[nodiscard]] constexpr char*
+combineWithDot(char* eden_restrict before_dot, char* eden_restrict after_dot) noexcept {
+  assume_assert(before_dot); assume_assert(after_dot); assume_assert(before_dot not_eq after_dot);
+
+  thread_local char dot_names[100'000];
+  thread_local char* dot_names_start{dot_names};
+
+  char* const name_start = dot_names_start;
+  dot_names_start = eden::stpcpy(dot_names_start, before_dot);
+
+  *dot_names_start = '.'; ++dot_names_start;
+  dot_names_start = eden::stpcpy(dot_names_start, after_dot) + 1;
+
+  return name_start;
 }
 
 class TreeView {
@@ -169,63 +187,56 @@ class Peeper {
     }
   }
 
-  InstantiatedType peepDotIdentifier(eden::releasing_string::released_ptr identifier) {
+  InstantiatedType peepDotIdentifier(char* identifier) {
     if constexpr(global_peeping)
-      throw ValidationError("Module usage not allowed during global initialization.", identifier.get(), current_line_number);
+      throw ValidationError("Module usage not allowed during global initialization.", identifier, current_line_number);
 
-    const auto import_view = std::string_view(identifier.get(), identifier.size() - 1);
-    if (not imports.contains(import_view))
-      throw ValidationError("Module not imported!", import_view.data(), current_line_number);
+    const auto import_name = std::string_view(identifier);
+    if (not imports.contains(import_name))
+      throw ValidationError("Module not imported!", import_name.data(), current_line_number);
 
-    eden::releasing_string name{std::move(identifier)};
-    const auto module = imports[import_view];
-    auto sub_identifier = nodes.pop().take_identifier();
-    auto i{0uz};
-    name.push_back('.');
-    while (sub_identifier[i] not_eq '\0') {
-      name.push_back(sub_identifier[i]);
-      ++i;
-    }
+    const auto module = imports[import_name];
+    auto sub_identifier = nodes.pop().identifier();
 
-    if (const auto global = module->getPublicGlobal(sub_identifier.get())) {
-      instructions.emplace_back(Instruction::IMPORTED_GLOBAL, std::bit_cast<u64_t>(name.release().get()));
+    auto combined_name = combineWithDot(identifier, sub_identifier);
+
+    if (const auto global = module->getPublicGlobal(sub_identifier)) {
+      instructions.emplace_back(Instruction::IMPORTED_GLOBAL, std::bit_cast<u64_t>(combined_name));
       return global.value();
     }
-    if (auto func = module->getPublicFunction(sub_identifier.get())) {
-      instructions.emplace_back(Instruction::IMPORTED_FUNCTION, std::bit_cast<u64_t>(name.release().get()));
+    if (auto func = module->getPublicFunction(sub_identifier)) {
+      instructions.emplace_back(Instruction::IMPORTED_FUNCTION, std::bit_cast<u64_t>(combined_name));
       return {func.value(), {}};
     }
     throw ValidationError("Identifier not a public member of module.",
-      std::format("Module: {}, Identifier: {}", name.release().get(), sub_identifier.get()),
+      std::format("Module: {}, Identifier: {}", combined_name, sub_identifier),
       current_line_number);
   }
 
-  InstantiatedType peepIdentifier(eden::releasing_string::released_ptr identifier) {
+  InstantiatedType peepIdentifier(char* identifier) {
     if constexpr(not global_peeping) {
-      if (const auto variable = table->getLocal(identifier.get())) {
+      if (const auto variable = table->getLocal(identifier)) {
         instructions.emplace_back(Instruction::LOCAL, variable->second + 1);
-        identifier.destroy_and_deallocate();
         return variable->first;
       }
 
-      if (auto func = table->typeOfFunction(identifier.get())) {
-        instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier.get()));
+      if (auto func = table->typeOfFunction(identifier)) {
+        instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier));
         return {func.value(), {}};
       }
     }
 
-    if (const auto global = table->getGlobal(identifier.get())) {
-      instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(identifier.release()));
+    if (const auto global = table->getGlobal(identifier)) {
+      instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(identifier));
       return global.value();
     }
 
-    throw ValidationError("Undeclared Identifier.", identifier.get(), current_line_number);
+    throw ValidationError("Undeclared Identifier.", identifier, current_line_number);
   }
 
   InstantiatedType peepSubscriptExpression() const {assert(false); return {};}
 
   InstantiatedType peepCallingExpression(u64_t parameter_count) {
-    assert(parameter_count <= Settings::MAX_FUNCTION_PARAMETERS);
     if constexpr (global_peeping)
       throw ValidationError("Function calls not allowed when initializing globals.", "Sorry!", current_line_number);
 
@@ -239,10 +250,13 @@ class Peeper {
     const FunctionType* function_type = called.type->castToFunction();
     const auto parameter_types = function_type->parameterTypes();
     const auto func_parameter_count = parameter_types.size();
-    std::vector<InstantiatedType> expressions; expressions.reserve(parameter_count);
-    for (auto i{0uz}; i<parameter_count; ++i) {
+
+
+    InstantiatedType expressions[Settings::MAX_FUNCTION_PARAMETERS];
+    auto i{0uz};
+    for (; i<parameter_count; ++i) {
       const auto cast_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
-      const auto parameter = peepExpression(); expressions.push_back(parameter);
+      const auto parameter = peepExpression(); expressions[i] = parameter;
 
       if (i >= func_parameter_count) {
         instructions[cast_idx] = {Instruction::NCAST, 0};
@@ -250,7 +264,7 @@ class Peeper {
       else
         instructions[cast_idx] = castForType(parameter.type, parameter_types[i]);
     }
-    function_type->validateCall(expressions);
+    function_type->validateCall({expressions, i});
 
     const auto result = function_type->returnType();
     return {result, {}};
@@ -501,9 +515,9 @@ class Peeper {
     case SUBSCRIPT:
       assert(false);
     case DOT_IDENTIFIER:
-      return peepDotIdentifier(node.take_identifier());
+      return peepDotIdentifier(node.identifier());
     case IDENTIFIER:
-      return peepIdentifier(node.take_identifier());
+      return peepIdentifier(node.identifier());
     case INTEGER_LITERAL:
     case SIGNED_LITERAL:
     case UNSIGNED_LITERAL:
@@ -618,8 +632,8 @@ class Peeper {
 
   void peepVarDeclaration() {
     const auto declaration_type = nodes.pop().instance_type();
-    auto name = nodes.pop().take_identifier();
-    char* name_cstr = name.get();
+    auto name = nodes.pop().identifier();
+    char* name_cstr = name;
 
     if constexpr (global_peeping) {
       if (table->containsGlobal(name_cstr))
@@ -634,7 +648,7 @@ class Peeper {
       if constexpr(global_peeping)
         throw ValidationError("Global variable may not be junk initialized.", name_cstr, current_line_number);
       else
-        table->addLocalVariable(std::move(name), declaration_type);
+        table->addLocalVariable(name, declaration_type);
       return;
     }
 
@@ -785,11 +799,11 @@ public:
 
   static void peepFunction(TU& tu, Parser::Function &func)
   requires (not global_peeping) {
-    const auto function_type = tu.table->enterFunctionScope(func.name.get());
+    const auto function_type = tu.table->enterFunctionScope(func.name);
     Peeper function_peeper(tu, func.body, function_type);
     function_peeper.peepUntilEmpty();
     tu.functions.emplace_back(
-      std::move(func.name), function_type,
+      func.name, function_type,
       function_peeper.locals.release_span(),
       function_peeper.instructions.release(),
       function_peeper.blocks.release_span(), func.is_public);
@@ -809,11 +823,11 @@ public:
 
 }
 
-TU::TU(Parser::TU& ptu) noexcept : table(ptu.table) {
-  for (auto& i : ptu.imports) {
-    std::string_view import_view = i;
-    auto m = getModule(import_view);
-    imports.emplace(std::pair(import_view, m));
+TU::TU(const Parser::TU& ptu) noexcept
+: name(ptu.name), table(ptu.module) {
+  for (auto import : ptu.imports) {
+    auto m = getModule(import);
+    imports.emplace(std::pair(import, m));
   }
 }
 
@@ -935,7 +949,7 @@ void printPeepBlocks(released_span<Block>& blocks, released_ptr<Instruction>& in
 
 void printPeepFunction(Function& func) {
   std::println("{}", func.is_public ? "pub " : "");
-  std::println("fn {}{} {{", func.name.get(), func.type->toString());
+  std::println("fn {}{} {{", func.name, func.type->toString());
 
   std::println("Return Type: {}", func.locals[0]->toString());
   std::print("| Locals: | ");
@@ -952,11 +966,11 @@ void printPeepFunction(Function& func) {
 }
 
 void PeepMIR::printPeep(TU& tu) {
-  std::println("--- Global ---");
+  /* std::println("--- Global ---");
   for (const auto global : tu.globals) {
     std::println("{}", global.name);
   }
-  std::println("--- Globals ---\n");
+  std::println("--- Globals ---\n"); */
 
   for (auto& func : tu.functions) {
     printPeepFunction(func);
@@ -975,16 +989,6 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
 
   for (auto &func : parsed_tu.functions)
     FunctionPeeper::peepFunction(tu, func);
-
-  if (Settings::doOutputValidation()) {
-    std::cout << "Validation Passed!\n\n";
-    std::quick_exit(0);
-  }
-
-  if (Settings::doOutputPeep()) {
-    printPeep(tu);
-    std::quick_exit(0);
-  }
 
   return tu;
 }

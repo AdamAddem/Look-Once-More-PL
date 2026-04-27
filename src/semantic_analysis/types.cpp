@@ -1,6 +1,6 @@
 #include "types.hpp"
 
-#include "edenlib/assume_assert.hpp"
+#include "edenlib/macros.hpp"
 #include "error.hpp"
 #include "lexing/lex.hpp"
 
@@ -197,7 +197,7 @@ bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, bool nullabl
 
 std::string FunctionType::toString() const noexcept {
   std::string string_rep("(");
-  for (auto i{0uz}; i<subtypes.size(); ++i) {
+  for (auto i{0uz}; i<subtypes.size() - 1; ++i) {
     string_rep.append(subtypes[i]->toString());
     string_rep.append(", ");
   }
@@ -205,7 +205,7 @@ std::string FunctionType::toString() const noexcept {
   if (is_variadic) {
     string_rep.append("...");
   }
-  else if (subtypes.size() == 1) {
+  else if (subtypes.size() not_eq 1) {
     string_rep.pop_back();
     string_rep.pop_back();
   }

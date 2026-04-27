@@ -10,8 +10,7 @@ int main(const int argc, const char* argv[]) {
     std::println("LookOnceMore: Arguments required."), std::quick_exit(0);
 
   LOM::Settings::setArgs(argc, argv);
-  if (LOM::Settings::doBuild())
-    LOM::build();
+  LOM::build();
 
   return 0;
 }

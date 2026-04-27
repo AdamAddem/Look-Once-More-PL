@@ -9,20 +9,27 @@ class Token;
 namespace LOM::Parser {
 
 struct Function {
-  eden::releasing_string::released_span name;
+  std::string_view name;
   AST::SyntaxTree body;
   bool is_public;
 };
 
 struct TU {
-  Module* table;
+  TU(Module* module, std::string_view name)
+  : name(name), module(module) {}
+
+  TU(TU&&) noexcept = default;
+
+  std::string_view name;
+  Module* module;
   AST::SyntaxTree global_tree;
-  std::vector<eden::releasing_string::released_span> imports;
+  std::vector<std::string_view> imports;
   std::vector<Function> functions;
 };
 
 void printTU(TU&);
 
-[[nodiscard]] TU
-parseTokens(std::vector<Lexer::Token>& tokens, Module* table);
+using TokenIter = std::vector<Lexer::Token>::iterator;
+
+void parseTokens(TU& tu, TokenIter begin, TokenIter end);
 } // namespace Parser

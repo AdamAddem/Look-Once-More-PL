@@ -1,6 +1,6 @@
 #include "ast.hpp"
 
-#include "edenlib/assume_assert.hpp"
+#include "edenlib/macros.hpp"
 
 #include <iostream>
 
@@ -125,10 +125,9 @@ static void print(std::vector<ASTNode>::const_iterator &node,
   }
   case SUBSCRIPT:
   case DOT_IDENTIFIER:
-    std::cout << node->identifier() << ".";
-    while ((++node)->type() == DOT_IDENTIFIER)
-      std::cout << node->identifier() << ".";
-    [[fallthrough]];
+    std::cout << node++->identifier() << ". ";
+    print(node, ln);
+    return;
   case IDENTIFIER:
     std::cout << node->identifier();
     return;
@@ -154,7 +153,7 @@ static void print(std::vector<ASTNode>::const_iterator &node,
     std::cout << node->char_val();
     return;
   case STRING_LITERAL:
-    std::cout << *node->string_val();
+    std::cout << '"' << node->string_val() << '"';
     return;
   default:
     std::unreachable();

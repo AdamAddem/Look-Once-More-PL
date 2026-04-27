@@ -1,12 +1,16 @@
 #include "symbol_table.hpp"
 
+#include "error.hpp"
+
 #include <cassert>
 
 using namespace LOM;
 
 const FunctionType*
-Module::addFunction(const eden::owned_stringview& name, std::span<Variable> parameters, const Type* return_type, bool is_public, bool is_variadic) noexcept {
-  assert(not symbols.contains(name));
+Module::addFunction(std::string_view name, std::span<Variable> parameters, const Type* return_type, bool is_public, bool is_variadic) {
+  if (symbols.contains(name))
+    throw ValidationError("Function redefined.", name.data(), 0);
+
   assert(parameters.size() <= Settings::MAX_FUNCTION_PARAMETERS);
   const Type* parameter_types[Settings::MAX_FUNCTION_PARAMETERS];
   sz_t sz{};

@@ -2,7 +2,6 @@
 #include "edenlib/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/symbol_table.hpp"
-#include "settings.hpp"
 
 namespace LOM::Parser {
 struct TU;
@@ -124,13 +123,6 @@ struct Instruction {
   pcast_type() const noexcept
   {assume_assert(type == PCAST); return std::bit_cast<const LOM::Type*>(value);}
 
-  [[nodiscard]] constexpr eden::releasing_string::released_ptr
-  release_string_value() noexcept {
-    assert(type == GLOBAL or type == FUNCTION or type == STRING_LITERAL);
-    auto x = eden::releasing_string::released_ptr(std::bit_cast<char*>(value));
-    value = 0;
-    return x;
-  }
 };
 
 class Block {
@@ -175,7 +167,7 @@ public:
 };
 
 struct Function {
-  released_string name;
+  std::string_view name;
   const FunctionType* type;
   released_span<const Type*> locals;
   released_ptr<Instruction> instructions;
@@ -184,18 +176,13 @@ struct Function {
 };
 
 struct TU {
-  explicit TU(Parser::TU&) noexcept;
+  explicit TU(const Parser::TU&) noexcept;
 
+  std::string_view name;
   Module* table;
-  struct Global {
-    std::string_view name;
-    u64_t value; //change this bih eventually
-  };
 
   std::unordered_map<std::string_view, Module*> imports;
-  std::vector<Global> globals;
   std::vector<Function> functions;
-
 };
 
 void printPeep(TU&);

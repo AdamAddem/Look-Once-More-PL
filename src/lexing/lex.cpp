@@ -7,11 +7,14 @@
 #include <cassert>
 #include <cctype>
 #include <fstream>
-#include <iostream>
 #include <unordered_map>
 #include <vector>
 
 namespace {
+
+char buffer[1'000'000];
+char* buffer_start{buffer};
+
 using namespace LOM;
 using namespace LOM::Lexer;
 using eden::releasing_string;
@@ -22,7 +25,6 @@ struct FileInAnalysis {
   u32_t needs_closing_paren{0};
   u32_t line_number{1};
   std::vector<Token>& token_list;
-  bool has_declared_functions{false};
 
   FileInAnalysis(const std::filesystem::path& file_path, std::vector<Token>& token_list)
   : stream(file_path), token_list(token_list) {}
@@ -64,7 +66,7 @@ charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
 // called when opening quotes already consumed
 void grabStringLiteral(FileInAnalysis &file) {
 
-  releasing_string literal{reserve_initial<4>};
+  char* const literal_start = buffer_start;
   int c = file.stream.get();
   while (c not_eq EOF) {
     // stupid and dumb
@@ -80,14 +82,16 @@ void grabStringLiteral(FileInAnalysis &file) {
       c = charToEscapeSequenceEquivalent(file, file.stream.get());
       [[fallthrough]];
     default:
-      literal.push_back(static_cast<char>(c));
+      *buffer_start = static_cast<char>(c);
+      ++buffer_start;
     }
     c = file.stream.get();
   }
 
 ending_quote_found: // don't crucify me for this pls
 
-  file.token_list.emplace_back(TokenType::STRING_LITERAL, literal.release(), file.line_number);
+  *buffer_start = '\0'; ++buffer_start;
+  file.token_list.emplace_back(TokenType::STRING_LITERAL, std::bit_cast<u64_t>(literal_start), file.line_number);
 }
 
 // called when opening single-quote already consumed
@@ -273,42 +277,40 @@ void grabNumber(FileInAnalysis &file) {
 // first letter in front of file
 void grabIdentOrKeyword(FileInAnalysis &file) {
   int c = file.stream.get();
-  releasing_string word(reserve_initial<4>);
+  char* const word_start = buffer_start;
   while (c not_eq EOF) {
     if (not std::isalnum(c) and c not_eq '_')
       break;
 
-    word.push_back(static_cast<char>(c));
+    *buffer_start = static_cast<char>(c);
+    ++buffer_start;
     c = file.stream.get();
   }
   file.stream.putback(static_cast<char>(c));
+  *buffer_start = '\0';
+  std::string_view word_view{word_start, sz_t(buffer_start-word_start)};
+  ++buffer_start;
 
-  if (stringToTokenType.contains(word)) {
-    auto token_type = stringToTokenType.at(word);
+  if (stringToTokenType.contains(word_view)) {
+    auto token_type = stringToTokenType.at(word_view);
     file.token_list.emplace_back(token_type, file.line_number);
-    if (token_type == TokenType::KEYWORD_GLOBAL) {
-      if (file.has_declared_functions) [[unlikely]]
-        throw ParsingError("Global variable declared after function!", file.token_list.back());
-    }
-    else if (token_type == TokenType::KEYWORD_FN)
-      file.has_declared_functions = true;
     return;
   }
-  if (word == "elif") [[unlikely]] {
+  if (word_view == "elif") [[unlikely]] {
     file.token_list.emplace_back(TokenType::KEYWORD_ELSE, file.line_number);
     file.token_list.emplace_back(TokenType::KEYWORD_IF, file.line_number);
     return;
   }
-  if (word == "true") [[unlikely]] {
+  if (word_view == "true") [[unlikely]] {
     file.token_list.emplace_back(TokenType::BOOL_LITERAL, 1, file.line_number);
     return;
   }
-  if (word == "false") [[unlikely]] {
+  if (word_view == "false") [[unlikely]] {
     file.token_list.emplace_back(TokenType::BOOL_LITERAL,  0, file.line_number);
     return;
   }
 
-  file.token_list.emplace_back(TokenType::IDENTIFIER, word.release(), file.line_number);
+  file.token_list.emplace_back(TokenType::IDENTIFIER, std::bit_cast<u64_t>(word_start), file.line_number);
 }
 
 void skipWS(FileInAnalysis& file) {
@@ -364,12 +366,5 @@ void Lexer::tokenizeFile(std::vector<Token>& out_tokens, const std::filesystem::
       grabSymbol(file);
   }
   file.stream.close();
-
-  if (Settings::doOutputLexer()) {
-    std::cout << "\n--- Lexer Output ---";
-    TokenView(file.token_list.begin(), file.token_list.end()).print();
-    std::cout << "\n--- Lexer Output ---\n";
-    std::quick_exit(0);
-  }
 
 }

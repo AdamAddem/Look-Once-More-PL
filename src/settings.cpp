@@ -54,7 +54,7 @@ bool Settings::doOutputValidation() noexcept              {return output_validat
 bool Settings::doOutputIR() noexcept                      {return output_llvmir;}
 bool Settings::doOutputASM() noexcept                     {return output_asm;}
 bool Settings::doOutputOBJ() noexcept                     {return output_obj;}
-bool Settings::doLinking() noexcept                       {return not output_obj and not output_asm and not output_llvmir;}
+bool Settings::doLinking() noexcept                       {return not output_obj and not output_asm and not output_llvmir and not output_lexer and not output_parser and not output_peep;}
 bool Settings::doBuild() noexcept                         {return build;}
 const std::string& Settings::getExecutableName()          {return output_name;}
 uint8_t Settings::getOptimizationLevel()                  {return optimization_level;}

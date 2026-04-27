@@ -11,7 +11,6 @@
 #include <print>
 using namespace LOM;
 
-static Module main_module("");
 
 static std::unordered_map<std::string_view, Module> modules;
 
@@ -25,26 +24,40 @@ LOM::getModule(std::string_view name) {
 namespace fs = std::filesystem;
 [[maybe_unused]] static Parser::TU
 lex_and_parse_module(const fs::path& directory) {
-  std::vector<Lexer::Token> tokens; tokens.reserve(128); //cuz why not
+  std::vector<Lexer::Token> tokens; tokens.reserve(128); // cuz why not
+  auto file_start = 0;
+  const auto output_lexer = Settings::doOutputLexer();
+
+  //set up module
+  assert(not modules.contains(directory.c_str()));
+  const sz_t n = directory.filename().string().size() + 1; // this is so stupid i hate this language
+  const auto module_name = new char[n]; //purposeful memory leak
+  std::strcpy(module_name, directory.filename().c_str());
+  const std::string_view key_view(module_name, n-1);
+  auto module_ptr = &modules.emplace(std::pair(key_view, Module{key_view})).first->second;
+
+  Parser::TU module_tu(module_ptr, module_name);
   for (auto const& entry : fs::directory_iterator{directory}) {
     if (not entry.is_regular_file())
       throw std::runtime_error("LookOnceMore: Sorry! Submodules not supported yet.");
+
     Lexer::tokenizeFile(tokens, entry);
+    if (output_lexer) {
+      std::cout << "\n--- Lexer Output --- " << directory.string();
+      Lexer::TokenView(tokens.begin() + file_start, tokens.end()).print();
+      std::cout << "\n--- Lexer Output ---\n";
+    }
+
+    Parser::parseTokens(module_tu, tokens.begin() + file_start, tokens.end());
   }
-  assert(not modules.contains(directory.c_str()));
 
-  const sz_t n = directory.filename().string().size() + 1; // this is so fucking stupid i hate this language
-  const auto key = new char[n]; //purposeful memory leak
-  std::strcpy(key, directory.filename().c_str());
-  const std::string_view key_view(key, n-1);
-  auto [pair, _] = modules.emplace(std::pair(key_view, Module{key_view}));
-
-  const auto module_ptr = &pair->second;
-  return Parser::parseTokens(tokens, module_ptr);
+  return module_tu;
 }
 
 static void setup_std() {
-  modules.emplace(std::pair(std::string_view("__C"), Module{"__C"}));
+  auto p = &modules.emplace(std::pair(std::string_view("__C"), Module{"__C"})).first->second;
+  Module::Variable chptr{{p->addRawPointer({PrimitiveType::char_(), {}}), {}}, ""};
+  p->addFunction("puts", std::span(&chptr, 1), Type::devoid(), true, false);
 }
 
 void LOM::build()
@@ -62,13 +75,21 @@ try {
         throw ValidationError("There may only be one top level .lom file, named main.lom", entry.path().filename(), 0);
       if (entry.path().filename() != "main.lom")
         throw ValidationError("Top level .lom file must be called main.lom", entry.path().filename(), 0);
-      has_main = true;
+
+      static Module main_module(""); has_main = true;
       std::vector<Lexer::Token> main_tokens;
       Lexer::tokenizeFile(main_tokens, entry);
+      if (Settings::doOutputLexer()) {
+        std::cout << "\n--- Lexer Output --- " << "main.lom";
+        Lexer::TokenView(main_tokens.begin(), main_tokens.end()).print();
+        std::cout << "\n--- Lexer Output ---\n";
+      }
+
       module_names.emplace_back(entry.path().filename());
-      parsed_tus.emplace_back(Parser::parseTokens(main_tokens, &main_module));
+      parsed_tus.emplace_back(&main_module, "main");
+      Parser::parseTokens(parsed_tus.back(), main_tokens.begin(), main_tokens.end());
     }
-    else if (entry.is_directory()) {
+    else if (entry.is_directory()) [[likely]] {
       module_names.emplace_back(entry.path().filename());
       parsed_tus.emplace_back(lex_and_parse_module(entry));
     }
@@ -77,12 +98,27 @@ try {
   if (not has_main)
     throw std::runtime_error("Expected src/main.lom.");
 
+  const bool emit_parser = Settings::doOutputParser();
+  const bool emit_peep = Settings::doOutputPeep();
   const bool output_asm = Settings::doOutputASM();
   const bool output_ir = Settings::doOutputIR();
   const bool output_obj = Settings::doOutputOBJ() or Settings::doLinking();
   std::vector<std::unique_ptr<Backend>> compiled_tus;
   for (auto i{0uz}; i<parsed_tus.size(); ++i) {
     auto& module_name = module_names[i];
+    if (emit_parser) {
+      std::println("\n--- Parser Output --- {}", module_name.string());
+      Parser::printTU(parsed_tus[i]);
+      std::println("\n--- Parser Output ---");
+      continue;
+    }
+    if (emit_peep) {
+      std::println("\n--- Peep Output --- {}", module_name.string());
+      auto x = (PeepMIR::lowerToPeep(std::move(parsed_tus[i])));
+      PeepMIR::printPeep(x);
+      std::println("\n--- Peep Output ---");
+      continue;
+    }
     auto& compiled = compiled_tus.emplace_back(
       Backend::codegen(
         PeepMIR::lowerToPeep(std::move(parsed_tus[i])),

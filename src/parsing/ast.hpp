@@ -1,6 +1,6 @@
 #pragma once
 #pragma once
-#include "edenlib/assume_assert.hpp"
+#include "edenlib/macros.hpp"
 #include "edenlib/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
@@ -177,14 +177,6 @@ public:
     return std::bit_cast<char*>(value());
   }
 
-  [[nodiscard]] constexpr eden::releasing_string::released_ptr
-  take_identifier() noexcept {
-    assert(type() == IDENTIFIER or type() == DOT_IDENTIFIER);
-    char* const name = std::bit_cast<char*>(value());
-    value() = 0;
-    return eden::releasing_string::released_ptr(name);
-  }
-
   [[nodiscard]] constexpr i64_t
   signed_val() const noexcept
   {assert(type() == SIGNED_LITERAL); return std::bit_cast<i64_t>(value()); }
@@ -215,14 +207,6 @@ public:
   [[nodiscard]] constexpr char*
   string_val() const noexcept
   {assert(type() == STRING_LITERAL); return std::bit_cast<char*>(value());}
-
-  [[nodiscard]] constexpr eden::releasing_string::released_ptr
-  take_string_val() noexcept {
-    assert(type() == STRING_LITERAL);
-    char* const str = std::bit_cast<char*>(value());
-    value() = 0;
-    return eden::releasing_string::released_ptr(str);
-  }
 
 };
 

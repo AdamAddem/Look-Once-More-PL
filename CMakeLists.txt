@@ -7,7 +7,7 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -Wnrvo -Wno-deprecated-dec
 find_package(LLVM 21.1.8 REQUIRED CONFIG)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
-add_executable(LookOnceMore
+add_executable(lom
         main.cpp
         src/error.hpp
         src/error.cpp
@@ -40,7 +40,7 @@ add_executable(LookOnceMore
 )
 
 
-target_include_directories(LookOnceMore PRIVATE ${LLVM_INCLUDE_DIRS})
+target_include_directories(lom PRIVATE ${LLVM_INCLUDE_DIRS})
 llvm_map_components_to_libnames(LLVM_LIBS ${LLVM_TARGETS_TO_BUILD} core support irreader codegen mc mcparser option)
-target_link_libraries(LookOnceMore PRIVATE ${LLVM_LIBS})
+target_link_libraries(lom PRIVATE ${LLVM_LIBS})
 

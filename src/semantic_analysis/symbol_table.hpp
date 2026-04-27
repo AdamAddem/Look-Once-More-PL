@@ -1,10 +1,9 @@
 #pragma once
-#include "edenlib/assume_assert.hpp"
+#include "edenlib/macros.hpp"
 #include "edenlib/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "types.hpp"
 
-#include <cstring>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -15,13 +14,12 @@ class Module final {
 public:
   struct Variable {
     InstantiatedType type;
-    eden::releasing_string::released_span name;
+    std::string_view name;
 
     Variable() = default;
-    Variable(InstantiatedType type, eden::releasing_string::released_span name) noexcept
-    : type(type), name(std::move(name)) {}
+    Variable(InstantiatedType type, std::string_view name) noexcept
+    : type(type), name(name) {}
     Variable(Variable&& other) noexcept = default;
-    ~Variable() {name.destroy_and_deallocate();}
   };
 
 private:
@@ -50,16 +48,16 @@ private:
     {return type->returnType();}
 
     void
-    addVariable(eden::releasing_string::released_ptr name, InstantiatedType variable_type) noexcept {
-      assert(not getVariable(name.get()));
-      locals.emplace_back(variable_type, std::move(name));
+    addVariable(std::string_view name, InstantiatedType variable_type) noexcept {
+      assert(not getVariable(name));
+      locals.emplace_back(variable_type, name);
     }
 
     [[nodiscard]] std::optional<std::pair<InstantiatedType, u32_t>>
-    getVariable(const char* name) const noexcept {
+    getVariable(std::string_view name) const noexcept {
       sz_t n = locals.size();
       while (n-- not_eq 0)
-        if (std::strcmp(locals[n].name.get(), name) == 0)
+        if (locals[n].name == name)
           return std::optional(std::pair(locals[n].type, n));
       return std::nullopt;
     }
@@ -86,9 +84,9 @@ public:
   {return std::move(types);}
 
   const FunctionType* addFunction(
-    const eden::owned_stringview& name,
+    std::string_view name,
     std::span<Variable> parameters,
-    const Type* return_type, bool is_public, bool is_variadic = false) noexcept;
+    const Type* return_type, bool is_public, bool is_variadic = false);
 
   [[nodiscard]] const Type*
   addRawPointer(InstantiatedType subtype) noexcept
@@ -109,32 +107,32 @@ public:
     std::forward_as_tuple(std::in_place_type<InstantiatedType>, type));
   }
 
-  void addLocalVariable(eden::releasing_string::released_ptr name, InstantiatedType type) const noexcept {
+  void addLocalVariable(std::string_view name, InstantiatedType type) const noexcept {
     assume_assert(current_scope not_eq nullptr); assume_assert(type.details.is_public == false);
-    current_scope->addVariable(std::move(name), type);
+    current_scope->addVariable(name, type);
   }
 
   [[nodiscard]] bool
-  containsLocal(const char* name) noexcept {
+  containsLocal(std::string_view name) noexcept {
     assume_assert(current_scope);
     return current_scope->getVariable(name).has_value();
   }
 
   [[nodiscard]] bool
-  containsGlobal(const char* name) noexcept {
+  containsGlobal(std::string_view name) noexcept {
     if (not symbols.contains(name))
       return false;
     return std::holds_alternative<InstantiatedType>(symbols[name]);
   }
 
   [[nodiscard]] auto
-  getLocal(const char* name) noexcept {
+  getLocal(std::string_view name) noexcept {
     assume_assert(current_scope);
     return current_scope->getVariable(name);
   }
 
   [[nodiscard]] std::optional<InstantiatedType>
-  getGlobal(const char* name) noexcept {
+  getGlobal(std::string_view name) noexcept {
     if (not symbols.contains(name))
       return std::nullopt;
     const auto& symbol = symbols[name];
@@ -144,7 +142,7 @@ public:
   }
 
   [[nodiscard]] std::optional<InstantiatedType>
-  getPublicGlobal(const char* name) noexcept {
+  getPublicGlobal(std::string_view name) noexcept {
     auto const& res = getGlobal(name);
     if (not res)
       return std::nullopt;
@@ -152,7 +150,7 @@ public:
   }
 
   [[nodiscard]] std::optional<const FunctionType*>
-  getPublicFunction(const char* name) noexcept {
+  getPublicFunction(std::string_view name) noexcept {
     if (not symbols.contains(name))
       return std::nullopt;
 
@@ -165,7 +163,7 @@ public:
   }
 
   [[nodiscard]] std::optional<const FunctionType*>
-  typeOfFunction(const char* name) noexcept {
+  typeOfFunction(std::string_view name) noexcept {
     if (not symbols.contains(name))
       return std::nullopt;
     const auto& symbol = symbols[name];
@@ -173,7 +171,7 @@ public:
   }
 
   [[nodiscard]] std::pair<std::span<const Variable>, const Type*>
-  getFunction(const char* name) noexcept {
+  getFunction(std::string_view name) noexcept {
     assert(symbols.contains(name));
     assert(std::holds_alternative<Function>(symbols[name]));
     auto const & f = std::get<Function>(symbols[name]);
@@ -181,7 +179,7 @@ public:
   }
 
   const FunctionType*
-  enterFunctionScope(const char* function_name) noexcept {
+  enterFunctionScope(std::string_view function_name) noexcept {
     assume_assert(current_scope == nullptr); assert(symbols.contains(function_name)); assert(std::holds_alternative<Function>(symbols[function_name]));
     current_scope = &std::get<Function>(symbols[function_name]);
     return current_scope->type;

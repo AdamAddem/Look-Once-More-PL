@@ -1,7 +1,7 @@
 #pragma once
 #include "edenlib/arena.hpp"
-#include "edenlib/assume_assert.hpp"
 #include "edenlib/enum_utils.hpp"
+#include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
 #include "settings.hpp"

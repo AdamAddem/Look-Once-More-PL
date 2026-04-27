@@ -90,23 +90,7 @@ The executable can be ran with the following arguments:
     -emit-llvm                  Produces the LLVM IR representation of the source code.
     -emit-asm                   Produces the assembly representation of the source code.
 ```
-
-### Getting Started
-Run `LookOnceMore init` to set up a project template within the current directory.
-You should see src, external, and build folders.
-The src folder holds all source files organized via module, as will be explained below.
-The external folder is not implemented currently.
-The build folder contains the outputs of all 'emit' commands. <br>
-
-LookOnceMore uses a module system. 
-A module contains one or more .lom files, which are all compiled together into one translation unit.
-To create a module, simply create a directory within 'src'. The module's name is taken directly from the directory's name.
-All files within that directory will be compiled as part of the module.
-
-Only one .lom file may exist in the top level src directory, and that is main.lom.
-main.lom is required at the moment, although in the future will not be required for compiling libraries.
-
-To build your project, just do `LookOnceMore build` within the project directory.
+A tutorial on getting started is available in the GettingStarted markdown file.
 
 ---
 ### The Name

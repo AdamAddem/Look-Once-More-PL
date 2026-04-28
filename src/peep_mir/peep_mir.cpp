@@ -23,22 +23,22 @@ namespace {
 
 [[nodiscard]] constexpr Instruction
 castForType(const Type* given_type, const Type* expected_type) noexcept {
-  if (expected_type->isPointer())
-    return {Instruction::PCAST, std::bit_cast<u64_t>(given_type)};
-  if (expected_type->isIntegral()) {
-    auto as_primitive = expected_type->castToPrimitive();
-    if (as_primitive->isLiteral())
-      return {Instruction::UCAST, given_type->bitwidth()};
+  if (given_type->isPointer())
+    return {Instruction::PCAST, 0};
+
+  const auto bitwidth = expected_type->bitwidth();
+  if (given_type->isIntegral()) {
+    const auto as_primitive = given_type->castToPrimitive();
     if (as_primitive->isSignedIntegral())
-      return {Instruction::SCAST, expected_type->bitwidth()};
+      return {Instruction::SCAST, bitwidth};
+
+    return {Instruction::UCAST, bitwidth};
   }
 
-  if (expected_type->isFloating())
-    return {Instruction::FCAST, expected_type->bitwidth()};
+  if (given_type->isFloating())
+    return {Instruction::FCAST, bitwidth};
 
-  return {Instruction::UCAST, expected_type->bitwidth()};
-
-  std::unreachable();
+  return {Instruction::UCAST, bitwidth};
 }
 
 [[nodiscard]] constexpr char*
@@ -47,6 +47,7 @@ combineWithDot(char* eden_restrict before_dot, char* eden_restrict after_dot) no
 
   thread_local char dot_names[100'000];
   thread_local char* dot_names_start{dot_names};
+  assert(dot_names_start < (dot_names + 100'000));
 
   char* const name_start = dot_names_start;
   dot_names_start = eden::stpcpy(dot_names_start, before_dot);
@@ -271,7 +272,7 @@ class Peeper {
   }
 
   //TODO: Add Short Circuiting
-  InstantiatedType peepBinaryExpression(Operator opr) {
+  InstantiatedType peepBinaryExpression(const Operator opr) {
     const auto instruction_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
 
     auto left = peepExpression();
@@ -659,7 +660,7 @@ class Peeper {
     }
     else {
       instructions.emplace_back(Instruction::LOCAL, locals.size());
-      table->addLocalVariable(std::move(name), declaration_type);
+      table->addLocalVariable(name, declaration_type);
     }
 
     const auto cast_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
@@ -669,7 +670,7 @@ class Peeper {
         std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
         name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", init_expr.toString()), current_line_number);
 
-    instructions[cast_idx] = castForType(declaration_type.type, init_expr.type);
+    instructions[cast_idx] = castForType(init_expr.type, declaration_type.type);
     locals.emplace_back(declaration_type.type);
   }
 
@@ -893,12 +894,12 @@ void printPeepInstruction(Instruction instruction) {
   case FPOST_INC: return std::println("FPOST_INC");
   case POST_DEC: return std::println("POST_DEC");
   case FPOST_DEC: return std::println("FPOST_DEC");
-  case DEREFERENCE: return std::println("DEREFERENCE TO {}", instruction.dereference_type()->toString());
+  case DEREFERENCE: return std::println("DEREFERENCE");
 
   case UCAST: return std::println("UCAST TO {}b", instruction.value);
   case SCAST: return std::println("SCAST TO {}b", instruction.value);
   case FCAST: return std::println("FCAST TO {}b", instruction.value);
-  case PCAST: return std::println("PCAST TO {}", instruction.pcast_type()->toString());
+  case PCAST: return std::println("PCAST");
   case NCAST: return std::println("NCAST");
 
 

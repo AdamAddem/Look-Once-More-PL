@@ -1,5 +1,6 @@
 builds/
 lom_project/
+tests/
 enum_definitions/tokentype_generator.cpp
 example.lom
 not_working.lom

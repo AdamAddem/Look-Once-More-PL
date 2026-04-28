@@ -14,6 +14,7 @@ namespace {
 
 thread_local char buffer[1'000'000];
 thread_local char* buffer_start{buffer};
+thread_local const char* const buffer_end{buffer + 1'000'000};
 
 using namespace LOM;
 using namespace LOM::Lexer;
@@ -350,6 +351,7 @@ void Lexer::tokenizeFile(std::vector<Token>& out_tokens, const std::filesystem::
     throw LexingError("File not found.", file_path.string(), 0);
 
   while (true) {
+    assert(buffer_start < buffer_end);
     skipWS(file);
     const int c = file.stream.peek();
     if (c == EOF)

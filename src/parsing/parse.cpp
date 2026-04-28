@@ -816,7 +816,7 @@ void parseFunctions(TU& tu, Body& global_body, std::vector<Function>& functions)
       while (true) {
         auto type = parseType(tokens, table);
         auto name = parseIdentifier(tokens);
-        parameters.emplace_back(type, std::move(name));
+        parameters.emplace_back(type, name);
 
         if (not tokens.pop_if(TokenType::COMMA)) {
           tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");

@@ -501,10 +501,8 @@ class TU final : public Backend {
       }
       case INT_LITERAL:
         return llvm::ConstantInt::get(tu->i64, instruction.value, true);
-        //return signedConstant(tu->typeForInteger(instruction.int_value()), instruction.int_value());
       case UINT_LITERAL:
         return llvm::ConstantInt::get(tu->i64, instruction.value);
-        //return unsignedConstant(tu->typeForUnsigned(instruction.uint_value()), instruction.uint_value());
       case FLOAT_LITERAL:
         return llvm::ConstantFP::get(tu->f32, instruction.float_value());
       case DOUBLE_LITERAL:
@@ -513,11 +511,9 @@ class TU final : public Backend {
         return instruction.bool_value() ? tu->i1_1 : tu->i1_0;
       case CHAR_LITERAL:
         return llvm::ConstantInt::get(tu->i8, instruction.char_value());
-      case STRING_LITERAL: {
-        const auto str_lit = builder.CreateGlobalString(instruction.string_value());
-          //llvm::ConstantDataArray::getString(tu->context, instruction.string_value());
-        return str_lit;
-      }
+      case STRING_LITERAL:
+        return builder.CreateGlobalString(instruction.string_value());
+
 
       case ADD: case FADD:
       case SUB: case FSUB:

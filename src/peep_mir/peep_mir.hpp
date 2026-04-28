@@ -49,12 +49,12 @@ struct Instruction {
     BITNOT,
     POST_INC, FPOST_INC,
     POST_DEC, FPOST_DEC,
-    DEREFERENCE, //value contains const Type*
+    DEREFERENCE,
 
     //value contains bitwidth to extend / truncate to
     UCAST, SCAST, FCAST,
-    PCAST, //pointer cast, value contains const Type* although this is not used
-    NCAST, //do nothing
+    PCAST, //pointer cast, value contains nothing
+    NCAST, //no cast, value contains nothing
 
     CALL // value equals number of parameters
   }type;

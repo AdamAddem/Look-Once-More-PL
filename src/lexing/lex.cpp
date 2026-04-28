@@ -12,8 +12,8 @@
 
 namespace {
 
-char buffer[1'000'000];
-char* buffer_start{buffer};
+thread_local char buffer[1'000'000];
+thread_local char* buffer_start{buffer};
 
 using namespace LOM;
 using namespace LOM::Lexer;

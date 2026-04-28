@@ -22,6 +22,8 @@ To publish a global or function, place the keyword 'pub' before 'fn' or after 'g
 To import a module, just type 'import <module_name>' before any globals have been declared. <br>
 Access the members of a module by appending the module name with a dot. <br>
 
+### 
+
 ### C Interop
 Calling C functions can be done using the '__C' intrinsic. <br>
 You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration (Note: the 'fn' keyword is not needed). <br>
@@ -34,7 +36,7 @@ Calling these functions can be done as if through the '__C' module, which is imp
 
 ### Current Limitations
 The following is a list of all missing features that are soon to be implemented.
-- No form of casting.
+- No form of (explicit) casting.
 - No pointer arithmetic.
 - No arrays.
 - No string type.

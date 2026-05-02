@@ -171,6 +171,7 @@ public:
     return static_cast<Operator>(value());
   }
 
+  eden_return_nonnull
   [[nodiscard]] constexpr char*
   identifier() const noexcept {
     assert(type() == IDENTIFIER or type() == DOT_IDENTIFIER);
@@ -204,6 +205,8 @@ public:
   {assert(type() == CHAR_LITERAL); return static_cast<char>(value());}
 
   static_assert(sizeof(u64_t) >= sizeof(void*));
+
+  eden_return_nonnull
   [[nodiscard]] constexpr char*
   string_val() const noexcept
   {assert(type() == STRING_LITERAL); return std::bit_cast<char*>(value());}

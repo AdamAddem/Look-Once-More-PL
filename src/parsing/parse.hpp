@@ -15,13 +15,15 @@ struct Function {
 };
 
 struct TU {
+
+  eden_nonull_args
   TU(Module* module, std::string_view name)
   : name(name), module(module) {}
 
   TU(TU&&) noexcept = default;
 
   std::string_view name;
-  Module* module;
+  Module* eden_notnullptr module;
   AST::SyntaxTree global_tree;
   std::vector<std::string_view> imports;
   std::vector<Function> functions;

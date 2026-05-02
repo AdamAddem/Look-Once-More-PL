@@ -546,9 +546,9 @@ class TU final : public Backend {
         return builder.CreateLoad(tu->ptr, genExpression());
 
       case UCAST:
-        return builder.CreateZExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.value));
+        return builder.CreateZExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.bitwidth()));
       case SCAST:
-        return builder.CreateSExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.value));
+        return builder.CreateSExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.bitwidth()));
       case FCAST:
         assert(instruction.value == 32 or instruction.value == 64);
         return builder.CreateFPCast(genReadExpression(),
@@ -558,6 +558,17 @@ class TU final : public Backend {
       case PCAST:
       case NCAST:
         return genReadExpression();
+      case U_TO_F:
+        assert(instruction.value == 32 or instruction.value == 64);
+        return builder.CreateUIToFP(genReadExpression(), instruction.value == 64 ? tu->f64 : tu->f32);
+      case S_TO_F:
+        assert(instruction.value == 32 or instruction.value == 64);
+        return builder.CreateSIToFP(genReadExpression(), instruction.value == 64 ? tu->f64 : tu->f32);
+      case F_TO_U:
+        return builder.CreateFPToUI(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.bitwidth()));
+      case F_TO_S:
+        return builder.CreateFPToSI(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.bitwidth()));
+
       case CALL: {
         const auto fn = genExpression();
         llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];

@@ -40,7 +40,10 @@ protected:
   explicit constexpr Type(auto derived_type)
   : derived_type(derived_type) {}
 public:
-  [[nodiscard]] static consteval const Type* devoid() {static constexpr Type devoid{DEVOID}; return &devoid;}
+
+  eden_return_nonnull
+  [[nodiscard]] static consteval
+  const Type* devoid() {static constexpr Type devoid{DEVOID}; return &devoid;}
 
   [[nodiscard]] constexpr bool isDevoid()           const noexcept  {return derived_type == DEVOID;}
   [[nodiscard]] constexpr bool isPrimitive()        const noexcept  {return derived_type == PRIMITIVE;}
@@ -61,11 +64,12 @@ public:
   [[nodiscard]] constexpr sz_t bitwidth()           const noexcept;
 
 
-  [[nodiscard]] constexpr const PrimitiveType* castToPrimitive() const noexcept;
-  [[nodiscard]] constexpr const PointerType* castToPointer() const noexcept;
-  [[nodiscard]] constexpr const VariantType* castToVariant() const noexcept;
-  [[nodiscard]] constexpr const FunctionType* castToFunction() const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const PrimitiveType* castToPrimitive() const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const PointerType* castToPointer() const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const VariantType* castToVariant() const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const FunctionType* castToFunction() const noexcept;
 
+  eden_nonull_args
   [[nodiscard]] bool convertibleTo(const Type* other) const noexcept;
   [[nodiscard]] std::string toString() const noexcept;
 
@@ -151,7 +155,6 @@ public:
   [[nodiscard]] constexpr bool
   isLiteral() const noexcept
   {return primitive_type == U_;}
-
 
   [[nodiscard]] constexpr sz_t
   bitwidth() const noexcept {
@@ -242,7 +245,8 @@ public:
   {return isIntegral() and value <= static_cast<i64_t>(maxIntegralValueRepresentable()) and value >= minIntegralValueRepresentable();}
 
 #define type_singleton(type_name, type_enum) \
-  static consteval const PrimitiveType* \
+  eden_return_nonnull \
+  [[nodiscard]] static consteval const PrimitiveType* \
   type_name() noexcept \
   {static constexpr PrimitiveType type_name{type_enum}; return &(type_name);}
 
@@ -307,6 +311,7 @@ public:
   [[nodiscard]] constexpr bool
   isVague() const noexcept {return pointer_type == VAGUE;}
 
+  eden_return_nonnull
   static constexpr const PointerType*
   vague(bool subtype_mutable) noexcept {
     static constexpr PointerType immutable_vague{false};
@@ -320,9 +325,9 @@ class VariantType final : public Type {
   friend class TypeContext;
 
   bool is_nullable;
-  std::vector<const Type*> subtypes;
+  std::vector<const Type* eden_notnullptr> subtypes;
 
-  constexpr VariantType(std::vector<const Type*> subtypes, bool nullable)
+  constexpr VariantType(std::vector<const Type* eden_notnullptr> subtypes, bool nullable)
   : Type(VARIANT), is_nullable(nullable), subtypes(std::move(subtypes)) {
 #ifndef NDEBUG
     for (const auto subtype : this->subtypes)
@@ -332,20 +337,23 @@ class VariantType final : public Type {
 
 public:
 
-  [[nodiscard]] constexpr const std::vector<const Type*>& getSubtypes() const noexcept {return subtypes;}
-  [[nodiscard]] bool contains(const Type* type) const noexcept;
+  [[nodiscard]] constexpr auto const& getSubtypes() const noexcept {return subtypes;}
+
+  eden_nonull_args [[nodiscard]] bool contains(const Type* type) const noexcept;
   [[nodiscard]] std::string toString() const noexcept;
-  [[nodiscard]] bool sameAs(const std::vector<const Type*>& subtypes, bool nullable) const noexcept;
+  [[nodiscard]] bool sameAs(const std::vector<const Type* eden_notnullptr>& subtypes, bool nullable) const noexcept;
 };
 
 class FunctionType final : public Type {
   friend class TypeContext;
 
   bool is_variadic;
-  std::vector<const Type*> subtypes; //last is return type
+  std::vector<const Type* eden_notnullptr> subtypes; //last is return type
 
 public:
-  constexpr FunctionType(std::span<const Type*> parameters, const Type* return_type, bool is_variadic)
+
+  eden_nonull_args
+  constexpr FunctionType(std::span<const Type* eden_notnullptr> parameters, const Type* return_type, bool is_variadic)
   : Type(FUNCTION), is_variadic(is_variadic) {
     setCallable();
     for (auto p : parameters)
@@ -359,17 +367,19 @@ public:
   [[nodiscard]] constexpr bool
   isVariadic() const noexcept {return is_variadic;}
 
-  [[nodiscard]] constexpr std::span<const Type* const>
+  [[nodiscard]] constexpr std::span<const Type* eden_notnullptr const>
   parameterTypes() const noexcept {return std::span(subtypes.data(), subtypes.size() - 1);}
 
+  eden_return_nonnull
   [[nodiscard]] constexpr const Type*
   returnType() const noexcept {return subtypes.back();}
 
   [[nodiscard]] std::string
   toString() const noexcept;
 
+  eden_nonull_args
   [[nodiscard]] constexpr bool
-  sameAs(std::span<const Type*> parameters, const Type* ret_type, bool variadic) const noexcept {
+  sameAs(std::span<const Type* eden_notnullptr> parameters, const Type* ret_type, bool variadic) const noexcept {
     if (parameters.size() not_eq subtypes.size()-1 or subtypes.back() not_eq ret_type or is_variadic not_eq variadic)
       return false;
 
@@ -460,18 +470,20 @@ static constexpr InstantiatedType unsignedToLiteralInstance(u64_t val) {
 
 class TypeContext {
   eden::Arena<> type_arena;
-  std::vector<PointerType*> pointers;
-  std::vector<VariantType*> variants;
-  std::vector<FunctionType*> functions;
+  std::vector<PointerType* eden_notnullptr> pointers;
+  std::vector<VariantType* eden_notnullptr> variants;
+  std::vector<FunctionType* eden_notnullptr> functions;
 
   template <std::derived_from<Type> T, class... Args>
+  eden_return_nonnull
   constexpr T*
   allocateAndConstruct(Args&&... args)
   {return new (type_arena.allocate<T>()) T (std::forward<Args>(args)...);}
 
   template <std::derived_from<Type> T, class ... Args>
+  eden_return_nonnull
   constexpr T*
-  returnExistingOrNew(std::vector<T*>& types, Args&&... args) {
+  returnExistingOrNew(std::vector<T* eden_notnullptr>& types, Args&&... args) {
     auto curr = types.rbegin();
     const auto end = types.rend();
     while (curr not_eq end) {
@@ -493,20 +505,24 @@ public:
   TypeContext() = default;
   TypeContext(TypeContext&& other) noexcept = default;
 
+  eden_return_nonnull
   [[nodiscard]] const PointerType*
   addRawPointer(InstantiatedType subtype) noexcept
   {return returnExistingOrNew(pointers, subtype, false);}
 
+  eden_return_nonnull
   [[nodiscard]] const PointerType*
   addUniquePointer(InstantiatedType subtype) noexcept
   {return returnExistingOrNew(pointers, subtype, true);}
 
+  eden_return_nonnull
   [[nodiscard]] const VariantType*
-  addVariant(std::vector<const Type*> subtypes, bool nullable) noexcept
+  addVariant(std::vector<const Type* eden_notnullptr> subtypes, bool nullable) noexcept
   {return returnExistingOrNew(variants, std::move(subtypes), nullable);}
 
+  eden_return_nonnull eden_nonull_args
   [[nodiscard]] const FunctionType*
-  addFunction(std::span<const Type*> parameter_types, const Type* return_type, bool is_variadic = false) noexcept
+  addFunction(std::span<const Type* eden_notnullptr> parameter_types, const Type* return_type, bool is_variadic = false) noexcept
   {return returnExistingOrNew(functions, parameter_types, return_type, is_variadic);}
 
   ~TypeContext() { //not sure if this is necessary. Type Context will only be destroyed at the end of the program

@@ -6,13 +6,14 @@
 
 using namespace LOM::Lexer;
 
+eden_nonull_args eden_cstr_arg(2)
 void Token::throw_if(const TokenType unwanted_type, const char *err_msg) const {
   if (type == unwanted_type)
     throw ParsingError(err_msg, *this);
 }
 
-void Token::throw_if_not(const TokenType expected_type,
-                         const char *err_msg) const {
+eden_nonull_args eden_cstr_arg(2)
+void Token::throw_if_not(const TokenType expected_type, const char *err_msg) const {
   if (type not_eq expected_type)
     throw ParsingError(err_msg, *this);
 }
@@ -115,30 +116,29 @@ void TokenView::print(const unsigned initial_indent) const {
   }
 }
 
-void TokenView::expect_then_pop(const TokenType expected_type,
-                                const char *err_msg) {
+eden_nonull_args eden_cstr_arg(2)
+void TokenView::expect_then_pop(const TokenType expected_type, const char *err_msg) {
   begin->throw_if_not(expected_type, err_msg);
   pop();
 }
 
-void TokenView::expect(const TokenType expected_type,
-                       const char *err_msg) const {
+eden_nonull_args eden_cstr_arg(2)
+void TokenView::expect(const TokenType expected_type, const char *err_msg) const {
   begin->throw_if_not(expected_type, err_msg);
 }
 
-void TokenView::reject_then_pop(const TokenType unwanted_type,
-                                const char *err_msg) {
+eden_nonull_args eden_cstr_arg(2)
+void TokenView::reject_then_pop(const TokenType unwanted_type, const char *err_msg) {
   begin->throw_if(unwanted_type, err_msg);
   pop();
 }
 
-void TokenView::reject(const TokenType unwanted_type,
-                       const char *err_msg) const {
+eden_nonull_args eden_cstr_arg(2)
+void TokenView::reject(const TokenType unwanted_type, const char *err_msg) const {
   begin->throw_if(unwanted_type, err_msg);
 }
 
-TokenView TokenView::getTokensBetween(const TokenType opening_token,
-                                      const TokenType closing_token) {
+TokenView TokenView::getTokensBetween(const TokenType opening_token, const TokenType closing_token) {
   const auto new_begin = begin;
   int open = 1;
   while (true) {

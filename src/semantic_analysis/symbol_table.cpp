@@ -6,6 +6,7 @@
 
 using namespace LOM;
 
+eden_return_nonnull eden_nonull_args
 const FunctionType*
 Module::addFunction(std::string_view name, std::span<Variable> parameters, const Type* return_type, bool is_public, bool is_variadic) {
   if (symbols.contains(name))

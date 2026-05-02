@@ -37,7 +37,10 @@ public:
 
   Token &operator=(const Token& other) = delete;
 
+  eden_nonull_args eden_cstr_arg(2)
   void throw_if(TokenType unwanted_type, const char* err_msg) const;
+
+  eden_nonull_args eden_cstr_arg(2)
   void throw_if_not(TokenType expected_type, const char* err_msg) const;
 
   [[nodiscard]] constexpr TokenType getType() const noexcept           {return type;}
@@ -72,6 +75,7 @@ public:
   [[nodiscard]] constexpr char
   getChar() const noexcept {assume_assert(type == TokenType::CHAR_LITERAL); return static_cast<char>(value);}
 
+  eden_return_nonnull
   [[nodiscard]] constexpr char*
   getString() const noexcept {
     assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
@@ -103,10 +107,10 @@ public:
   void pop() noexcept                                                         {if (not empty()) ++begin;}
   bool pop_if(const TokenType type) noexcept                                  {if (empty() or begin->type not_eq type) return false; ++begin; return true;}
 
-  void expect_then_pop(TokenType expected_type, const char* err_msg);
-  void expect(TokenType expected_type, const char* err_msg) const;
-  void reject_then_pop(TokenType unwanted_type, const char* err_msg);
-  void reject(TokenType unwanted_type, const char* err_msg) const;
+  eden_nonull_args eden_cstr_arg(2) void expect_then_pop(TokenType expected_type, const char* err_msg);
+  eden_nonull_args eden_cstr_arg(2) void expect(TokenType expected_type, const char* err_msg) const;
+  eden_nonull_args eden_cstr_arg(2) void reject_then_pop(TokenType unwanted_type, const char* err_msg);
+  eden_nonull_args eden_cstr_arg(2) void reject(TokenType unwanted_type, const char* err_msg) const;
   void print(unsigned initial_indent = 0) const;
 
 

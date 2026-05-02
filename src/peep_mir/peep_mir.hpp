@@ -56,6 +56,10 @@ struct Instruction {
     PCAST, //pointer cast, value contains nothing
     NCAST, //no cast, value contains nothing
 
+    //value contains bitwidth to convert to
+    U_TO_F, S_TO_F,
+    F_TO_U, F_TO_S,
+
     CALL // value equals number of parameters
   }type;
   u64_t value;
@@ -87,14 +91,17 @@ struct Instruction {
   char_value() const noexcept
   {assume_assert(type == CHAR_LITERAL); return static_cast<char>(value);}
 
+  eden_return_nonnull
   [[nodiscard]] constexpr char*
   string_value() const noexcept
   {assume_assert(type == STRING_LITERAL); return std::bit_cast<char*>(value);}
 
+  eden_return_nonnull
   [[nodiscard]] constexpr char*
   global_name() const noexcept
   {assume_assert(type == GLOBAL); return std::bit_cast<char*>(value);}
 
+  eden_return_nonnull
   [[nodiscard]] constexpr char*
   imported_global_name() const noexcept
   {assume_assert(type == IMPORTED_GLOBAL); return std::bit_cast<char*>(value);}
@@ -103,10 +110,12 @@ struct Instruction {
   local_idx() const noexcept
   {assume_assert(type == LOCAL); return value;}
 
+  eden_return_nonnull
   [[nodiscard]] constexpr char*
   function_name() const noexcept
   {assume_assert(type == FUNCTION); return std::bit_cast<char*>(value);}
 
+  eden_return_nonnull
   [[nodiscard]] constexpr char*
   imported_function_name() const noexcept
   {assume_assert(type == IMPORTED_FUNCTION); return std::bit_cast<char*>(value);}
@@ -115,13 +124,14 @@ struct Instruction {
   num_params() const noexcept
   {assume_assert(type == CALL); return value;}
 
+  eden_return_nonnull
   [[nodiscard]] constexpr const LOM::Type*
   dereference_type() const noexcept
   {assume_assert(type == DEREFERENCE); return std::bit_cast<const LOM::Type*>(value);}
 
-  [[nodiscard]] constexpr const LOM::Type*
-  pcast_type() const noexcept
-  {assume_assert(type == PCAST); return std::bit_cast<const LOM::Type*>(value);}
+  [[nodiscard]] constexpr u64_t
+  bitwidth() const noexcept
+  {assert(eden::enumBetween(type, UCAST, F_TO_S)); return value;}
 
 };
 

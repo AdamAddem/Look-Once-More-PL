@@ -138,6 +138,7 @@ InstantiatedType parseType(TokenView& tokens, Module& table) {
   throw ParsingError("Expected typename.", token);
 }
 
+eden_return_nonnull
 char* parseIdentifier(TokenView& tokens) {
   Token token = tokens.take();
   token.throw_if_not(TokenType::IDENTIFIER, "Expected identifier.");

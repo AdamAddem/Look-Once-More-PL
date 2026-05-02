@@ -21,8 +21,8 @@ using namespace LOM::AST;
 
 namespace {
 
-[[nodiscard]] constexpr Instruction
-castForType(const Type* given_type, const Type* expected_type) noexcept {
+eden_nonull_args [[nodiscard]] constexpr Instruction
+castForType(const Type* eden_restrict given_type, const Type* eden_restrict expected_type) noexcept {
   if (given_type->isPointer())
     return {Instruction::PCAST, 0};
 
@@ -41,20 +41,16 @@ castForType(const Type* given_type, const Type* expected_type) noexcept {
   return {Instruction::UCAST, bitwidth};
 }
 
+eden_return_nonnull eden_nonull_args eden_cstr_arg(1) eden_cstr_arg(2)
 [[nodiscard]] constexpr char*
-combineWithDot(char* eden_restrict before_dot, char* eden_restrict after_dot) noexcept {
+combineWithDot(char* before_dot, char* after_dot) noexcept {
   assume_assert(before_dot); assume_assert(after_dot); assume_assert(before_dot not_eq after_dot);
 
   thread_local char dot_names[100'000];
   thread_local char* dot_names_start{dot_names};
-  assert(dot_names_start < (dot_names + 100'000));
 
   char* const name_start = dot_names_start;
-  dot_names_start = eden::stpcpy(dot_names_start, before_dot);
-
-  *dot_names_start = '.'; ++dot_names_start;
-  dot_names_start = eden::stpcpy(dot_names_start, after_dot) + 1;
-
+  *std::format_to(dot_names_start, "{}.{}", before_dot, after_dot) = '\0';
   return name_start;
 }
 
@@ -425,8 +421,7 @@ class Peeper {
   InstantiatedType peepUnaryExpression(const Operator opr) {
     if (opr == Operator::ADDRESS_OF) {
       instructions.emplace_back(Instruction::ADDRESS_OF, 0);
-      auto expression = peepExpression();
-      return {table->addRawPointer(expression), {}};
+      return {table->addRawPointer(peepExpression()), {}};
     }
 
     const auto instruction_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
@@ -894,7 +889,7 @@ void printPeepInstruction(Instruction instruction) {
   case FPOST_INC: return std::println("FPOST_INC");
   case POST_DEC: return std::println("POST_DEC");
   case FPOST_DEC: return std::println("FPOST_DEC");
-  case DEREFERENCE: return std::println("DEREFERENCE");
+  case DEREFERENCE: return std::println("DEREFERENCE TO {}", instruction.dereference_type()->toString());
 
   case UCAST: return std::println("UCAST TO {}b", instruction.value);
   case SCAST: return std::println("SCAST TO {}b", instruction.value);

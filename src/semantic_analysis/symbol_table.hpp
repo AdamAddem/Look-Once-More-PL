@@ -66,16 +66,16 @@ private:
   using Symbol = std::variant<InstantiatedType, Function>;
   std::unordered_map<std::string_view, Symbol> symbols;
   Function* current_scope{nullptr};
-  std::string_view name;
+  std::string_view module_name;
   TypeContext types;
 
 public:
 
-  explicit Module(std::string_view module_name) noexcept : name(module_name) {}
+  explicit Module(std::string_view module_name) noexcept : module_name(module_name) {}
   Module(Module&&) noexcept = default;
 
   [[nodiscard]] std::string_view
-  getName() const noexcept {return name;}
+  getName() const noexcept {return module_name;}
 
   //once called, this table may not be used to create any new types.
   //the addFunction, addRawPointer, addUniquePointer, and addVariant methods must not be called.
@@ -83,21 +83,25 @@ public:
   takeTypeContext() noexcept
   {return std::move(types);}
 
+  eden_return_nonnull eden_nonull_args
   const FunctionType* addFunction(
     std::string_view name,
     std::span<Variable> parameters,
     const Type* return_type, bool is_public, bool is_variadic = false);
 
+  eden_return_nonnull
   [[nodiscard]] const Type*
   addRawPointer(InstantiatedType subtype) noexcept
   {return types.addRawPointer(subtype);}
 
+  eden_return_nonnull
   [[nodiscard]] const Type*
   addUniquePointer(InstantiatedType subtype) noexcept
   {return types.addUniquePointer(subtype);}
 
+  eden_return_nonnull
   [[nodiscard]] const Type*
-  addVariant(std::vector<const Type*> subtypes, bool nullable) noexcept
+  addVariant(std::vector<const Type* eden_notnullptr> subtypes, bool nullable) noexcept
   {return types.addVariant(std::move(subtypes), nullable);}
 
   void addGlobalVariable(std::string_view name, InstantiatedType type) noexcept {
@@ -170,7 +174,7 @@ public:
     return std::holds_alternative<Function>(symbol) ? std::optional(std::get<Function>(symbol).type) : std::nullopt;
   }
 
-  [[nodiscard]] std::pair<std::span<const Variable>, const Type*>
+  [[nodiscard]] std::pair<std::span<const Variable>, const Type* eden_notnullptr>
   getFunction(std::string_view name) noexcept {
     assert(symbols.contains(name));
     assert(std::holds_alternative<Function>(symbols[name]));
@@ -178,6 +182,7 @@ public:
     return {f.parameters(), f.returnType()};
   }
 
+  eden_return_nonnull
   const FunctionType*
   enterFunctionScope(std::string_view function_name) noexcept {
     assume_assert(current_scope == nullptr); assert(symbols.contains(function_name)); assert(std::holds_alternative<Function>(symbols[function_name]));

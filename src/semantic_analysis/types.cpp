@@ -6,6 +6,7 @@
 
 using namespace LOM;
 
+eden_nonull_args
 bool Type::convertibleTo(const Type* other) const noexcept {
   assume_assert(derived_type not_eq CUSTOM);
   assume_assert(other->derived_type not_eq CUSTOM);
@@ -64,6 +65,7 @@ std::string Type::toString() const noexcept {
   }
 }
 
+eden_nonull_args
 bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
   const auto other_type = other->primitive_type;
   if (other_type == U_ and isIntegral())
@@ -137,6 +139,7 @@ std::string PrimitiveType::toString() const noexcept {
 
 //each pointer type can only convert to its own
 //immutable to mutable subtype not allowed
+eden_nonull_args
 bool PointerType::convertibleTo(const PointerType* other) const noexcept {
   const auto other_type = other->pointer_type;
   if (pointer_type == VAGUE)
@@ -160,6 +163,7 @@ std::string PointerType::toString() const noexcept {
   }
 }
 
+eden_nonull_args
 bool VariantType::contains(const Type* type) const noexcept {
   for (const auto t : subtypes)
     if (type == t)
@@ -183,7 +187,7 @@ std::string VariantType::toString() const noexcept {
   return retval;
 }
 
-bool VariantType::sameAs(const std::vector<const Type*>& subtypes_, bool nullable) const noexcept {
+bool VariantType::sameAs(const std::vector<const Type* eden_notnullptr>& subtypes_, bool nullable) const noexcept {
   const auto sz = subtypes.size();
   if (nullable not_eq is_nullable or subtypes_.size() not_eq sz)
     return false;

@@ -12,7 +12,9 @@
 using namespace LOM;
 
 
+static TypeContext types;
 static std::unordered_map<std::string_view, Module> modules;
+static Module main_module("", &types);
 
 [[nodiscard]] Module*
 LOM::getModule(std::string_view name) {
@@ -34,7 +36,7 @@ lex_and_parse_module(const fs::path& directory) {
   const auto module_name = new char[n]; //purposeful memory leak
   std::strcpy(module_name, directory.filename().c_str());
   const std::string_view key_view(module_name, n-1);
-  auto module_ptr = &modules.emplace(std::pair(key_view, Module{key_view})).first->second;
+  auto module_ptr = &modules.emplace(std::pair(key_view, Module{key_view, &types})).first->second;
 
   Parser::TU module_tu(module_ptr, module_name);
   for (auto const& entry : fs::directory_iterator{directory}) {
@@ -55,7 +57,7 @@ lex_and_parse_module(const fs::path& directory) {
 }
 
 static void setup_std() {
-  auto p = &modules.emplace(std::pair(std::string_view("__C"), Module{"__C"})).first->second;
+  auto p = &modules.emplace(std::pair(std::string_view("__C"), Module{"__C", &types})).first->second;
   Module::Variable chptr{{p->addRawPointer({PrimitiveType::char_(), {}}), {}}, ""};
   p->addFunction("puts", std::span(&chptr, 1), Type::devoid(), true, false);
 }
@@ -76,7 +78,7 @@ try {
       if (entry.path().filename() != "main.lom")
         throw ValidationError("Top level .lom file must be called main.lom", entry.path().filename(), 0);
 
-      static Module main_module(""); has_main = true;
+      has_main = true;
       std::vector<Lexer::Token> main_tokens;
       Lexer::tokenizeFile(main_tokens, entry);
       if (Settings::doOutputLexer()) {

@@ -493,8 +493,7 @@ class TU final : public Backend {
       case LOCAL: {
         if(instruction.local_idx() >= locals.size()) {
           llvmfunc->print(llvm::outs());
-          //std::cout << llvmfunc->getName().str() << std::endl;
-          std::quick_exit(1);
+          std::unreachable();
         }
         const auto local = (locals[instruction.local_idx()]);
         return local;
@@ -655,24 +654,6 @@ public:
       }
       buff[i++] = '.'; buff[i] = '\0';
     }
-
-    /* auto i{0uz};
-    for (auto& instruction : tu.global_instructions) {
-      if (instruction.type not_eq PeepMIR::Instruction::GLOBAL)
-        continue;
-
-      module.insertGlobalVariable(
-        new llvm::GlobalVariable(
-          translateType(tu.globals[i]),
-          false,
-          llvm::GlobalValue::LinkageTypes::ExternalLinkage,
-          nullptr,
-          instruction.global_name()
-          )
-        );
-      ++i;
-      instruction.release_string_value().destroy_and_deallocate();
-    }*/
 
     std::vector<llvm::Function*> public_functions;
     public_functions.reserve(tu.functions.size());

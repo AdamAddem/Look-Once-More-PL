@@ -67,21 +67,15 @@ private:
   std::unordered_map<std::string_view, Symbol> symbols;
   Function* current_scope{nullptr};
   std::string_view module_name;
-  TypeContext types;
+  TypeContext* types;
 
 public:
 
-  explicit Module(std::string_view module_name) noexcept : module_name(module_name) {}
+  explicit Module(std::string_view module_name, TypeContext* types) noexcept : module_name(module_name), types(types) {}
   Module(Module&&) noexcept = default;
 
   [[nodiscard]] std::string_view
   getName() const noexcept {return module_name;}
-
-  //once called, this table may not be used to create any new types.
-  //the addFunction, addRawPointer, addUniquePointer, and addVariant methods must not be called.
-  [[nodiscard]] TypeContext
-  takeTypeContext() noexcept
-  {return std::move(types);}
 
   eden_return_nonnull eden_nonull_args
   const FunctionType* addFunction(
@@ -92,17 +86,17 @@ public:
   eden_return_nonnull
   [[nodiscard]] const Type*
   addRawPointer(InstantiatedType subtype) noexcept
-  {return types.addRawPointer(subtype);}
+  {return types->addRawPointer(subtype);}
 
   eden_return_nonnull
   [[nodiscard]] const Type*
   addUniquePointer(InstantiatedType subtype) noexcept
-  {return types.addUniquePointer(subtype);}
+  {return types->addUniquePointer(subtype);}
 
   eden_return_nonnull
   [[nodiscard]] const Type*
   addVariant(std::vector<const Type* eden_notnullptr> subtypes, bool nullable) noexcept
-  {return types.addVariant(std::move(subtypes), nullable);}
+  {return types->addVariant(std::move(subtypes), nullable);}
 
   void addGlobalVariable(std::string_view name, InstantiatedType type) noexcept {
     assert(not symbols.contains(name));

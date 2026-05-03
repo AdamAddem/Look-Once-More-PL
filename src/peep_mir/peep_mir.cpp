@@ -25,6 +25,8 @@ eden_nonull_args [[nodiscard]] constexpr Instruction
 castForType(const Type* eden_restrict given_type, const Type* eden_restrict expected_type) noexcept {
   if (given_type->isPointer())
     return {Instruction::PCAST, 0};
+  if (given_type->isPrimitive() and given_type->castToPrimitive()->isString())
+    return {Instruction::PCAST, 0};
 
   const auto bitwidth = expected_type->bitwidth();
   if (given_type->isIntegral()) {
@@ -50,7 +52,9 @@ combineWithDot(char* before_dot, char* after_dot) noexcept {
   thread_local char* dot_names_start{dot_names};
 
   char* const name_start = dot_names_start;
-  *std::format_to(dot_names_start, "{}.{}", before_dot, after_dot) = '\0';
+  dot_names_start = std::format_to(dot_names_start, "{}.{}", before_dot, after_dot);
+  *dot_names_start = '\0'; ++dot_names_start;
+
   return name_start;
 }
 
@@ -245,21 +249,21 @@ class Peeper {
       throw ValidationError("Callable non-functions not implemented.", "Woopsie", current_line_number);
 
     const FunctionType* function_type = called.type->castToFunction();
-    const auto parameter_types = function_type->parameterTypes();
-    const auto func_parameter_count = parameter_types.size();
+    const auto func_parameter_types = function_type->parameterTypes();
+    const auto func_parameter_count = func_parameter_types.size();
 
 
     InstantiatedType expressions[Settings::MAX_FUNCTION_PARAMETERS];
     auto i{0uz};
     for (; i<parameter_count; ++i) {
       const auto cast_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
-      const auto parameter = peepExpression(); expressions[i] = parameter;
+      const auto given_parameter = peepExpression(); expressions[i] = given_parameter;
 
       if (i >= func_parameter_count) {
         instructions[cast_idx] = {Instruction::NCAST, 0};
       }
       else
-        instructions[cast_idx] = castForType(parameter.type, parameter_types[i]);
+        instructions[cast_idx] = castForType(given_parameter.type, func_parameter_types[i]);
     }
     function_type->validateCall({expressions, i});
 
@@ -562,15 +566,7 @@ class Peeper {
        std::format("Function return type is '{}' and expression is of type '{}'", return_type->toString(), return_expression.type->toString()),
        current_line_number);
 
-    const auto bitwidth = return_type->bitwidth();
-    if (return_expression.type->isFloating()) [[unlikely]]
-      instructions[cast_idx].type = Instruction::FCAST;
-    else if (return_expression.type->isSignedIntegral())
-      instructions[cast_idx].type = Instruction::SCAST;
-    else [[likely]]
-      instructions[cast_idx].type = Instruction::UCAST;
-
-    instructions[cast_idx].value = bitwidth;
+    instructions[cast_idx] = castForType(return_expression.type, return_type);
     current_block().set_ret();
   }
 
@@ -628,6 +624,7 @@ class Peeper {
 
   void peepVarDeclaration() {
     const auto declaration_type = nodes.pop().instance_type();
+    locals.emplace_back(declaration_type.type);
     auto name = nodes.pop().identifier();
     char* name_cstr = name;
 
@@ -654,7 +651,7 @@ class Peeper {
       table->addGlobalVariable(name, declaration_type);
     }
     else {
-      instructions.emplace_back(Instruction::LOCAL, locals.size());
+      instructions.emplace_back(Instruction::LOCAL, locals.size() - 1);
       table->addLocalVariable(name, declaration_type);
     }
 
@@ -666,7 +663,6 @@ class Peeper {
         name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", init_expr.toString()), current_line_number);
 
     instructions[cast_idx] = castForType(init_expr.type, declaration_type.type);
-    locals.emplace_back(declaration_type.type);
   }
 
   void peepStatement() {

@@ -18,7 +18,7 @@ Module::addFunction(std::string_view name, std::span<Variable> parameters, const
   for (; sz < parameters.size(); ++sz)
     parameter_types[sz] = parameters[sz].type.type;
 
-  const auto function_type = types.addFunction(std::span(parameter_types, sz), return_type, is_variadic);
+  const auto function_type = types->addFunction(std::span(parameter_types, sz), return_type, is_variadic);
   symbols.emplace(name, Function{parameters, function_type, is_public});
   return function_type;
 }

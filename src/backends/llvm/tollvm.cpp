@@ -2,7 +2,7 @@
 #include "../../parsing/ast.hpp"
 #include "build_system/build.hpp"
 #include "error.hpp"
-#include "peep_mir/peep_mir.hpp"
+#include "peepir/peepir.hpp"
 #include "settings.hpp"
 
 #include <filesystem>

@@ -28,8 +28,8 @@ add_executable(lom
         src/semantic_analysis/symbol_table.hpp
         src/semantic_analysis/symbol_table.cpp
 
-        src/peep_mir/peep_mir.hpp
-        src/peep_mir/peep_mir.cpp
+        src/peepir/peepir.hpp
+        src/peepir/peepir.cpp
 
         src/backends/codegen.hpp
         src/backends/codegen.cpp

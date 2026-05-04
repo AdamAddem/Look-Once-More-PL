@@ -3,7 +3,7 @@
 #include "error.hpp"
 #include "lexing/lex.hpp"
 #include "parsing/parse.hpp"
-#include "peep_mir/peep_mir.hpp"
+#include "peepir/peepir.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 
 #include <filesystem>

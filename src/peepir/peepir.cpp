@@ -1,8 +1,8 @@
-#include "peep_mir.hpp"
+#include "peepir.hpp"
 
 #include "build_system/build.hpp"
-#include "edenlib/typedefs.hpp"
 #include "edenlib/string_utils.hpp"
+#include "edenlib/typedefs.hpp"
 #include "error.hpp"
 #include "parsing/ast.hpp"
 #include "parsing/parse.hpp"
@@ -571,9 +571,8 @@ class Peeper {
   }
 
   void peepScopedStatement(u64_t num_children) {
-    if (num_children == 0) {
+    if (num_children == 0)
       return (void)instructions.emplace_back(Instruction::NOOP, current_line_number);
-    }
 
     while (num_children-- not_eq 0)
       peepStatement();

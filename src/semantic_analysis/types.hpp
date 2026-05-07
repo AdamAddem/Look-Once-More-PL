@@ -69,8 +69,10 @@ public:
   eden_return_nonnull [[nodiscard]] constexpr const VariantType* castToVariant() const noexcept;
   eden_return_nonnull [[nodiscard]] constexpr const FunctionType* castToFunction() const noexcept;
 
-  eden_nonull_args
-  [[nodiscard]] bool convertibleTo(const Type* other) const noexcept;
+  eden_nonull_args [[nodiscard]] bool coercibleTo(const Type* other) const noexcept;
+  eden_nonull_args [[nodiscard]] bool castableTo(const Type* other) const noexcept;
+
+
   [[nodiscard]] std::string toString() const noexcept;
 
   Type(const Type&) = delete;
@@ -117,13 +119,17 @@ class PrimitiveType final : public Type {
 
   enum : u8_t {
     I8, I16, I32, I64,
-    U_, U8, U16, U32, U64,
+
+    U7, U15, U31, U63, //unsigned literal whos values are compatable with both signed and unsigned
+    U8, U16, U32, U64,
+
     F32, F64,
     BOOL, CHAR, STRING
   }primitive_type;
 
   constexpr explicit
-  PrimitiveType(decltype(primitive_type) type) noexcept : Type(PRIMITIVE), primitive_type(type)
+  PrimitiveType(decltype(primitive_type) type) noexcept
+  : Type(PRIMITIVE), primitive_type(type)
   { eden::enumBetween(type, I8, F64) ? setArithmetic() : void{}; }
 
 public:
@@ -138,7 +144,7 @@ public:
 
   [[nodiscard]] constexpr bool
   isUnsignedIntegral() const noexcept
-  {return eden::enumBetween(primitive_type, U_, U64);}
+  {return eden::enumBetween(primitive_type, U7, U64);}
 
   [[nodiscard]] constexpr bool
   isFloating() const noexcept
@@ -152,28 +158,27 @@ public:
   isString() const noexcept
   {return primitive_type == STRING;}
 
-  [[nodiscard]] constexpr bool
-  isLiteral() const noexcept
-  {return primitive_type == U_;}
-
   [[nodiscard]] constexpr sz_t
   bitwidth() const noexcept {
     switch (primitive_type) {
-    case U8:
     case I8:
+    case U7:
+    case U8:
     case BOOL:
     case CHAR:
       return 8;
-    case U16:
     case I16:
+    case U15:
+    case U16:
       return 16;
-    case U32:
     case I32:
+    case U31:
+    case U32:
     case F32:
       return 32;
-    case U_:
-    case U64:
     case I64:
+    case U63:
+    case U64:
     case F64:
       return 64;
     default:
@@ -181,68 +186,14 @@ public:
     }
   }
 
-  [[nodiscard]] constexpr u64_t
-  maxIntegralValueRepresentable() const noexcept {
-    switch (primitive_type) {
-    case I8:
-      return std::numeric_limits<i8_t>::max();
-    case I16:
-      return std::numeric_limits<i16_t>::max();
-    case I32:
-      return std::numeric_limits<i32_t>::max();
-    case I64:
-      return std::numeric_limits<i64_t>::max();
-    case U8:
-      return std::numeric_limits<u8_t>::max();
-    case U16:
-      return std::numeric_limits<u16_t>::max();
-    case U32:
-      return std::numeric_limits<u32_t>::max();
-    case U_:
-    case U64:
-      return std::numeric_limits<u64_t>::max();
+  eden_nonull_args [[nodiscard]] bool
+  coercibleTo(const PrimitiveType* other) const noexcept;
 
-    default:
-      std::unreachable();
-    }
-  }
-
-  [[nodiscard]] constexpr i64_t
-  minIntegralValueRepresentable() const noexcept {
-    switch (primitive_type) {
-    case I8:
-      return std::numeric_limits<i8_t>::min();
-    case I16:
-      return std::numeric_limits<i16_t>::min();
-    case I32:
-      return std::numeric_limits<i32_t>::min();
-    case I64:
-      return std::numeric_limits<i64_t>::min();
-    case U_:
-    case U8:
-    case U16:
-    case U32:
-    case U64:
-      return 0;
-
-    default:
-      std::unreachable();
-    }
-  }
-
-  [[nodiscard]] bool
-  convertibleTo(const PrimitiveType* other) const noexcept;
+  eden_nonull_args [[nodiscard]] bool
+  castableTo(const PrimitiveType* other) const noexcept;
 
   [[nodiscard]] std::string
   toString() const noexcept;
-
-  [[nodiscard]] constexpr bool
-  canValueBeRepresented(u64_t value) const noexcept
-  {return isIntegral() and value <= maxIntegralValueRepresentable();}
-
-  [[nodiscard]] constexpr bool
-  canValueBeRepresented(i64_t value) const noexcept
-  {return isIntegral() and value <= static_cast<i64_t>(maxIntegralValueRepresentable()) and value >= minIntegralValueRepresentable();}
 
 #define type_singleton(type_name, type_enum) \
   eden_return_nonnull \
@@ -255,7 +206,11 @@ public:
   type_singleton(i32, I32)
   type_singleton(i64, I64)
 
-  type_singleton(unsigned_literal, U_)
+  type_singleton(u7, U7)
+  type_singleton(u15, U15)
+  type_singleton(u31, U31)
+  type_singleton(u63, U63)
+
   type_singleton(u8, U8)
   type_singleton(u16, U16)
   type_singleton(u32, U32)
@@ -292,7 +247,12 @@ class PointerType final : public Type {
 
 public:
 
-  [[nodiscard]] bool convertibleTo(const PointerType* other) const noexcept;
+  eden_nonull_args [[nodiscard]] bool
+  coercibleTo(const PointerType* other) const noexcept;
+
+  eden_nonull_args [[nodiscard]] bool
+  castableTo(const PointerType* other) const noexcept;
+
   [[nodiscard]] std::string toString() const noexcept;
 
   [[nodiscard]] constexpr bool
@@ -339,6 +299,10 @@ public:
 
   [[nodiscard]] constexpr auto const& getSubtypes() const noexcept {return subtypes;}
 
+  eden_nonull_args
+  [[nodiscard]] bool
+  coercibleTo() const noexcept = delete;
+
   eden_nonull_args [[nodiscard]] bool contains(const Type* type) const noexcept;
   [[nodiscard]] std::string toString() const noexcept;
   [[nodiscard]] bool sameAs(const std::vector<const Type* eden_notnullptr>& subtypes, bool nullable) const noexcept;
@@ -374,6 +338,10 @@ public:
   [[nodiscard]] constexpr const Type*
   returnType() const noexcept {return subtypes.back();}
 
+  eden_nonull_args
+  [[nodiscard]] bool
+  coercibleTo() const noexcept = delete;
+
   [[nodiscard]] std::string
   toString() const noexcept;
 
@@ -389,8 +357,6 @@ public:
 
     return true;
   }
-
-  void validateCall(std::span<InstantiatedType> parameters) const;
 
 };
 
@@ -436,10 +402,13 @@ static constexpr InstantiatedType i8_literal{PrimitiveType::i8(), {}};
 static constexpr InstantiatedType i16_literal{PrimitiveType::i16(), {}};
 static constexpr InstantiatedType i32_literal{PrimitiveType::i32(), {}};
 static constexpr InstantiatedType i64_literal{PrimitiveType::i64(), {}};
-static constexpr InstantiatedType unsigned_literal{PrimitiveType::unsigned_literal(), {}};
+static constexpr InstantiatedType u7_literal{PrimitiveType::u7(), {}};
 static constexpr InstantiatedType u8_literal{PrimitiveType::u8(), {}};
+static constexpr InstantiatedType u15_literal{PrimitiveType::u15(), {}};
 static constexpr InstantiatedType u16_literal{PrimitiveType::u16(), {}};
+static constexpr InstantiatedType u31_literal{PrimitiveType::u31(), {}};
 static constexpr InstantiatedType u32_literal{PrimitiveType::u32(), {}};
+static constexpr InstantiatedType u63_literal{PrimitiveType::u63(), {}};
 static constexpr InstantiatedType u64_literal{PrimitiveType::u64(), {}};
 static constexpr InstantiatedType f32_literal{PrimitiveType::f32(), {}};
 static constexpr InstantiatedType f64_literal{PrimitiveType::f64(), {}};
@@ -459,12 +428,16 @@ static constexpr InstantiatedType signedToLiteralInstance(i64_t val) {
 }
 
 static constexpr InstantiatedType unsignedToLiteralInstance(u64_t val) {
-  if (val <= std::numeric_limits<u8_t>::max())
-    return u8_literal;
-  if (val <= std::numeric_limits<u16_t>::max())
-    return u16_literal;
-  if (val <= std::numeric_limits<u32_t>::max())
-    return u32_literal;
+  if (val <= i8_max) return u7_literal;
+  if (val <= u8_max) return u8_literal;
+
+  if (val <= i16_max) return u15_literal;
+  if (val <= u16_max) return u16_literal;
+
+  if (val <= i32_max) return u31_literal;
+  if (val <= u32_max) return u32_literal;
+
+  if (val <= i64_max) return u63_literal;
   return u64_literal;
 }
 

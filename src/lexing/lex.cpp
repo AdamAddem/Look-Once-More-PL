@@ -220,7 +220,7 @@ void grabNumber(FileInAnalysis &file) {
   const bool is_negative = c == '-';
   TokenType type = is_negative
     ? TokenType::SIGNED_LITERAL
-    : TokenType::INTEGER_LITERAL;
+    : TokenType::UNSIGNED_LITERAL;
 
   std::string num_stringrep(1, static_cast<char>(c));
   while ((c = file.stream.get()) not_eq EOF) {
@@ -254,7 +254,6 @@ void grabNumber(FileInAnalysis &file) {
     static_assert((sizeof(long long) == 8) and "The following line of code may cause problems if long longs are not 64 bits in width");
     value = std::bit_cast<u64_t>(static_cast<i64_t>(std::stoll(num_stringrep)));
     break;
-  case TokenType::INTEGER_LITERAL:
   case TokenType::UNSIGNED_LITERAL:
     static_assert((sizeof(unsigned long long) == 8) and "The following line of code may cause problems if unsigned long longs are not 64 bits in width");
     value = static_cast<u64_t>(std::stoull(num_stringrep));

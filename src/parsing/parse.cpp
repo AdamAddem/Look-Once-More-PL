@@ -18,7 +18,12 @@ using eden::releasing_string;
 
 namespace {
 
-InstantiatedType::InstanceDetails parseTypeDetails(TokenView& tokens) {
+
+InstantiatedType
+parseType(TokenView& tokens, Module& table);
+
+[[nodiscard]] InstantiatedType::InstanceDetails
+parseTypeDetails(TokenView& tokens) {
   InstantiatedType::InstanceDetails details;
   if (tokens.pop_if(TokenType::KEYWORD_PUB))
     details.is_public = true;
@@ -35,8 +40,9 @@ InstantiatedType::InstanceDetails parseTypeDetails(TokenView& tokens) {
   return details;
 }
 
-InstantiatedType parseType(TokenView& tokens, Module& table) {
-  const auto details = parseTypeDetails(tokens);
+eden_return_nonnull
+[[nodiscard]] const Type*
+parseUnqualifiedType(TokenView& tokens, Module& table) {
   Token token = tokens.take();
 
   if (token.isPrimitive()) {
@@ -44,15 +50,15 @@ InstantiatedType parseType(TokenView& tokens, Module& table) {
       tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.");
       if (token.is(TokenType::KEYWORD_VAGUE)) {
         const auto subtype_details = parseTypeDetails(tokens);
-        return InstantiatedType(PointerType::vague(subtype_details.is_mutable), details);
+        return PointerType::vague(subtype_details.is_mutable);
       }
 
       const InstantiatedType subtype_instance = parseType(tokens, table);
       switch (token.getType()) {
       case TokenType::KEYWORD_RAW:
-        return InstantiatedType(table.addRawPointer(subtype_instance), details);
+        return table.addRawPointer(subtype_instance);
       case TokenType::KEYWORD_UNIQUE:
-        return InstantiatedType(table.addUniquePointer(subtype_instance), details);
+        return table.addUniquePointer(subtype_instance);
       default:
         std::unreachable();
       }
@@ -61,38 +67,34 @@ InstantiatedType parseType(TokenView& tokens, Module& table) {
 
     switch (token.getType()) {
     case TokenType::KEYWORD_i8:
-      return InstantiatedType(PrimitiveType::i8(), details);
+      return PrimitiveType::i8();
     case TokenType::KEYWORD_i16:
-      return InstantiatedType(PrimitiveType::i16(), details);
+      return PrimitiveType::i16();
     case TokenType::KEYWORD_i32:
-      return InstantiatedType(PrimitiveType::i32(), details);
+      return PrimitiveType::i32();
     case TokenType::KEYWORD_i64:
-      return InstantiatedType(PrimitiveType::i64(), details);
+      return PrimitiveType::i64();
     case TokenType::KEYWORD_u8:
-      return InstantiatedType(PrimitiveType::u8(), details);
+      return PrimitiveType::u8();
     case TokenType::KEYWORD_u16:
-      return InstantiatedType(PrimitiveType::u16(), details);
+      return PrimitiveType::u16();
     case TokenType::KEYWORD_u32:
-      return InstantiatedType(PrimitiveType::u32(), details);
+      return PrimitiveType::u32();
     case TokenType::KEYWORD_u64:
-      return InstantiatedType(PrimitiveType::u64(), details);
+      return PrimitiveType::u64();
     case TokenType::KEYWORD_f32:
-      return InstantiatedType(PrimitiveType::f32(), details);
+      return PrimitiveType::f32();
     case TokenType::KEYWORD_f64:
-      return InstantiatedType(PrimitiveType::f64(), details);
+      return PrimitiveType::f64();
 
     case TokenType::KEYWORD_CHAR:
-      return InstantiatedType(PrimitiveType::char_(), details);
+      return PrimitiveType::char_();
     case TokenType::KEYWORD_BOOL:
-      return InstantiatedType(PrimitiveType::bool_(), details);
+      return PrimitiveType::bool_();
     case TokenType::KEYWORD_STRING:
-      return InstantiatedType(PrimitiveType::string(), details);
+      return PrimitiveType::string();
     case TokenType::KEYWORD_DEVOID:
-      if (details not_eq InstantiatedType::InstanceDetails{})
-        throw ParsingError("Devoid may not have type qualifiers.",
-          InstantiatedType(PrimitiveType::devoid(), details).toString(), token.getLN());
-
-      return devoid_literal;
+      return Type::devoid();
     default:
       std::unreachable();
     }
@@ -132,10 +134,16 @@ InstantiatedType parseType(TokenView& tokens, Module& table) {
     if (subtypes.size() < 2)
       throw ParsingError("Two or more types must be specified in variant type list.", "", variant_ln);
 
-    return InstantiatedType(table.addVariant(subtypes, nullable), details);
+    return table.addVariant(subtypes, nullable);
   }
 
   throw ParsingError("Expected typename.", token);
+}
+
+[[nodiscard]] InstantiatedType
+parseType(TokenView& tokens, Module& table) {
+  const auto details = parseTypeDetails(tokens);
+  return {parseUnqualifiedType(tokens, table), details};
 }
 
 eden_return_nonnull
@@ -219,45 +227,33 @@ struct Body {
     if (tokens.peek().isLiteral()) {
       auto token = tokens.take();
       ASTNode::Type literal_type;
-      u64_t literal_value;
-
       switch (token.getType()) {
-      case TokenType::INTEGER_LITERAL:
-        literal_type = ASTNode::INTEGER_LITERAL;
-        literal_value = token.getRawValue();
-        break;
       case TokenType::SIGNED_LITERAL:
         literal_type = ASTNode::SIGNED_LITERAL;
-        literal_value = token.getRawValue();
         break;
       case TokenType::UNSIGNED_LITERAL:
         literal_type = ASTNode::UNSIGNED_LITERAL;
-        literal_value = token.getRawValue();
         break;
       case TokenType::FLOAT_LITERAL:
         literal_type = ASTNode::FLOAT_LITERAL;
-        literal_value = token.getRawValue();
         break;
       case TokenType::DOUBLE_LITERAL:
         literal_type = ASTNode::DOUBLE_LITERAL;
-        literal_value = token.getRawValue();
         break;
       case TokenType::BOOL_LITERAL:
         literal_type = ASTNode::BOOL_LITERAL;
-        literal_value = token.getRawValue();
         break;
       case TokenType::CHAR_LITERAL:
         literal_type = ASTNode::CHAR_LITERAL;
-        literal_value = token.getRawValue();
         break;
       case TokenType::STRING_LITERAL:
         literal_type = ASTNode::STRING_LITERAL;
-        literal_value = std::bit_cast<u64_t>(token.getString());
         break;
       default:
         std::unreachable();
       }
 
+      const u64_t literal_value = token.getRawValue();
       return expression_tree.create(literal_type, literal_value);
     }
 
@@ -320,6 +316,13 @@ struct Body {
     case TokenType::ADDR:
       value = static_cast<u64_t>(Operator::ADDRESS_OF);
       break;
+    case TokenType::KEYWORD_CAST: {
+      tokens.pop();
+      tokens.expect_then_pop(TokenType::LESS, "Expected opening < in cast.");
+      const auto type = std::bit_cast<u64_t>(parseUnqualifiedType(tokens, table));
+      tokens.expect_then_pop(TokenType::GTR, "Expected closing > in cast.");
+      return expression_tree.create(ASTNode::CAST, type, generatePrefixExpression(), 0);
+    }
     case TokenType::KEYWORD_NOT:
       value = static_cast<u64_t>(Operator::NOT);
       break;
@@ -521,7 +524,7 @@ struct Body {
       translateExpression(expression.left_idx);
       translateExpression(expression.right_idx);
       return;
-    case CALLING: {
+    case CALLING: { // i think this might be unnecessarily complicated
       tree.emplace_back(CALLING, 0);
       const auto calling_idx = tree.size() - 1;
       translateExpression(expression.left_idx);
@@ -545,7 +548,6 @@ struct Body {
       return;
     }
     case SUBSCRIPT:
-      std::unreachable();
       tree.emplace_back(SUBSCRIPT, expression.value);
       translateExpression(expression.left_idx);
       translateExpression(expression.right_idx);
@@ -555,18 +557,13 @@ struct Body {
       tree.emplace_back(DOT_IDENTIFIER, expression.value);
       translateExpression(idx + 1);
       return;
-      /*
-      loop: //heheehehehehehe
-      expression = expression_tree.data[++idx];
-      if (expression.type == DOT_IDENTIFIER) {
-        tree.emplace_back(DOT_IDENTIFIER, expression.value);
-        goto loop;
-      }
-      assert(expression.type == IDENTIFIER); [[fallthrough]]; */
     case IDENTIFIER:
       tree.emplace_back(IDENTIFIER, expression.value);
       return;
-    case INTEGER_LITERAL:
+    case CAST:
+      tree.emplace_back(CAST, expression.value);
+      translateExpression(expression.left_idx);
+      return;
     case SIGNED_LITERAL:
     case UNSIGNED_LITERAL:
     case FLOAT_LITERAL:
@@ -594,7 +591,7 @@ struct Body {
   void parseExpressionUntil(TokenType ending_token) {
     expression_tree.reset();
     if (tokens.pop_if(ending_token)) {
-      tree.emplace_back(ASTNode::Type::EMPTY);
+      tree.emplace_back(ASTNode::EMPTY, tokens.current_line_number());
       return;
     }
     const auto idx = generateExpressionUntil(ending_token);
@@ -603,10 +600,7 @@ struct Body {
 
   void parseExpressionStatement() {
     tree.emplace_back(ASTNode::EXPR_STMT, tokens.current_line_number());
-    if (tokens.pop_if(TokenType::SEMI_COLON)) [[unlikely]]
-      tree.emplace_back(ASTNode::EMPTY, tokens.current_line_number());
-    else
-      parseExpressionUntil(TokenType::SEMI_COLON);
+    parseExpressionUntil(TokenType::SEMI_COLON);
   }
 
   void parseVarDecl() {
@@ -712,7 +706,7 @@ struct Body {
     case TokenType::LESS:
       return parseVarDecl();
 
-    case TokenType::IDENTIFIER: //this is problematic as FUCK
+    case TokenType::IDENTIFIER: //this is problematic as ****
       if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER))
         return parseVarDecl();
       [[fallthrough]];

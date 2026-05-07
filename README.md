@@ -26,7 +26,7 @@ Below are language features, only some of which are implemented currently, that 
     // Uniform dereference syntax
     raw -> mut Rectangle p;
     p->length = 2;                    // Dereference to access member
-    p-> = getSquare();                // Dereference to access object (*p equivakent)
+    p-> = getSquare();                // Dereference to access object (*p equivalent)
   
 * Native variant, tuple, and nullable types
     ```
@@ -67,11 +67,6 @@ Below are language features, only some of which are implemented currently, that 
     unsigned_32 = unsigned_8;
     signed_32 = unsigned_8;
     signed_8 = unsigned_8;    // error
-  
-    // In math expressions, types are promoted to the leftmost type if such conversion is legal
-    signed_32 / unsigned_8;   // signed 32bit division
-    unsigned_32 + unsigned_8; 
-    unsigned_8 + unsigned_32; // error
 
 * An actual module system (100% adoption rate)
   ```

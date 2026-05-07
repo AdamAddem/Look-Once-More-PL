@@ -7,44 +7,66 @@
 using namespace LOM;
 
 eden_nonull_args
-bool Type::convertibleTo(const Type* other) const noexcept {
-  assume_assert(derived_type not_eq CUSTOM);
-  assume_assert(other->derived_type not_eq CUSTOM);
-
+bool Type::coercibleTo(const Type* other) const noexcept {
+  const auto other_type = other->derived_type;
+  assume_assert(derived_type not_eq CUSTOM); assume_assert(derived_type not_eq VARIANT);
+  assume_assert(other_type not_eq CUSTOM); assume_assert(other_type not_eq VARIANT);
   if (other == this)
     return true;
 
-  const auto other_type = other->derived_type;
-  if (other_type == VARIANT)
-    return other->castToVariant()->contains(this);
-
   if (derived_type == PRIMITIVE and castToPrimitive()->isString()) {
-    if (other->isPointer()) {
-      auto other_subtype = other->castToPointer()->getSubtype();
-      if (other_subtype.details.is_mutable == false and other_subtype.type == PrimitiveType::char_())
-        return true;
-    }
+    if (other->isPointer() and other->castToPointer()->getSubtype().type == PrimitiveType::char_())
+      return true;
   }
 
   if (derived_type not_eq other_type or flags not_eq other->flags)
     return false;
 
+  switch (derived_type) {
+  case DEVOID:
+    std::unreachable(); //only one devoid instance allowed, so this should've returned earlier
+  case PRIMITIVE:
+    return castToPrimitive()->coercibleTo(other->castToPrimitive());
+  case POINTER:
+    return castToPointer()->coercibleTo(other->castToPointer());
+  case VARIANT:
+  case FUNCTION:
+  case CUSTOM:
+  default:
+    std::unreachable();
+  }
+
+}
+
+eden_nonull_args
+bool Type::castableTo(const Type* other) const noexcept {
+  const auto other_type = other->derived_type;
+  assume_assert(derived_type not_eq CUSTOM); assume_assert(derived_type not_eq VARIANT);
+  assume_assert(other_type not_eq CUSTOM); assume_assert(other_type not_eq VARIANT);
+  if (other == this)
+    return true;
+
+  if (derived_type == PRIMITIVE and castToPrimitive()->isString()) {
+    if (other->isPointer() and other->castToPointer()->getSubtype().type == PrimitiveType::char_())
+      return true;
+  }
+
+  if (derived_type not_eq other_type or flags not_eq other->flags)
+    return false;
 
   switch (derived_type) {
   case DEVOID:
     std::unreachable(); //only one devoid instance allowed, so this should've returned earlier
   case PRIMITIVE:
-    return castToPrimitive()->convertibleTo(other->castToPrimitive());
+    return castToPrimitive()->castableTo(other->castToPrimitive());
   case POINTER:
-    return castToPointer()->convertibleTo(other->castToPointer());
+    return castToPointer()->castableTo(other->castToPointer());
   case VARIANT:
   case FUNCTION:
   case CUSTOM:
-    return false;
   default:
     std::unreachable();
   }
-
 }
 
 std::string Type::toString() const noexcept {
@@ -65,25 +87,30 @@ std::string Type::toString() const noexcept {
   }
 }
 
-eden_nonull_args
-bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
-  const auto other_type = other->primitive_type;
-  if (other_type == U_ and isIntegral())
-    return true;
 
+/* Primitive Type */
+eden_nonull_args
+bool PrimitiveType::coercibleTo(const PrimitiveType* other) const noexcept {
+  const auto other_type = other->primitive_type;
   switch (primitive_type) {
   case I8:
   case I16:
   case I32:
   case I64:
     return other->isSignedIntegral() and (other->bitwidth() > bitwidth());
-  case U_:
-    return other->isIntegral();
   case U8:
   case U16:
   case U32:
   case U64: //convert if other type is a greater size signed/unsigned integer
     return other->isIntegral() and (other->bitwidth() > bitwidth());
+
+  case U7:
+  case U15:
+  case U31:
+  case U63:
+    return other->isIntegral() and (other->bitwidth() >= bitwidth());
+
+
   case F32:
     return other_type == F64;
   case F64:
@@ -102,26 +129,56 @@ bool PrimitiveType::convertibleTo(const PrimitiveType* other) const noexcept {
   }
 }
 
-std::string PrimitiveType::toString() const noexcept {
+eden_nonull_args
+bool PrimitiveType::castableTo(const PrimitiveType* other) const noexcept {
+  const auto other_type = other->primitive_type;
   switch (primitive_type) {
   case I8:
-    return "i8";
   case I16:
-    return "i16";
   case I32:
-    return "i32";
   case I64:
-    return "i64";
-  case U_:
-    return "u_";
+  case U7:
+  case U15:
+  case U31:
+  case U63:
   case U8:
-    return "u8";
   case U16:
-    return "u16";
   case U32:
-    return "u32";
   case U64:
-    return "u64";
+  case F32:
+  case F64:
+  case BOOL:
+  case CHAR:
+    return eden::enumBetween(other_type, I8, CHAR);
+
+  case STRING: //Right now string types can only be literals, so it is only convertible to raw -> char
+    if (other->isPointer()) {
+      const auto other_subtype = other->castToPointer()->getSubtype();
+      if (not other_subtype.details.is_mutable and other_subtype.type == char_())
+        return true;
+    }
+    return false;
+  default:
+    std::unreachable();
+  }
+}
+
+std::string PrimitiveType::toString() const noexcept {
+  switch (primitive_type) {
+  case I8: return "i8";
+  case I16: return "i16";
+  case I32: return "i32";
+  case I64: return "i64";
+  case U7: return  "u7";
+  case U15: return "u15";
+  case U31: return "u31";
+  case U63: return "u63";
+  case U8: return "u8";
+  case U16: return "u16";
+  case U32: return "u32";
+  case U64: return "u64";
+
+
   case F32:
     return "f32";
   case F64:
@@ -136,18 +193,41 @@ std::string PrimitiveType::toString() const noexcept {
     std::unreachable();
   }
 }
+/* Primitive Type */
 
-//each pointer type can only convert to its own
-//immutable to mutable subtype not allowed
+/* Pointer Type */
 eden_nonull_args
-bool PointerType::convertibleTo(const PointerType* other) const noexcept {
+bool PointerType::coercibleTo(const PointerType* other) const noexcept {
   const auto other_type = other->pointer_type;
+  const auto other_subtype = other->subtype;
+  assume_assert(pointer_type not_eq UNIQUE); assume_assert(other_type not_eq UNIQUE);
+
   if (pointer_type == VAGUE)
     return other_type == VAGUE;
+  if (other_type == VAGUE)
+    return true;
 
-  return (pointer_type == other_type) and
-         (subtype.type == other->subtype.type) and
-         (subtype.details.is_mutable or not other->subtype.details.is_mutable);
+  //reject if different pointer types
+  if (pointer_type not_eq other_type)
+    return false;
+
+  //reject const to mutable conversion
+  if (not subtype.details.is_mutable and other_subtype.details.is_mutable)
+    return false;
+
+  //if our subtype is a pointer, return whether other subtype is a pointer and our sub-pointer is convertible to theirs
+  if (subtype.type->isPointer())
+    return other_subtype.type->isPointer() and
+           subtype.type->castToPointer()->coercibleTo(other_subtype.type->castToPointer());
+
+  //otherwise, return whether the subtypes are identical
+  return subtype.type == other->subtype.type;
+}
+
+eden_nonull_args //TODO: Revisit pointer casting rules. At the moment its unconditional.
+bool PointerType::castableTo(const PointerType* other) const noexcept {
+  assume_assert(pointer_type not_eq UNIQUE); assume_assert(other->pointer_type not_eq UNIQUE);
+  return true;
 }
 
 std::string PointerType::toString() const noexcept {
@@ -162,7 +242,9 @@ std::string PointerType::toString() const noexcept {
     std::unreachable();
   }
 }
+/* Pointer Type */
 
+/* Variant Type (Incomplete) */
 eden_nonull_args
 bool VariantType::contains(const Type* type) const noexcept {
   for (const auto t : subtypes)
@@ -198,7 +280,9 @@ bool VariantType::sameAs(const std::vector<const Type* eden_notnullptr>& subtype
 
   return true;
 }
+/* Variant Type (Incomplete) */
 
+/* Function Type */
 std::string FunctionType::toString() const noexcept {
   std::string string_rep("(");
   for (auto i{0uz}; i<subtypes.size() - 1; ++i) {
@@ -222,19 +306,4 @@ std::string FunctionType::toString() const noexcept {
 
   return string_rep;
 }
-
-void FunctionType::validateCall(std::span<InstantiatedType> parameters) const {
-  const auto num_params = subtypes.size() - 1;
-  if (parameters.size() < num_params)
-    throw ValidationError("Too few parameters for function call.", "PLACEHOLDER", 0);
-  if (parameters.size() > num_params and (not is_variadic))
-    throw ValidationError("Too many parameters for function call.", "PLACEHOLDER", 0);
-
-  for (auto i{0uz}; i < num_params; ++i) {
-    if (not parameters[i].type->convertibleTo(subtypes[i]))
-      throw ValidationError("Cannot convert parameter to parameter type.",
-      std::format("Parameter of type '{}' cannot convert to type '{}'", parameters[i].toString(), subtypes[i]->toString()),
-      0);
-  }
-
-}
+/* Function Type */

@@ -99,7 +99,7 @@ public:
 
   enum Type : u8_t {
     EMPTY,
-                 // HAS <value>    | <Following Nodes...>
+                    // HAS <value> | <Following Nodes...>
     //Statements:
     DECLARATION,    // LN          | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
     IF,             // LN          | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STMT
@@ -114,11 +114,11 @@ public:
     BINARY,         // OPERATOR    | LEFT_EXPRESSION, RIGHT_EXPRESSION
     CALLING,        // NUM         | CALLED_EXPRESSION, PARAMETERS... * NUM
     SUBSCRIPT,      // N/A         | ARRAY_EXPRESSION, INSIDE_EXPRESSION
-    DOT_IDENTIFIER, // CHAR*       | DOT_IDENTIFIER or IDENTIFIER
-    IDENTIFIER,     // CHAR*       |
+    DOT_IDENTIFIER, // Char*       | DOT_IDENTIFIER or IDENTIFIER
+    IDENTIFIER,     // Char*       |
+    CAST,           // const Type* | EXPRESSION
 
     //value holds the bitwise representation of their respective type
-    INTEGER_LITERAL,
     SIGNED_LITERAL,
     UNSIGNED_LITERAL,
     FLOAT_LITERAL,
@@ -162,6 +162,9 @@ public:
 
   [[nodiscard]] constexpr InstantiatedType
   instance_type() const noexcept {return *std::launder(reinterpret_cast<const InstantiatedType*>(data));}
+
+  [[nodiscard]] constexpr const LOM::Type*
+  cast_type() const noexcept {assert(type() == CAST); return std::bit_cast<const LOM::Type*>(value());}
 
   static_assert(sizeof(u64_t) >= sizeof(Operator));
   static_assert(std::unsigned_integral<std::underlying_type_t<Operator>>);

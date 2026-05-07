@@ -8,13 +8,6 @@ struct TU;
 }
 
 namespace LOM::PeepMIR {
-using released_string = eden::releasing_string::released_span;
-
-template <class T>
-using released_span = eden::releasing_vector<T>::released_span;
-
-template<class T>
-using released_ptr = eden::releasing_vector<T>::released_ptr;
 
 struct Instruction {
   enum Type : u8_t {
@@ -26,22 +19,31 @@ struct Instruction {
 
     LOCAL, //value is local idx
 
-    //look you've read my codebase you get the memo by now
-    INT_LITERAL, UINT_LITERAL, FLOAT_LITERAL, DOUBLE_LITERAL, BOOL_LITERAL, CHAR_LITERAL, STRING_LITERAL,
+    //same as AST
+    I8_LITERAL, I16_LITERAL, I32_LITERAL, I64_LITERAL,
+    U8_LITERAL, U16_LITERAL, U32_LITERAL, U64_LITERAL,
+    FLOAT_LITERAL,
+    DOUBLE_LITERAL,
+    BOOL_LITERAL,
+    CHAR_LITERAL,
+    STRING_LITERAL,
 
-    //value indeterminate for most operators
+    //value indeterminate
     ADD, FADD,
     SUB, FSUB,
     MULT, FMULT,
     UDIV, SDIV, FDIV,
     UMOD, SMOD, FMOD,
     ASSIGN,
+    UCAST_ASSIGN, SCAST_ASSIGN, //contains the bitwidth to cast right side to
     ULESS, SLESS, FLESS,
     UGTR, SGTR, FGTR,
     ULEQ, SLEQ, FLEQ,
     UGEQ, SGEQ, FGEQ,
     EQ, NEQ, AND, OR,
     BITAND, BITOR, BITXOR,
+
+    //value indeterminate
     PRE_INC, FPRE_INC,
     PRE_DEC, FPRE_DEC,
     ADDRESS_OF,
@@ -49,16 +51,10 @@ struct Instruction {
     BITNOT,
     POST_INC, FPOST_INC,
     POST_DEC, FPOST_DEC,
-    DEREFERENCE,
+    DEREFERENCE, //contains pointed type
 
-    //value contains bitwidth to extend / truncate to
-    UCAST, SCAST, FCAST,
-    PCAST, //pointer cast, value contains nothing
-    NCAST, //no cast, value contains nothing
-
-    //value contains bitwidth to convert to
-    U_TO_F, S_TO_F,
-    F_TO_U, F_TO_S,
+    //value contains destination type
+    UCAST, SCAST, FCAST, PCAST,
 
     CALL // value equals number of parameters
   }type;
@@ -67,13 +63,33 @@ struct Instruction {
   constexpr Instruction(Type type, u64_t value) noexcept
   : type(type), value(value) {}
 
+  [[nodiscard]] constexpr bool
+  is_literal() const noexcept {return eden::enumBetween(type, I8_LITERAL, U64_LITERAL);}
+
+  constexpr void
+  adjust_literal(u64_t bitwidth, bool make_signed) noexcept {
+    assert(is_literal());
+    switch (bitwidth) {
+    case 8:
+      type = make_signed ? I8_LITERAL : U8_LITERAL; return;
+    case 16:
+      type = make_signed ? I16_LITERAL : U16_LITERAL; return;
+    case 32:
+      type = make_signed ? I32_LITERAL : U32_LITERAL; return;
+    case 64:
+      type = make_signed ? I64_LITERAL : U64_LITERAL; return;
+    default:
+      std::unreachable();
+    }
+  }
+
   [[nodiscard]] constexpr i64_t
   int_value() const noexcept
-  {assume_assert(type == INT_LITERAL); return std::bit_cast<i64_t>(value);}
+  {assert(eden::enumBetween(type, I8_LITERAL, I64_LITERAL)); return std::bit_cast<i64_t>(value);}
 
   [[nodiscard]] constexpr u64_t
   uint_value() const noexcept
-  {assume_assert(type == UINT_LITERAL); return value;}
+  {assert(eden::enumBetween(type, U8_LITERAL, U64_LITERAL)); return value;}
 
   [[nodiscard]] constexpr float
   float_value() const noexcept
@@ -130,8 +146,12 @@ struct Instruction {
   {assume_assert(type == DEREFERENCE); return std::bit_cast<const LOM::Type*>(value);}
 
   [[nodiscard]] constexpr u64_t
-  bitwidth() const noexcept
-  {assert(eden::enumBetween(type, UCAST, F_TO_S)); return value;}
+  cast_assign_bitwidth() const noexcept
+  {assume_assert(type == UCAST_ASSIGN or type == SCAST_ASSIGN); return value;}
+
+  [[nodiscard]] constexpr const LOM::Type*
+  cast_type() const noexcept
+  {assert(eden::enumBetween(type, UCAST, PCAST)); return std::bit_cast<const LOM::Type*>(value);}
 
 };
 
@@ -179,9 +199,9 @@ public:
 struct Function {
   std::string_view name;
   const FunctionType* type;
-  released_span<const Type*> locals;
-  released_ptr<Instruction> instructions;
-  released_span<Block> blocks;
+  std::vector<const Type*> locals;
+  std::vector<Instruction> instructions;
+  std::vector<Block> blocks;
   bool is_public;
 };
 

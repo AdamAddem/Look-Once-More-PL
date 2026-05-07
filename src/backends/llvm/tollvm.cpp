@@ -22,18 +22,15 @@ using namespace LOM;
 
 namespace {
 
-using PeepMIR::released_string;
-using PeepMIR::released_span;
-using PeepMIR::released_ptr;
-
 
 //shes big but shes a beaut
 class TU final : public Backend {
   llvm::LLVMContext context;
   llvm::Module module;
 
-  llvm::IntegerType* i1; llvm::ConstantInt* i1_0; llvm::ConstantInt* i1_1;
-  llvm::IntegerType* i8; llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
+  llvm::IntegerType* i1;
+  llvm::IntegerType* i8; llvm::Value* bool_true; llvm::Value* bool_false;
+  llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
   llvm::Type* f32; llvm::Type* f64; llvm::Type* devoid; llvm::PointerType* ptr;
 
   std::unordered_map<std::string_view, llvm::Value*> imports;
@@ -171,7 +168,7 @@ class TU final : public Backend {
   }
 
   [[nodiscard]] llvm::Type*
-  translateType(const Type* t) {
+  translateType(const Type* t) const {
     assert(not t->isCustom());
     assert(not t->isVariant());
     assert(t not_eq PrimitiveType::string());
@@ -229,8 +226,8 @@ class TU final : public Backend {
     llvm::IRBuilder<> builder;
     std::vector<llvm::AllocaInst*> locals;
 
-    released_ptr<PeepMIR::Instruction> instructions; sz_t instruction_idx{};
-    released_span<PeepMIR::Block> mir_blocks; sz_t block_idx{};
+    std::vector<PeepMIR::Instruction> instructions; sz_t instruction_idx{};
+    std::vector<PeepMIR::Block> mir_blocks; sz_t block_idx{};
     std::vector<llvm::BasicBlock*> llvm_blocks;
 
     Function(PeepMIR::Function& func, TU* tu)
@@ -283,7 +280,6 @@ class TU final : public Backend {
             );
       }
 
-      func.locals.destroy_and_deallocate();
       instructions = std::move(func.instructions);
       mir_blocks = std::move(func.blocks);
     }
@@ -306,7 +302,7 @@ class TU final : public Backend {
       switch (type) {
       using enum PeepMIR::Instruction::Type;
       case PRE_INC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
         const auto var_type = var->getAllocatedType();
         res = builder.CreateAdd(
           builder.CreateLoad(var_type, var),
@@ -315,7 +311,7 @@ class TU final : public Backend {
         return var;
       }
       case FPRE_INC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
         const auto var_type = var->getAllocatedType();
         res = builder.CreateFAdd(
           builder.CreateLoad(var_type, var),
@@ -324,7 +320,7 @@ class TU final : public Backend {
         return var;
       }
       case PRE_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
         const auto var_type = var->getAllocatedType();
         res = builder.CreateSub(
           builder.CreateLoad(var_type, var),
@@ -333,7 +329,7 @@ class TU final : public Backend {
         return var;
       }
       case FPRE_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
         const auto var_type = var->getAllocatedType();
         res = builder.CreateFSub(
           builder.CreateLoad(var_type, var),
@@ -342,15 +338,15 @@ class TU final : public Backend {
         return var;
       }
       case ADDRESS_OF:
-        return genExpression();
+        return genRefExpression();
       case NEGATE:
-        return builder.CreateNeg(genReadExpression());
+        return builder.CreateNeg(genValueExpression());
       case FNEGATE:
-        return builder.CreateFNeg(genReadExpression());
+        return builder.CreateFNeg(genValueExpression());
       case BITNOT:
-        return builder.CreateNot(genReadExpression());
+        return builder.CreateNot(genValueExpression());
       case POST_INC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
         const auto var_type = var->getAllocatedType();
         auto load = builder.CreateLoad(var_type, var);
         res = builder.CreateAdd(load, unsignedConstant(var_type, 1));
@@ -358,7 +354,7 @@ class TU final : public Backend {
         return load;
       }
       case FPOST_INC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
         const auto var_type = var->getAllocatedType();
         auto load = builder.CreateLoad(var_type, var);
         res = builder.CreateFAdd(load, fpConstant(var_type, 1));
@@ -366,7 +362,7 @@ class TU final : public Backend {
         return load;
       }
       case POST_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
         const auto var_type = var->getAllocatedType();
         auto load = builder.CreateLoad(var_type, var);
         res = builder.CreateSub(load, unsignedConstant(var_type, 1));
@@ -374,7 +370,7 @@ class TU final : public Backend {
         return load;
       }
       case FPOST_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genExpression());
+        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
         const auto var_type = var->getAllocatedType();
         auto load = builder.CreateLoad(var_type, var);
         res = builder.CreateFSub(load, fpConstant(var_type, 1));
@@ -388,14 +384,8 @@ class TU final : public Backend {
 
     [[nodiscard]] llvm::Value*
     genBinary(PeepMIR::Instruction::Type type) noexcept {
-      if (type == PeepMIR::Instruction::ASSIGN) {
-        const auto left = genExpression();
-        const auto right = genExpression();
-        return builder.CreateStore(right, left);
-      }
-
-      const auto left = genReadExpression();
-      const auto right = genExpression();
+      const auto left = genValueExpression();
+      const auto right = genValueExpression();
 
       switch (type) {
         using enum PeepMIR::Instruction::Type;
@@ -413,7 +403,8 @@ class TU final : public Backend {
       case SMOD: return builder.CreateSRem(left, right);
       case FMOD: return builder.CreateFRem(left, right);
 
-      case ASSIGN: return builder.CreateStore(right, left);
+      case ASSIGN:
+        std::unreachable();
 
       case ULESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULT, left, right);
       case SLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLT, left, right);
@@ -451,75 +442,80 @@ class TU final : public Backend {
     }
 
     [[nodiscard]] llvm::Value*
-    genReadExpression() noexcept { //this whole function is so stupid
-      const auto instruction = instructions[instruction_idx];
-      const auto res = genExpression();
-      if (res == nullptr)
-        return nullptr;
-      if (llvm::isa<llvm::AllocaInst>(res))
-        return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
-      if (instruction.type == PeepMIR::Instruction::DEREFERENCE)
-        return builder.CreateLoad(tu->translateType(instruction.dereference_type()), res);
-      if (instruction.type == PeepMIR::Instruction::GLOBAL)
-        return builder.CreateLoad(llvm::cast<llvm::GlobalVariable>(res)->getValueType(), res);
-      if (instruction.type == PeepMIR::Instruction::LOCAL)
-        return builder.CreateLoad(llvm::cast<llvm::AllocaInst>(res)->getAllocatedType(), res);
-
-      return res;
+    genAssign(PeepMIR::Instruction::Type type, u64_t bitwidth = 0) noexcept {
+      switch (type) {
+        using enum PeepMIR::Instruction::Type;
+      case ASSIGN: {
+        const auto left = genRefExpression();
+        const auto right = genValueExpression();
+        return builder.CreateStore(right, left);
+      }
+      case UCAST_ASSIGN: {
+        const auto left = genRefExpression();
+        const auto right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, bitwidth));
+        return builder.CreateStore(right, left);
+      }
+      case SCAST_ASSIGN: {
+        const auto left = genRefExpression();
+        const auto right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, bitwidth));
+        return builder.CreateStore(right, left);
+      }
+      default:
+        std::unreachable();
+      }
     }
 
     [[nodiscard]] llvm::Value*
-    genExpression() noexcept {
+    genValueExpression() noexcept { //only relevant for that which can be used by value, with the addition of functions
       auto const& instruction = instructions[instruction_idx++];
       switch (instruction.type) {
-      using enum PeepMIR::Instruction::Type;
+        using enum PeepMIR::Instruction::Type;
       case NOOP:
         return nullptr;
-      case GLOBAL: {
-        const auto global = (tu->module.getNamedGlobal(instruction.global_name()));
-        assert(global);
-        return global;
-      }
       case FUNCTION: {
-        const auto function = (tu->module.getFunction(instruction.function_name())); assert(function);
+        const auto function = tu->module.getFunction(instruction.function_name()); assert(function);
         return function;
       }
-      case IMPORTED_GLOBAL:
-        assert(false);
-      case IMPORTED_FUNCTION: {
-        return tu->getFunctionImport(instruction.imported_function_name());
-      }
-
       case LOCAL: {
-        if(instruction.local_idx() >= locals.size()) {
-          llvmfunc->print(llvm::outs());
-          std::unreachable();
-        }
-        const auto local = (locals[instruction.local_idx()]);
-        return local;
+        assert(instruction.local_idx() < locals.size());
+        const auto local = locals[instruction.local_idx()];
+        return builder.CreateLoad(local->getAllocatedType(), local);
       }
-      case INT_LITERAL:
+      case IMPORTED_FUNCTION:
+        return tu->getFunctionImport(instruction.imported_function_name());
+
+      case I8_LITERAL:
+        return llvm::ConstantInt::get(tu->i8, instruction.value, true);
+      case I16_LITERAL:
+        return llvm::ConstantInt::get(tu->i16, instruction.value, true);
+      case I32_LITERAL:
+        return llvm::ConstantInt::get(tu->i32, instruction.value, true);
+      case I64_LITERAL:
         return llvm::ConstantInt::get(tu->i64, instruction.value, true);
-      case UINT_LITERAL:
+      case U8_LITERAL:
+        return llvm::ConstantInt::get(tu->i8, instruction.value);
+      case U16_LITERAL:
+        return llvm::ConstantInt::get(tu->i16, instruction.value);
+      case U32_LITERAL:
+        return llvm::ConstantInt::get(tu->i32, instruction.value);
+      case U64_LITERAL:
         return llvm::ConstantInt::get(tu->i64, instruction.value);
       case FLOAT_LITERAL:
         return llvm::ConstantFP::get(tu->f32, instruction.float_value());
       case DOUBLE_LITERAL:
         return llvm::ConstantFP::get(tu->f64, instruction.double_value());
       case BOOL_LITERAL:
-        return instruction.bool_value() ? tu->i1_1 : tu->i1_0;
+        return instruction.bool_value() ? tu->bool_true : tu->bool_false;
       case CHAR_LITERAL:
         return llvm::ConstantInt::get(tu->i8, instruction.char_value());
       case STRING_LITERAL:
         return builder.CreateGlobalString(instruction.string_value());
-
 
       case ADD: case FADD:
       case SUB: case FSUB:
       case MULT: case FMULT:
       case UDIV: case SDIV: case FDIV:
       case UMOD: case SMOD: case FMOD:
-      case ASSIGN:
       case ULESS: case SLESS: case FLESS:
       case UGTR: case SGTR: case FGTR:
       case ULEQ: case SLEQ: case FLEQ:
@@ -533,8 +529,19 @@ class TU final : public Backend {
       case BITXOR:
         return genBinary(instruction.type);
 
-      case PRE_INC: case FPRE_INC:
-      case PRE_DEC: case FPRE_DEC:
+      case ASSIGN:
+        return genAssign(instruction.type);
+      case UCAST_ASSIGN: case SCAST_ASSIGN:
+        return genAssign(instruction.type, instruction.cast_assign_bitwidth());
+
+      case PRE_INC:
+      case FPRE_INC:
+      case PRE_DEC:
+      case FPRE_DEC: {
+        const auto var = llvm::cast<llvm::AllocaInst>(genUnary(instruction.type));
+        return builder.CreateLoad(var->getAllocatedType(), var);
+      }
+
       case ADDRESS_OF:
       case NEGATE: case FNEGATE:
       case BITNOT:
@@ -542,43 +549,94 @@ class TU final : public Backend {
       case POST_DEC: case FPOST_DEC:
         return genUnary(instruction.type);
       case DEREFERENCE:
-        return builder.CreateLoad(tu->ptr, genExpression());
+        return builder.CreateLoad(
+          tu->translateType(instruction.dereference_type()),
+          genValueExpression());
 
-      case UCAST:
-        return builder.CreateZExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.bitwidth()));
-      case SCAST:
-        return builder.CreateSExtOrTrunc(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.bitwidth()));
-      case FCAST:
-        assert(instruction.value == 32 or instruction.value == 64);
-        return builder.CreateFPCast(genReadExpression(),
-          instruction.value == 32
-          ? llvm::Type::getFloatTy(tu->context)
-          : llvm::Type::getDoubleTy(tu->context));
+      case UCAST: {
+        const auto dest_type = instruction.cast_type();
+        const auto llvm_dest_type = tu->translateType(dest_type);
+        if (dest_type->isFloating())
+          return builder.CreateUIToFP(genValueExpression(), llvm_dest_type);
+        return builder.CreateZExtOrTrunc(genValueExpression(), llvm_dest_type);
+      }
+      case SCAST: {
+        const auto dest_type = instruction.cast_type();
+        const auto llvm_dest_type = tu->translateType(dest_type);
+        if (dest_type->isFloating())
+          return builder.CreateSIToFP(genValueExpression(), llvm_dest_type);
+        return builder.CreateSExtOrTrunc(genValueExpression(), llvm_dest_type);
+      }
+      case FCAST: {
+        const auto dest_type = instruction.cast_type();
+        const auto llvm_dest_type = tu->translateType(dest_type);
+        if (dest_type->isIntegral()) {
+          const auto primitive_dest_type = dest_type->castToPrimitive();
+          if (primitive_dest_type->isSignedIntegral())
+            return builder.CreateFPToSI(genValueExpression(), llvm_dest_type);
+          return builder.CreateSIToFP(genValueExpression(), llvm_dest_type);
+        }
+        return builder.CreateFPCast(genValueExpression(), llvm_dest_type);
+      }
       case PCAST:
-      case NCAST:
-        return genReadExpression();
-      case U_TO_F:
-        assert(instruction.value == 32 or instruction.value == 64);
-        return builder.CreateUIToFP(genReadExpression(), instruction.value == 64 ? tu->f64 : tu->f32);
-      case S_TO_F:
-        assert(instruction.value == 32 or instruction.value == 64);
-        return builder.CreateSIToFP(genReadExpression(), instruction.value == 64 ? tu->f64 : tu->f32);
-      case F_TO_U:
-        return builder.CreateFPToUI(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.bitwidth()));
-      case F_TO_S:
-        return builder.CreateFPToSI(genReadExpression(), llvm::IntegerType::get(tu->context, instruction.bitwidth()));
+        return genValueExpression();
 
       case CALL: {
-        const auto fn = genExpression();
+        const auto fn = genRefExpression();
         llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
         for (auto i{0uz}; i<instruction.num_params(); ++i)
-          parameters[i] = genExpression();
+          parameters[i] = genValueExpression();
 
         return builder.CreateCall(
           llvm::cast<llvm::Function>(fn),
           {parameters, instruction.num_params()}
           );
       }
+
+      default:
+        std::unreachable();
+      }
+    }
+
+    [[nodiscard]] llvm::Value*
+    genRefExpression() noexcept { //only relevant for that which can be referenced
+      auto const& instruction = instructions[instruction_idx++];
+      switch (instruction.type) {
+      using enum PeepMIR::Instruction::Type;
+      case FUNCTION: {
+        const auto function = tu->module.getFunction(instruction.function_name()); assert(function);
+        return function;
+      }
+      case IMPORTED_FUNCTION:
+        return tu->getFunctionImport(instruction.imported_function_name());
+
+      case LOCAL:
+        assert(instruction.local_idx() < locals.size());
+        return locals[instruction.local_idx()];
+
+      case PRE_INC: case FPRE_INC:
+      case PRE_DEC: case FPRE_DEC:
+        return genUnary(instruction.type);
+      case ASSIGN: {
+        const auto left = genRefExpression();
+        const auto right = genValueExpression();
+        return builder.CreateStore(right, left);
+      }
+      case UCAST_ASSIGN: {
+        const auto left = genRefExpression();
+        const auto right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_bitwidth()));
+        return builder.CreateStore(right, left);
+      }
+      case SCAST_ASSIGN: {
+        const auto left = genRefExpression();
+        const auto right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_bitwidth()));
+        return builder.CreateStore(right, left);
+      }
+
+
+      case DEREFERENCE:
+        return builder.CreateLoad(tu->ptr, genRefExpression());
+
       default:
         std::unreachable();
       }
@@ -587,7 +645,7 @@ class TU final : public Backend {
     void genBlock(u32_t instruction_cut_off) {
       llvm::Value* branch_value{};
       while (instruction_idx < instruction_cut_off)
-        branch_value = genExpression();
+        branch_value = genValueExpression();
 
       const auto& block = mir_blocks[block_idx];
       switch (block.terminator_type) {
@@ -597,7 +655,8 @@ class TU final : public Backend {
           llvm_blocks[block.br.next_block_idx]);
         break;
       case BRC:
-        builder.CreateCondBr( branch_value,
+        builder.CreateCondBr(
+          builder.CreateTrunc(branch_value, tu->i1),
           llvm_blocks[block.brc.true_block_idx],
           llvm_blocks[block.brc.false_block_idx]);
         break;
@@ -626,8 +685,6 @@ class TU final : public Backend {
           );
       }
 
-      mir_blocks.destroy_and_deallocate();
-      instructions.destroy_and_deallocate();
       if (verifyFunction(*llvmfunc, &llvm::errs())) {
         tu->module.print(llvm::outs(), nullptr);
         throw BackendError("Failed to verify Function!", llvmfunc->getName().str(), 0);
@@ -676,8 +733,9 @@ public:
 
   explicit TU(const std::string& filename)
   : module(filename, context) {
-    i1 = llvm::Type::getInt1Ty(context); i1_0 = llvm::ConstantInt::get(i1, 0); i1_1 = llvm::ConstantInt::get(i1, 1);
-    i8 = llvm::Type::getInt8Ty(context); i16 = llvm::Type::getInt16Ty(context);
+    i1 = llvm::Type::getInt1Ty(context);
+    i8 = llvm::Type::getInt8Ty(context); bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0);
+    i16 = llvm::Type::getInt16Ty(context);
     i32 = llvm::Type::getInt32Ty(context); i64 = llvm::Type::getInt64Ty(context);
     f32 = llvm::Type::getFloatTy(context); f64 = llvm::Type::getDoubleTy(context);
     devoid = llvm::Type::getVoidTy(context); ptr = llvm::PointerType::get(context, 0);

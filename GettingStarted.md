@@ -8,7 +8,7 @@ The build folder contains the outputs of all 'emit' commands. <br>
 To build your project, just do `LookOnceMore build` within the project directory.
 
 ### Modules
-LookOnceMore uses a module system. <br>
+LookOnceMore uses a folder-based module system. <br>
 A module contains one or more .lom files, which are all compiled together into one translation unit. <br>
 To create a module, simply create a directory within 'src'. The module's name is taken directly from the directory's name. <br>
 All files within that directory will be compiled as part of the module. <br>
@@ -23,21 +23,24 @@ To import a module, just type 'import <module_name>' before any globals have bee
 Access the members of a module by appending the module name with a dot. <br>
 
 ### C Interop
-Calling C functions can be done using the '__C' intrinsic. <br>
-You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration (Note: the 'fn' keyword is not needed). <br>
+Calling C functions can be done using the '__C' keyword. <br>
+You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration (note, the 'fn' keyword is not needed). <br>
 Ensure that the type of the C function has been appropriately translated to LOM. <br>
 Ex: `__C puts(raw -> char str) -> i32;` <br>
 This will place the function as part of the internal '__C' module, and as such only one declaration can be present throughout the entire program. <br>
-If variadic arguments are needed, use the '__va' intrinsic as the last type. <br>
+If variadic arguments are needed, use the '__va' keyword as the last type. <br>
 Ex: `__C printf(raw -> char fmt, __va) -> i32;` <br>
 Calling these functions can be done as if through the '__C' module, which is implicitly imported in every module by default. <br>
+The C standard library is linked to by default. Linking to anything else requires outputting object files and doing so manually. <br>
 
-### Current Limitations
-The following is a list of all missing features that are soon to be implemented.
-- No form of (explicit) casting.
+### Current Limitations, Missing Features, and Bugs
+- Globals are unsupported as a constant evaluator needs to be made to enforce constant initialization.
+- Private functions with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
+- No support for creating or importing precompiled LOM libraries directly.
 - No pointer arithmetic.
 - No arrays.
-- No string type.
+- _= operators are currently bugged to only work with single tokens prefixing them (x += 2 works, x-> += 2 does not)
+- No string type beyond string literals accessable only through raw pointer to immutable char.
 - No working variants or tuples.
 - No standard library.
 - No user defined structures.

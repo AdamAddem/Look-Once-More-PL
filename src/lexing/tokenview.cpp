@@ -6,13 +6,13 @@
 
 using namespace LOM::Lexer;
 
-eden_nonull_args eden_cstr_arg(2)
+eden_nonull_args
 void Token::throw_if(const TokenType unwanted_type, const char *err_msg) const {
   if (type == unwanted_type)
     throw ParsingError(err_msg, *this);
 }
 
-eden_nonull_args eden_cstr_arg(2)
+eden_nonull_args
 void Token::throw_if_not(const TokenType expected_type, const char *err_msg) const {
   if (type not_eq expected_type)
     throw ParsingError(err_msg, *this);
@@ -24,8 +24,6 @@ std::string Token::toString() const {
 
   if (isLiteral()) {
     switch (type) {
-    case TokenType::INTEGER_LITERAL:
-      return std::to_string(getRawValue());
     case TokenType::SIGNED_LITERAL:
       return std::to_string(getSigned());
     case TokenType::UNSIGNED_LITERAL:
@@ -56,8 +54,6 @@ std::string Token::toDebugString() const {
 
   if (isLiteral()) {
     switch (type) {
-    case TokenType::INTEGER_LITERAL:
-      return toString();
     case TokenType::SIGNED_LITERAL:
       return {toString() + 'i'};
     case TokenType::UNSIGNED_LITERAL:
@@ -116,24 +112,24 @@ void TokenView::print(const unsigned initial_indent) const {
   }
 }
 
-eden_nonull_args eden_cstr_arg(2)
+eden_nonull_args
 void TokenView::expect_then_pop(const TokenType expected_type, const char *err_msg) {
   begin->throw_if_not(expected_type, err_msg);
   pop();
 }
 
-eden_nonull_args eden_cstr_arg(2)
+eden_nonull_args
 void TokenView::expect(const TokenType expected_type, const char *err_msg) const {
   begin->throw_if_not(expected_type, err_msg);
 }
 
-eden_nonull_args eden_cstr_arg(2)
+eden_nonull_args
 void TokenView::reject_then_pop(const TokenType unwanted_type, const char *err_msg) {
   begin->throw_if(unwanted_type, err_msg);
   pop();
 }
 
-eden_nonull_args eden_cstr_arg(2)
+eden_nonull_args
 void TokenView::reject(const TokenType unwanted_type, const char *err_msg) const {
   begin->throw_if(unwanted_type, err_msg);
 }

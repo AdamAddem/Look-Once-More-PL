@@ -131,8 +131,9 @@ static void print(std::vector<ASTNode>::const_iterator &node,
   case IDENTIFIER:
     std::cout << node->identifier();
     return;
-  case INTEGER_LITERAL:
-    std::cout << node->value();
+  case CAST:
+    std::cout << "cast<" << node->cast_type()->toString()
+    << ">("; print(++node, ln); std::cout << ")";
     return;
   case SIGNED_LITERAL:
     std::cout << node->signed_val();

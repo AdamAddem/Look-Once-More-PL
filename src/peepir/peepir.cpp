@@ -51,6 +51,8 @@ castForType(const Type* type) noexcept {
         primitive->isSignedIntegral()
         ? Instruction::SCAST : Instruction::UCAST;
     }
+    if (primitive->isChar())
+      return Instruction::UCAST;
   }
   eden_unreachable("This shouldn't happen!");
 }
@@ -315,13 +317,14 @@ class Peeper {
     const bool left_float = left.type->isFloating();
     const bool arithmetic = left.type->isArithmetic();
 
+    const auto right_idx = instructions.size();
     auto right = peepExpression();
 
     if (left.type not_eq right.type) {
       //if left or right is an integer literal, coerce its type to the other
       if (coerce_if_integerliteral(instructions[left_idx], right.type))
         left.type = right.type;
-      else if (coerce_if_integerliteral(instructions.back(), left.type))
+      else if (coerce_if_integerliteral(instructions[right_idx], left.type))
         right.type = left.type;
       else {
           throw ValidationError("Right type in binary expression incompatable with left type.",
@@ -633,7 +636,8 @@ class Peeper {
     if (not condition.type->isBool())
       throw ValidationError("While Loop condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
-    brc_to_after( [=, this] mutable {
+    brc_to_after(
+      [=, this] mutable {
       new_block();
       peepScopedStatement(nodes.pop_scoped());
       current_block().set_br(condition_idx);
@@ -702,13 +706,14 @@ class Peeper {
       table->addLocalVariable(name, declaration_type);
     }
 
+    const auto init_expr_idx = instructions.size();
     const auto init_expr = peepExpression();
     if (not init_expr.type->coercibleTo(declaration_type.type))
       throw ValidationError("Variable initialization's type is not compatible with variable type.",
         std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
         name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", init_expr.toString()), current_line_number);
 
-    coerce_if_integerliteral(instructions.back(), declaration_type.type);
+    coerce_if_integerliteral(instructions[init_expr_idx], declaration_type.type);
 
     adjustAssignExpression(instructions[assign_idx], declaration_type, init_expr);
   }

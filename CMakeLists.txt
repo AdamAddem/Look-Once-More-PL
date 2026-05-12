@@ -4,7 +4,7 @@ project(LookOnceMore)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -Wnrvo -Wno-deprecated-declarations -Wno-nullability-extension -Wno-nullability-completeness")
 
-find_package(LLVM 21.1.8 REQUIRED CONFIG)
+find_package(LLVM 22.1.4 REQUIRED CONFIG)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 add_executable(lom

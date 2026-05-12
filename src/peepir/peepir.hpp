@@ -175,7 +175,7 @@ public:
 
   constexpr void
   set_brc(u32_t true_block_idx, u32_t false_block_idx) noexcept {
-    if (terminator_type == Terminator::NONE) {
+    if (terminator_type not_eq Terminator::RET) {
       terminator_type = Terminator::BRC;
       brc = {true_block_idx, false_block_idx};
     }
@@ -183,7 +183,7 @@ public:
 
   constexpr void
   set_br(u32_t next_block_idx) noexcept {
-    if (terminator_type == Terminator::NONE) {
+    if (terminator_type not_eq Terminator::RET) {
       terminator_type = Terminator::BR;
       br.next_block_idx = next_block_idx;
     }

@@ -155,6 +155,10 @@ public:
   {return primitive_type == BOOL;}
 
   [[nodiscard]] constexpr bool
+  isChar() const noexcept
+  {return primitive_type == CHAR;}
+
+  [[nodiscard]] constexpr bool
   isString() const noexcept
   {return primitive_type == STRING;}
 

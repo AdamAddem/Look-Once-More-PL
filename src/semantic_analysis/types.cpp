@@ -51,7 +51,7 @@ bool Type::castableTo(const Type* other) const noexcept {
       return true;
   }
 
-  if (derived_type not_eq other_type or flags not_eq other->flags)
+  if (derived_type not_eq other_type)
     return false;
 
   switch (derived_type) {

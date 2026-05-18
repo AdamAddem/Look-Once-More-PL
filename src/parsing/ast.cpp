@@ -21,7 +21,7 @@ static void print(std::vector<ASTNode>::const_iterator &node,
   using enum ASTNode::Type;
   switch (node->type()) {
   case EMPTY:
-    std::unreachable();
+    eden_unreachable("Empty should not be printed.");
   case DECLARATION:
     std::cout << (++node)->instance_type().toString() << " ";
     std::cout << (++node)->identifier() << " = ";
@@ -157,7 +157,7 @@ static void print(std::vector<ASTNode>::const_iterator &node,
     std::cout << '"' << node->string_val() << '"';
     return;
   default:
-    std::unreachable();
+    eden_unreachable("Invalid literal astnode type.");
   }
 }
 

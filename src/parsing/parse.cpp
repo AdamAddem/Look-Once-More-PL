@@ -32,7 +32,7 @@ parseTypeDetails(TokenView& tokens) {
     if (tokens.peek_is(TokenType::KEYWORD_MUT))
       details.is_mutable = true;
     else
-      std::unreachable();
+      eden_unreachable("Type modifier not supported.");
 
     tokens.pop();
   }
@@ -60,7 +60,7 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
       case TokenType::KEYWORD_UNIQUE:
         return table.addUniquePointer(subtype_instance);
       default:
-        std::unreachable();
+        eden_unreachable("Pointer type not supported.");
       }
 
     }
@@ -96,7 +96,7 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
     case TokenType::KEYWORD_DEVOID:
       return Type::devoid();
     default:
-      std::unreachable();
+      eden_unreachable("Pointer type not supported.");
     }
   }
 
@@ -250,7 +250,7 @@ struct Body {
         literal_type = ASTNode::STRING_LITERAL;
         break;
       default:
-        std::unreachable();
+        eden_unreachable("Invalid literal token type.");
       }
 
       const u64_t literal_value = token.getRawValue();
@@ -514,7 +514,7 @@ struct Body {
     case SCOPED:
     case RETURN:
     case EXPR_STMT:
-      std::unreachable();
+      eden_unreachable("Statements should not be contained in an expression.");
 
     case UNARY:
       tree.emplace_back(UNARY, expression.value);
@@ -575,7 +575,7 @@ struct Body {
       return;
 
     default:
-      std::unreachable();
+      eden_unreachable("Invalid ast node type in expression translation.");
     }
   }
 
@@ -695,12 +695,12 @@ struct Body {
       tokens.pop();
       return parseWhile();
     case TokenType::KEYWORD_DO:
-      std::unreachable();
+      eden_unreachable("Do keyword not supported.");
     case TokenType::KEYWORD_RETURN:
       tokens.pop();
       return parseReturn();
     case TokenType::KEYWORD_SWITCH:
-      std::unreachable();
+      eden_unreachable("Switch keyword not supported.");
     case TokenType::LBRACE:
       return parseScoped();
     case TokenType::LESS:

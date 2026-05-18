@@ -113,7 +113,10 @@ void grabCharLiteral(FileInAnalysis &file) {
 void grabSymbol(FileInAnalysis &file) {
   TokenType type;
   const int c = file.stream.get();
-  if (c == '-' and isCategorySYMBOLS(file.token_list.back().getType()) and is_num(file.stream.peek())) {
+  const auto prev_token_type = file.token_list.back().getType();
+  if (c == '-' and
+    (isCategorySYMBOLS(prev_token_type) or isCategoryKEYWORDS(prev_token_type)) and  //this is dumb but it works
+    is_num(file.stream.peek())) {
     file.stream.putback('-');
     return grabNumber(file);
   }
@@ -268,7 +271,7 @@ void grabNumber(FileInAnalysis &file) {
     break;
 
   default:
-    std::unreachable();
+    eden_unreachable("Invalid literal token type.");
   }
 
   file.token_list.emplace_back(type, value, file.line_number);
@@ -358,8 +361,7 @@ void Lexer::tokenizeFile(std::vector<Token>& out_tokens, const std::filesystem::
     if (c == '/' and skipComments(file))
       continue;
 
-
-    if (is_num(c))
+    if (is_num(c) )
       grabNumber(file);
     else if (canStartIdentifier(c))
       grabIdentOrKeyword(file);

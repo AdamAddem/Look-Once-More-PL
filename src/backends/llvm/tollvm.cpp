@@ -1,5 +1,5 @@
 #include "tollvm.hpp"
-#include "../../parsing/ast.hpp"
+#include "parsing/ast.hpp"
 #include "build_system/build.hpp"
 #include "error.hpp"
 #include "peepir/peepir.hpp"
@@ -99,7 +99,7 @@ class TU final : public Backend {
     const auto target = llvm::TargetRegistry::lookupTarget(module.getTargetTriple(), err);
     if (not target) {
       llvm::errs() << err;
-      std::unreachable();
+      std::quick_exit(1);
     }
 
     static constexpr auto CPU = "generic";
@@ -168,41 +168,45 @@ class TU final : public Backend {
   }
 
   [[nodiscard]] llvm::Type*
-  translateType(const Type* t) const {
-    assert(not t->isCustom());
-    assert(not t->isVariant());
-    assert(t not_eq PrimitiveType::string());
+  translateType(const Type* type) const {
+    assert(not type->isCustom());
+    assert(not type->isVariant());
+    assert(type not_eq PrimitiveType::string());
 
-    if (t->isIntegral()) {
-      if (t == PrimitiveType::i32() or t == PrimitiveType::u32())
-        return i32;
-      if (t == PrimitiveType::i64() or t == PrimitiveType::u64())
-        return i64;
-      if (t == PrimitiveType::i8() or t == PrimitiveType::u8())
+    if (type->isPrimitive()) {
+      const auto prim_type = type->castToPrimitive();
+      const auto is_integral = prim_type->isIntegral();
+      const auto bitwidth = prim_type->bitwidth();
+
+      if (is_integral)
+        switch (bitwidth) {
+        case 8: return i8;
+        case 16: return i16;
+        case 32: return i32;
+        case 64: return i64;
+        default:
+          eden_unreachable("Invalid type bitwidth.");
+        }
+
+      if (prim_type->isFloating())
+        switch (bitwidth) {
+        case 32: return f32;
+        case 64: return f64;
+        default:
+          eden_unreachable("Invalid float bitwidth.");
+        }
+
+      if (prim_type == PrimitiveType::bool_() or prim_type == PrimitiveType::char_())
         return i8;
-      if (t == PrimitiveType::i16() or t == PrimitiveType::u16())
-        return i16;
-      std::unreachable();
     }
 
-    if (t->isFloating()) {
-      if (t == PrimitiveType::f32())
-        return f32;
-      if (t == PrimitiveType::f64())
-        return f64;
-      std::unreachable();
-    }
-
-    if (t == Type::devoid())
-      return devoid;
-
-    if (t == PrimitiveType::bool_() or t == PrimitiveType::char_())
-      return i8;
-
-    if (t->isPointer())
+    if (type->isPointer())
       return ptr;
 
-    std::unreachable();
+    if (type == Type::devoid())
+      return devoid;
+
+    eden_unreachable("Invalid type.");
   }
 
   [[nodiscard]] llvm::IntegerType*
@@ -233,22 +237,12 @@ class TU final : public Backend {
     Function(PeepMIR::Function& func, TU* tu)
     : tu(tu), builder(tu->context) {
       llvm_blocks.reserve(func.blocks.size());
+      const auto func_type = tu->translateFunctionType(func.type);
+      return_type = func_type->getReturnType();
 
-      llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
-      const auto function_type = func.type;
-      auto num_params{0uz};
-      for (const auto t : function_type->parameterTypes()) {
-        arg_types[num_params] = tu->translateType(t);
-        ++num_params;
-      }
+      const auto num_params = func_type->getNumParams();
+      const auto arg_types = func_type->param_begin();
 
-      //hack
-      return_type =
-      function_type->returnType()->isBool()
-      ? tu->i1
-      : tu->translateType(function_type->returnType());
-
-      const auto func_type = llvm::FunctionType::get(return_type, {arg_types, num_params}, false);
       const auto linkage = func.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
       llvmfunc = llvm::Function::Create(func_type, linkage, 0, std::string_view(func.name), &tu->module);
 
@@ -378,7 +372,7 @@ class TU final : public Backend {
         return load;
       }
       default:
-        std::unreachable();
+        eden_unreachable("Invalid unary peep instruction type.");
       }
     }
 
@@ -404,7 +398,7 @@ class TU final : public Backend {
       case FMOD: return builder.CreateFRem(left, right);
 
       case ASSIGN:
-        std::unreachable();
+        eden_unreachable("Assign shouldn't be called here.");
 
       case ULESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULT, left, right);
       case SLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLT, left, right);
@@ -437,32 +431,31 @@ class TU final : public Backend {
         : llvm::CmpInst::Predicate::ICMP_NE,
         left, right);
       default:
-        std::unreachable();
+        eden_unreachable("Invalid binary peep instruction type.");
       }
     }
 
     [[nodiscard]] llvm::Value*
     genAssign(PeepMIR::Instruction::Type type, u64_t bitwidth = 0) noexcept {
+      const auto left = genRefExpression();
+      llvm::Value* right;
       switch (type) {
         using enum PeepMIR::Instruction::Type;
-      case ASSIGN: {
-        const auto left = genRefExpression();
-        const auto right = genValueExpression();
-        return builder.CreateStore(right, left);
-      }
-      case UCAST_ASSIGN: {
-        const auto left = genRefExpression();
-        const auto right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, bitwidth));
-        return builder.CreateStore(right, left);
-      }
-      case SCAST_ASSIGN: {
-        const auto left = genRefExpression();
-        const auto right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, bitwidth));
-        return builder.CreateStore(right, left);
-      }
+      case ASSIGN:
+        right = genValueExpression();
+        break;
+      case UCAST_ASSIGN:
+        right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, bitwidth));
+        break;
+      case SCAST_ASSIGN:
+        right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, bitwidth));
+        break;
+
       default:
-        std::unreachable();
+        eden_unreachable("Invalid assign peep instruction type.");
       }
+
+      return builder.CreateStore(right, left);
     }
 
     [[nodiscard]] llvm::Value*
@@ -594,7 +587,7 @@ class TU final : public Backend {
       }
 
       default:
-        std::unreachable();
+        eden_unreachable("Invalid peep instruction type.");
       }
     }
 
@@ -638,7 +631,7 @@ class TU final : public Backend {
         return builder.CreateLoad(tu->ptr, genRefExpression());
 
       default:
-        std::unreachable();
+        eden_unreachable("Invalid peep instruction type.");
       }
     }
 
@@ -664,7 +657,7 @@ class TU final : public Backend {
         builder.CreateRet(branch_value);
         break;
       default:
-        std::unreachable();
+        eden_unreachable("Invalid block terminator type.");
       }
     }
 

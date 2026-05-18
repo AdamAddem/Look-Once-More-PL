@@ -24,7 +24,7 @@ bool Type::coercibleTo(const Type* other) const noexcept {
 
   switch (derived_type) {
   case DEVOID:
-    std::unreachable(); //only one devoid instance allowed, so this should've returned earlier
+    eden_unreachable("Only one devoid instance allowed, this should've returned earlier.");
   case PRIMITIVE:
     return castToPrimitive()->coercibleTo(other->castToPrimitive());
   case POINTER:
@@ -33,7 +33,7 @@ bool Type::coercibleTo(const Type* other) const noexcept {
   case FUNCTION:
   case CUSTOM:
   default:
-    std::unreachable();
+    eden_unreachable("Invalid derived type.");
   }
 
 }
@@ -56,7 +56,7 @@ bool Type::castableTo(const Type* other) const noexcept {
 
   switch (derived_type) {
   case DEVOID:
-    std::unreachable(); //only one devoid instance allowed, so this should've returned earlier
+    eden_unreachable("Only one devoid instance allowed, this should've returned earlier.");
   case PRIMITIVE:
     return castToPrimitive()->castableTo(other->castToPrimitive());
   case POINTER:
@@ -65,7 +65,7 @@ bool Type::castableTo(const Type* other) const noexcept {
   case FUNCTION:
   case CUSTOM:
   default:
-    std::unreachable();
+    eden_unreachable("Invalid derived type.");
   }
 }
 
@@ -83,7 +83,7 @@ std::string Type::toString() const noexcept {
     return static_cast<const FunctionType*>(this)->toString();
   case CUSTOM:
   default:
-    std::unreachable();
+    eden_unreachable("Invalid derived type.");
   }
 }
 
@@ -125,7 +125,7 @@ bool PrimitiveType::coercibleTo(const PrimitiveType* other) const noexcept {
     }
     return false;
   default:
-    std::unreachable();
+    eden_unreachable("Invalid primitive type.");
   }
 }
 
@@ -159,7 +159,7 @@ bool PrimitiveType::castableTo(const PrimitiveType* other) const noexcept {
     }
     return false;
   default:
-    std::unreachable();
+    eden_unreachable("Invalid primitive type.");
   }
 }
 
@@ -190,7 +190,7 @@ std::string PrimitiveType::toString() const noexcept {
   case STRING:
     return "string";
   default:
-    std::unreachable();
+    eden_unreachable("Invalid primitive type.");
   }
 }
 /* Primitive Type */
@@ -239,7 +239,7 @@ std::string PointerType::toString() const noexcept {
   case VAGUE:
     return "vague -> ";
   default:
-    std::unreachable();
+    eden_unreachable("Invalid pointer type.");
   }
 }
 /* Pointer Type */

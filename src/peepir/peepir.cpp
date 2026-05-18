@@ -121,19 +121,7 @@ class Peeper {
   is_current_block_empty() const noexcept
   {return blocks.back().first_instruction_idx == instructions.size();}
 
-  //creates a brc
-  //true index will be the first block created by body
-  //false index will be the block after body executes
-  constexpr void
-  brc_to_after(auto&& body) {
-    const u32_t current_block_idx = current_block_index();
-    const u32_t true_block_idx = current_block_idx + 1;
-    body();
-    const u32_t false_block_idx = blocks.size() - 1;
-    blocks[current_block_idx].set_brc(true_block_idx, false_block_idx);
-  }
-
-  //creates a br that goes to the next block, as if it had fallen through
+  //creates a br that goes to the next block, as if it had fallen through (does not create next block)
   //does nothing if current block is empty
   constexpr void
   br_fallthrough() noexcept {
@@ -190,7 +178,7 @@ class Peeper {
       instructions.emplace_back(Instruction::STRING_LITERAL, node.value());
       return string_literal;
     default:
-      std::unreachable();
+      eden_unreachable("Invalid literal type.");
     }
   }
 
@@ -384,7 +372,7 @@ class Peeper {
       break;
 
     default:
-      std::unreachable();
+      eden_unreachable("Invalid binary operator.");
     }
 
     auto& opr_instruction = instructions[opr_idx];
@@ -458,7 +446,7 @@ class Peeper {
       opr_instruction.type = Instruction::NEQ;
       return left;
     default:
-      std::unreachable();
+      eden_unreachable("Invalid binary operator.");
     }
 
   }
@@ -508,7 +496,7 @@ class Peeper {
       expression = expression.type->castToPointer()->getSubtype();
       break;
     default:
-      std::unreachable();
+      eden_unreachable("Invalid unary operator.");
     }
 
     auto& instruction = instructions[instruction_idx];
@@ -537,7 +525,7 @@ class Peeper {
       instruction.value = std::bit_cast<u64_t>(expression.type);
       break;
     default:
-      std::unreachable();
+      eden_unreachable("Invalid unary operator.");
     }
 
     return expression;
@@ -556,7 +544,7 @@ class Peeper {
     case CALLING:
       return peepCallingExpression(node.parameter_count());
     case SUBSCRIPT:
-      std::unreachable();
+      eden_unreachable("Subscript unimplemented.");
     case DOT_IDENTIFIER:
       return peepDotIdentifier(node.identifier());
     case IDENTIFIER:
@@ -578,7 +566,7 @@ class Peeper {
       return peepLiteral();
 
     default:
-      std::unreachable();
+      eden_unreachable("Invalid ASTNode while peeping expression.");
     }
   }
 
@@ -636,13 +624,16 @@ class Peeper {
     if (not condition.type->isBool())
       throw ValidationError("While Loop condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
-    brc_to_after(
-      [=, this] mutable {
-      new_block();
-      peepScopedStatement(nodes.pop_scoped());
-      current_block().set_br(condition_idx);
-      new_block();
-    });
+    const auto loop_body_idx = current_block_index() + 1;
+    force_new_block();
+    peepScopedStatement(nodes.pop_scoped());
+    if (is_current_block_empty())
+      instructions.emplace_back(Instruction::NOOP, 0);
+    current_block().set_br(condition_idx);
+    force_new_block();
+    const auto after_loop_idx = current_block_index();
+
+    blocks[condition_idx].set_brc(loop_body_idx, after_loop_idx);
   }
 
   void peepForLoop() const {assert(false and "Not sure about for loop form yet");}
@@ -714,7 +705,6 @@ class Peeper {
         name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", init_expr.toString()), current_line_number);
 
     coerce_if_integerliteral(instructions[init_expr_idx], declaration_type.type);
-
     adjustAssignExpression(instructions[assign_idx], declaration_type, init_expr);
   }
 
@@ -772,7 +762,7 @@ class Peeper {
       return (void)peepLiteral();
 
     default:
-      std::unreachable();
+      eden_unreachable("Invalid ASTNode while peeping statement.");
     }
   }
 
@@ -814,7 +804,7 @@ class Peeper {
         block.br.next_block_idx = current_block_index();
         break;
       default:
-        std::unreachable();
+        eden_unreachable("Invalid ASTNode while peeping statement.");
       }
 
     }
@@ -955,7 +945,7 @@ void printPeepInstruction(Instruction instruction) {
 
   case CALL: return std::println("CALL WITH {} PARAMETER(S)", instruction.num_params());
   default:
-    std::unreachable();
+    eden_unreachable("Invalid peep instruction.");
   }
 }
 
@@ -969,7 +959,7 @@ void printPeepBlockTerminator(Block block) {
   case RET:
     return std::println("\tRET");
   default:
-    std::unreachable();
+    eden_unreachable("Invalid block terminator type.");
   }
 }
 

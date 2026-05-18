@@ -40,7 +40,7 @@ std::string Token::toString() const {
       return getBool() ? "true" : "false";
 
     default:
-      std::unreachable();
+      eden_unreachable("Invalid literal token type.");
     }
   }
 
@@ -71,7 +71,7 @@ std::string Token::toDebugString() const {
       return getBool() ? "true_b" : "false_b";
 
     default:
-      std::unreachable();
+      eden_unreachable("Invalid literal token type.");
     }
   }
 

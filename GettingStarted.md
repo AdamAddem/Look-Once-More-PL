@@ -34,6 +34,10 @@ Calling these functions can be done as if through the '__C' module, which is imp
 The C standard library is linked to by default. Linking to anything else requires outputting object files and doing so manually. <br>
 
 ### Current Limitations, Missing Features, and Bugs
+- Functions may not have greater than 10 parameters and Identifiers may not be greater than 256 characters. 
+  - Doing either will cause a crash or assertion failure rather than a standard error message.
+  - The parameter limit is to avoid allocating memory when parsing, validating, and compiling functions.
+  - The identifier limit is to avoid allocating memory when tokenizing keywords.
 - Globals are unsupported as a constant evaluator needs to be made to enforce constant initialization.
 - Private functions with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
 - No support for creating or importing precompiled LOM libraries directly.

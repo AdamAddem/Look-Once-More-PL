@@ -12,10 +12,6 @@
 
 namespace {
 
-thread_local char buffer[1'000'000];
-thread_local char* buffer_start{buffer};
-thread_local const char* const buffer_end{buffer + 1'000'000};
-
 using namespace LOM;
 using namespace LOM::Lexer;
 using eden::releasing_string;
@@ -67,7 +63,7 @@ charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
 // called when opening quotes already consumed
 void grabStringLiteral(FileInAnalysis &file) {
 
-  char* const literal_start = buffer_start;
+  releasing_string literal{reserve_initial<5>};
   int c = file.stream.get();
   while (c not_eq EOF) {
     // stupid and dumb
@@ -83,16 +79,13 @@ void grabStringLiteral(FileInAnalysis &file) {
       c = charToEscapeSequenceEquivalent(file, file.stream.get());
       [[fallthrough]];
     default:
-      *buffer_start = static_cast<char>(c);
-      ++buffer_start;
+      literal.push_back(static_cast<char>(c));
     }
     c = file.stream.get();
   }
 
 ending_quote_found: // don't crucify me for this pls
-
-  *buffer_start = '\0'; ++buffer_start;
-  file.token_list.emplace_back(TokenType::STRING_LITERAL, std::bit_cast<u64_t>(literal_start), file.line_number);
+  file.token_list.emplace_back(TokenType::STRING_LITERAL, std::bit_cast<u64_t>(literal.release().get()), file.line_number);
 }
 
 // called when opening single-quote already consumed
@@ -280,7 +273,10 @@ void grabNumber(FileInAnalysis &file) {
 // first letter in front of file
 void grabIdentOrKeyword(FileInAnalysis &file) {
   int c = file.stream.get();
-  char* const word_start = buffer_start;
+
+  thread_local char keyword_buffer[Settings::MAX_IDENTIFIER_LENGTH]; //this exists so that keyword lexing doesn't need to allocate memory
+  char* buffer_start = keyword_buffer;
+
   while (c not_eq EOF) {
     if (not std::isalnum(c) and c not_eq '_')
       break;
@@ -289,31 +285,34 @@ void grabIdentOrKeyword(FileInAnalysis &file) {
     ++buffer_start;
     c = file.stream.get();
   }
+
   file.stream.putback(static_cast<char>(c));
-  *buffer_start = '\0';
-  std::string_view word_view{word_start, sz_t(buffer_start-word_start)};
-  ++buffer_start;
+  const std::string_view word_view{keyword_buffer, sz_t(buffer_start-keyword_buffer)};
 
   if (stringToTokenType.contains(word_view)) {
     auto token_type = stringToTokenType.at(word_view);
     file.token_list.emplace_back(token_type, file.line_number);
     return;
   }
-  if (word_view == "elif") [[unlikely]] {
+  if (word_view == "elif") {
     file.token_list.emplace_back(TokenType::KEYWORD_ELSE, file.line_number);
     file.token_list.emplace_back(TokenType::KEYWORD_IF, file.line_number);
     return;
   }
-  if (word_view == "true") [[unlikely]] {
+  if (word_view == "true") {
     file.token_list.emplace_back(TokenType::BOOL_LITERAL, 1, file.line_number);
     return;
   }
-  if (word_view == "false") [[unlikely]] {
+  if (word_view == "false") {
     file.token_list.emplace_back(TokenType::BOOL_LITERAL,  0, file.line_number);
     return;
   }
 
-  file.token_list.emplace_back(TokenType::IDENTIFIER, std::bit_cast<u64_t>(word_start), file.line_number);
+  *buffer_start = '\0';
+  const auto identifier_len = word_view.size() + 1;
+  char* identifier_str = new char[identifier_len];
+  std::memcpy(identifier_str, keyword_buffer, identifier_len);
+  file.token_list.emplace_back(TokenType::IDENTIFIER, std::bit_cast<u64_t>(identifier_str), file.line_number);
 }
 
 void skipWS(FileInAnalysis& file) {
@@ -353,7 +352,6 @@ void Lexer::tokenizeFile(std::vector<Token>& out_tokens, const std::filesystem::
     throw LexingError("File not found.", file_path.string(), 0);
 
   while (true) {
-    assert(buffer_start < buffer_end);
     skipWS(file);
     const int c = file.stream.peek();
     if (c == EOF)

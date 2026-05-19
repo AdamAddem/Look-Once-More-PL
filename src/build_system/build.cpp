@@ -56,10 +56,10 @@ lex_and_parse_module(const fs::path& directory) {
   return module_tu;
 }
 
-static void setup_std() {
-  auto p = &modules.emplace(std::pair(std::string_view("__C"), Module{"__C", &types})).first->second;
-  Module::Variable chptr{{p->addRawPointer({PrimitiveType::char_(), {}}), {}}, ""};
-  p->addFunction("puts", std::span(&chptr, 1), Type::devoid(), true, false);
+void LOM::reset_compilation_state() {
+  modules.clear();
+  main_module.reset();
+  types.~TypeContext(); std::construct_at(&types);
 }
 
 void LOM::build()
@@ -67,7 +67,7 @@ try {
   if (not fs::exists("src"))
     throw std::runtime_error("LookOnceMore: src directory not found!");
 
-  setup_std();
+  modules.emplace(std::pair(std::string_view("__C"), Module{"__C", &types}));
 
   std::vector<Parser::TU> parsed_tus;
   std::vector<fs::path> module_names; bool has_main = false;

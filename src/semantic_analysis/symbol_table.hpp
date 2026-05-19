@@ -77,6 +77,11 @@ public:
   [[nodiscard]] std::string_view
   getName() const noexcept {return module_name;}
 
+  void reset() noexcept {
+    current_scope = nullptr;
+    symbols.clear();
+  }
+
   eden_return_nonnull eden_nonull_args
   const FunctionType* addFunction(
     std::string_view name,

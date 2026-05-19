@@ -22,16 +22,15 @@ namespace {
 eden_return_nonnull eden_nonull_args
 [[nodiscard]] constexpr char*
 combineWithDot(char* before_dot, char* after_dot) noexcept {
-  assume_assert(before_dot); assume_assert(after_dot); assume_assert(before_dot not_eq after_dot);
 
-  thread_local char dot_names[100'000];
-  thread_local char* dot_names_start{dot_names};
+  eden::releasing_string combined{eden::flags::reserve_initial<10>};
+  while (*before_dot not_eq '\0')
+    combined.push_back(*before_dot), ++before_dot;
+  combined.push_back('.');
+  while (*after_dot not_eq '\0')
+    combined.push_back(*after_dot), ++after_dot;
 
-  char* const name_start = dot_names_start;
-  dot_names_start = std::format_to(dot_names_start, "{}.{}", before_dot, after_dot);
-  *dot_names_start = '\0'; ++dot_names_start;
-
-  return name_start;
+  return combined.release().get();
 }
 
 eden_nonull_args

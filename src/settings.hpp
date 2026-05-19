@@ -19,5 +19,6 @@ uint8_t getOptimizationLevel();
 
 void setArgs(unsigned argc, const char* argv[]);
 
-static constexpr unsigned short MAX_FUNCTION_PARAMETERS = 10;
+static constexpr auto MAX_FUNCTION_PARAMETERS = 10;
+static constexpr auto MAX_IDENTIFIER_LENGTH = 256;
 }

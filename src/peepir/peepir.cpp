@@ -328,7 +328,7 @@ class Peeper {
       if (not arithmetic)
         throw ValidationError("Non-arithmetic expression in arithmetic binary operation.",
           std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
-      left.details.is_mutable = false;
+      left.qualifiers.is_mutable = false;
       break;
 
     case Operator::LESS:
@@ -356,11 +356,11 @@ class Peeper {
       if (not arithmetic)
         throw ValidationError("Non-arithmetic expression(s) in bitwise operation.",
           std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
-      left.details.is_mutable = false;
+      left.qualifiers.is_mutable = false;
       break;
 
     case Operator::ASSIGN:
-      if (not left.details.is_mutable)
+      if (not left.qualifiers.is_mutable)
         throw ValidationError("Left expression in assignment non-mutable.",
           std::format("Type of expression is '{}'", left.type->toString()), current_line_number);
       break;
@@ -465,29 +465,29 @@ class Peeper {
     switch (opr) {
     case Operator::PRE_INCREMENT:
     case Operator::PRE_DECREMENT:
-      if (not expression.details.is_mutable)
+      if (not expression.qualifiers.is_mutable)
         throw ValidationError("Prefix operator used on non-mutable expression.", expression.toString(), current_line_number);
       break;
     case Operator::UNARY_MINUS:
       if (not arithmetic)
         throw ValidationError("Unary minus used on non-arithmetic expression.", expression.toString(), current_line_number);
-      expression.details.is_mutable = false;
+      expression.qualifiers.is_mutable = false;
       break;
     case Operator::BITNOT:
       if (not arithmetic)
         throw ValidationError("bitnot operator used non-arithmetic expression", expression.toString(), current_line_number);
-      expression.details.is_mutable = false;
+      expression.qualifiers.is_mutable = false;
       break;
     case Operator::NOT:
       if (not expression.type->isBool())
         throw ValidationError("not operator used non-boolean expression", expression.toString(), current_line_number);
-      expression.details.is_mutable = false;
+      expression.qualifiers.is_mutable = false;
       break;
     case Operator::POST_INCREMENT:
     case Operator::POST_DECREMENT:
-      if (not expression.details.is_mutable)
+      if (not expression.qualifiers.is_mutable)
         throw ValidationError("Postfix decrement operator used on non-mutable expression.", expression.toString(), current_line_number);
-      expression.details.is_mutable = false;
+      expression.qualifiers.is_mutable = false;
       break;
     case Operator::ARROW:
       if (not expression.type->isPointer())

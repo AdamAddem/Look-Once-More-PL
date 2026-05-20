@@ -49,7 +49,7 @@ public:
   [[nodiscard]] constexpr bool isPrimitive() const noexcept            {return isCategoryPRIMITIVES(type);}
   [[nodiscard]] constexpr bool isLiteral() const noexcept              {return isCategoryLITERALS(type);}
   [[nodiscard]] constexpr bool isPointer() const noexcept              {return isCategoryPOINTERS(type);}
-  [[nodiscard]] constexpr bool isTypeModifier() const noexcept         {return isCategoryTYPE_MODIFIERS(type);}
+  [[nodiscard]] constexpr bool isTypeQualifier() const noexcept         {return isCategoryTYPE_QUALIFIERS(type);}
 
   [[nodiscard]] std::string toString() const;
   [[nodiscard]] std::string toDebugString() const;

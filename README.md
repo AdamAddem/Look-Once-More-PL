@@ -19,14 +19,17 @@ Below are language features, only some of which are implemented currently, that 
   
 * Simple, intuitive pointer syntax
     ```
-    // Pointer declarations are simply read left to right
-    raw -> i32 x = null;              // Raw pointer to an integer
-    vague -> mut z = null;            // Pointer to anything mutable (void* equivalent)
-    
+    raw<i32> x = junk;                // Immutable raw pointer to an immutable integer
+    mut raw<mut i32> y = junk;        // Mutable raw pointer to a mutable integer
+    vague<mut> z = junk;              // Pointer to anything mutable (void* equivalent)
+  
+    // GenZ style addressing (ampersand who?)
+    mut Rectangle rect = ...;
+    raw<mut Rectangle> p = @rect;     
+  
     // Uniform dereference syntax
-    raw -> mut Rectangle p;
     p->length = 2;                    // Dereference to access member
-    p-> = getSquare();                // Dereference to access object (*p equivalent)
+    printRectangle(p->);              // Dereference to access object itself (*p equivalent)
   
 * Native variant, tuple, and nullable types
     ```
@@ -74,7 +77,7 @@ Below are language features, only some of which are implemented currently, that 
   
   pub fn bar() {...}
 
-  fn foo() -> i32 {
+  fn foo() i32 {
     return whatever.getNum() + 2;
   }
 

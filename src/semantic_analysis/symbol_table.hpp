@@ -90,18 +90,18 @@ public:
 
   eden_return_nonnull
   [[nodiscard]] const Type*
-  addRawPointer(InstantiatedType subtype) noexcept
+  addRawPointer(InstantiatedType subtype) const noexcept
   {return types->addRawPointer(subtype);}
 
   eden_return_nonnull
   [[nodiscard]] const Type*
-  addUniquePointer(InstantiatedType subtype) noexcept
+  addUniquePointer(InstantiatedType subtype) const noexcept
   {return types->addUniquePointer(subtype);}
 
   eden_return_nonnull
   [[nodiscard]] const Type*
-  addVariant(std::vector<const Type* eden_notnullptr> subtypes, bool nullable) noexcept
-  {return types->addVariant(std::move(subtypes), nullable);}
+  addVariant(std::span<const Type*> subtypes, bool nullable) const noexcept
+  {return types->addVariant(subtypes, nullable);}
 
   void addGlobalVariable(std::string_view name, InstantiatedType type) noexcept {
     assert(not symbols.contains(name));
@@ -111,7 +111,7 @@ public:
   }
 
   void addLocalVariable(std::string_view name, InstantiatedType type) const noexcept {
-    assume_assert(current_scope not_eq nullptr); assume_assert(type.details.is_public == false);
+    assume_assert(current_scope not_eq nullptr); assume_assert(type.qualifiers.is_public == false);
     current_scope->addVariable(name, type);
   }
 
@@ -149,7 +149,7 @@ public:
     auto const& res = getGlobal(name);
     if (not res)
       return std::nullopt;
-    return res.value().details.is_public ? res : std::nullopt;
+    return res.value().qualifiers.is_public ? res : std::nullopt;
   }
 
   [[nodiscard]] std::optional<const FunctionType*>

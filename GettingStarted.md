@@ -26,18 +26,17 @@ Access the members of a module by appending the module name with a dot. <br>
 Calling C functions can be done using the '__C' keyword. <br>
 You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration (note, the 'fn' keyword is not needed). <br>
 Ensure that the type of the C function has been appropriately translated to LOM. <br>
-Ex: `__C puts(raw -> char str) -> i32;` <br>
+Ex: `__C puts(raw -> char str) i32;` <br>
 This will place the function as part of the internal '__C' module, and as such only one declaration can be present throughout the entire program. <br>
 If variadic arguments are needed, use the '__va' keyword as the last type. <br>
-Ex: `__C printf(raw -> char fmt, __va) -> i32;` <br>
+Ex: `__C printf(raw -> char fmt, __va) i32;` <br>
 Calling these functions can be done as if through the '__C' module, which is implicitly imported in every module by default. <br>
 The C standard library is linked to by default. Linking to anything else requires outputting object files and doing so manually. <br>
 
 ### Current Limitations, Missing Features, and Bugs
-- Functions may not have greater than 10 parameters and Identifiers may not be greater than 256 characters. 
+- Functions are limited to 8 parameters, Type Lists are limited to 8 subtypes, and Identifiers are limited to 256 characters, 
   - Doing either will cause a crash or assertion failure rather than a standard error message.
-  - The parameter limit is to avoid allocating memory when parsing, validating, and compiling functions.
-  - The identifier limit is to avoid allocating memory when tokenizing keywords.
+  - These limits exist to avoid unnecessary memory allocation and speeds up compilation greatly.
 - Globals are unsupported as a constant evaluator needs to be made to enforce constant initialization.
 - Private functions with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
 - No support for creating or importing precompiled LOM libraries directly.
@@ -47,5 +46,6 @@ The C standard library is linked to by default. Linking to anything else require
 - No string type beyond string literals accessable only through raw pointer to immutable char.
 - No working variants or tuples.
 - No standard library.
-- No user defined structures.
+- No user defined data types.
+- No debug information (printf still works!).
 - No nothing.

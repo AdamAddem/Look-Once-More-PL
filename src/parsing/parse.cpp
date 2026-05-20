@@ -22,22 +22,33 @@ namespace {
 InstantiatedType
 parseType(TokenView& tokens, Module& table);
 
-[[nodiscard]] InstantiatedType::InstanceDetails
-parseTypeDetails(TokenView& tokens) {
-  InstantiatedType::InstanceDetails details;
+[[nodiscard]] InstantiatedType::Qualifiers
+parseTypeQualifiers(TokenView& tokens) {
+  InstantiatedType::Qualifiers qualifiers;
   if (tokens.pop_if(TokenType::KEYWORD_PUB))
-    details.is_public = true;
+    qualifiers.is_public = true;
 
-  if (tokens.peek().isTypeModifier()) {
+  if (tokens.peek().isTypeQualifier()) {
     if (tokens.peek_is(TokenType::KEYWORD_MUT))
-      details.is_mutable = true;
+      qualifiers.is_mutable = true;
     else
       eden_unreachable("Type modifier not supported.");
 
     tokens.pop();
   }
 
-  return details;
+  return qualifiers;
+}
+
+[[maybe_unused]] [[nodiscard]] std::vector<InstantiatedType>
+parseTypeList(TokenView& tokens, Module& table) {
+  std::vector<InstantiatedType> list; list.reserve(2);
+
+  do list.emplace_back(parseType(tokens, table));
+  while (tokens.pop_if(TokenType::COMMA));
+
+  tokens.expect_then_pop(TokenType::GTR, "Expected closing > in type list.");
+  return list;
 }
 
 eden_return_nonnull
@@ -47,22 +58,23 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
 
   if (token.isPrimitive()) {
     if (token.isPointer()) {
-      tokens.expect_then_pop(TokenType::ARROW, "Expected arrow in pointer declaration.");
+      tokens.expect_then_pop(TokenType::LESS, "Expected opening < in pointer declaration.");
       if (token.is(TokenType::KEYWORD_VAGUE)) {
-        const auto subtype_details = parseTypeDetails(tokens);
-        return PointerType::vague(subtype_details.is_mutable);
+        const auto subtype_qualifiers = parseTypeQualifiers(tokens);
+        tokens.expect_then_pop(TokenType::GTR, "Expected closing < in pointer declaration.");
+        return PointerType::vague(subtype_qualifiers.is_mutable);
       }
 
       const InstantiatedType subtype_instance = parseType(tokens, table);
+      tokens.expect_then_pop(TokenType::GTR, "Expected closing < in pointer declaration.");
       switch (token.getType()) {
       case TokenType::KEYWORD_RAW:
         return table.addRawPointer(subtype_instance);
       case TokenType::KEYWORD_UNIQUE:
         return table.addUniquePointer(subtype_instance);
       default:
-        eden_unreachable("Pointer type not supported.");
+        eden_unreachable("Pointer type unsupported.");
       }
-
     }
 
     switch (token.getType()) {
@@ -114,7 +126,7 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
       if (subtype.type->isVariant())
         throw ParsingError("Nested variant types not allowed.", subtype.toString(), subtype_ln);
 
-      if (subtype.details.is_mutable)
+      if (subtype.qualifiers.is_mutable)
         throw ParsingError("Mutability cannot be specified within variant type list, must be specified prior to type list.", subtype.toString(), subtype_ln);
 
       if (typenames.contains(subtype.type))
@@ -142,8 +154,8 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
 
 [[nodiscard]] InstantiatedType
 parseType(TokenView& tokens, Module& table) {
-  const auto details = parseTypeDetails(tokens);
-  return {parseUnqualifiedType(tokens, table), details};
+  const auto qualifiers = parseTypeQualifiers(tokens);
+  return {parseUnqualifiedType(tokens, table), qualifiers};
 }
 
 eden_return_nonnull
@@ -681,7 +693,7 @@ struct Body {
 
   void parseStatement() {
     const Token &first = tokens.peek();
-    if (first.isPrimitive() or first.isTypeModifier())
+    if (first.isPrimitive() or first.isTypeQualifier())
       return parseVarDecl();
 
     switch (first.getType()) {
@@ -750,7 +762,7 @@ void parseCExtern(TU& tu, Body& global_body) {
   const Type* return_type = Type::devoid();
   if (tokens.pop_if(TokenType::ARROW)) {
     InstantiatedType type = parseType(tokens, table);
-    if (not type.isPlain())
+    if (not type.isUnqualified())
       throw ParsingError("Return type may not have type qualifiers.", type.toString(), tokens.current_line_number());
     return_type = type.type;
   }
@@ -820,11 +832,11 @@ void parseFunctions(TU& tu, Body& global_body, std::vector<Function>& functions)
       }
 
     const Type* return_type = Type::devoid();
-    if (tokens.pop_if(TokenType::ARROW)) {
-      InstantiatedType type = parseType(tokens, table);
-      if (not type.isPlain())
-        throw ParsingError("Return type may not have type qualifiers.", type.toString(), tokens.current_line_number());
-      return_type = type.type;
+    if (not tokens.peek_is(TokenType::LBRACE)) {
+      InstantiatedType return_instance = parseType(tokens, table);
+      if (not return_instance.isUnqualified())
+        throw ParsingError("Return type may not have type qualifiers.", return_instance.toString(), tokens.current_line_number());
+      return_type = return_instance.type;
     }
 
     tokens.expect_then_pop(TokenType::LBRACE, "Expected function definition.");

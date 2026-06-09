@@ -23,7 +23,7 @@ struct TU {
   TU(TU&&) noexcept = default;
 
   std::string_view name;
-  Module* eden_notnullptr module;
+  Module* module;
   AST::SyntaxTree global_tree;
   std::vector<std::string_view> imports;
   std::vector<Function> functions;

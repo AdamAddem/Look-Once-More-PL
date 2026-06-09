@@ -69,25 +69,16 @@ enum class TokenType : unsigned {
   KEYWORD_ELSE,
   KEYWORD_FOR,
   KEYWORD_WHILE,
-  KEYWORD_DO,
   KEYWORD_RETURN,
   KEYWORD_SWITCH,
   KEYWORD_CASE,
   KEYWORD_DEFAULT,
-  KEYWORD_GOTO,
-  KEYWORD_BREAK,
-  KEYWORD_CONTINUE,
   KEYWORD_CAST,
-  KEYWORD_STEAL,
-  KEYWORD_BUILD_NEW,
-  KEYWORD_ALLOCATE,
-  KEYWORD_CONSTRUCT,
-  KEYWORD_FROM,
-  KEYWORD_AS,
   KEYWORD_GLOBAL,
   KEYWORD_NULL,
   KEYWORD_JUNK,
   KEYWORD_FN,
+  KEYWORD_STRUCT,
   KEYWORD_PUB,
   KEYWORD_IMPORT,
   DUNDER_CEXTERN,
@@ -118,13 +109,10 @@ inline const std::unordered_map<std::string_view, TokenType> stringToTokenType{
 	{"bool", TokenType::KEYWORD_BOOL}, {"", TokenType::KEYWORD_DEVOID}, {"raw", TokenType::KEYWORD_RAW}, 
 	{"unique", TokenType::KEYWORD_UNIQUE}, {"vague", TokenType::KEYWORD_VAGUE}, {"mut", TokenType::KEYWORD_MUT}, 
 	{"if", TokenType::KEYWORD_IF}, {"else", TokenType::KEYWORD_ELSE}, {"for", TokenType::KEYWORD_FOR}, 
-	{"while", TokenType::KEYWORD_WHILE}, {"do", TokenType::KEYWORD_DO}, {"return", TokenType::KEYWORD_RETURN}, 
-	{"switch", TokenType::KEYWORD_SWITCH}, {"case", TokenType::KEYWORD_CASE}, {"default", TokenType::KEYWORD_DEFAULT}, 
-	{"goto", TokenType::KEYWORD_GOTO}, {"break", TokenType::KEYWORD_BREAK}, {"continue", TokenType::KEYWORD_CONTINUE}, 
-	{"cast", TokenType::KEYWORD_CAST}, {"steal", TokenType::KEYWORD_STEAL}, {"build_new", TokenType::KEYWORD_BUILD_NEW}, 
-	{"allocate", TokenType::KEYWORD_ALLOCATE}, {"construct", TokenType::KEYWORD_CONSTRUCT}, {"from", TokenType::KEYWORD_FROM}, 
-	{"as", TokenType::KEYWORD_AS}, {"global", TokenType::KEYWORD_GLOBAL}, {"null", TokenType::KEYWORD_NULL}, 
-	{"junk", TokenType::KEYWORD_JUNK}, {"fn", TokenType::KEYWORD_FN}, {"pub", TokenType::KEYWORD_PUB}, 
+	{"while", TokenType::KEYWORD_WHILE}, {"return", TokenType::KEYWORD_RETURN}, {"switch", TokenType::KEYWORD_SWITCH}, 
+	{"case", TokenType::KEYWORD_CASE}, {"default", TokenType::KEYWORD_DEFAULT}, {"cast", TokenType::KEYWORD_CAST}, 
+	{"global", TokenType::KEYWORD_GLOBAL}, {"null", TokenType::KEYWORD_NULL}, {"junk", TokenType::KEYWORD_JUNK}, 
+	{"fn", TokenType::KEYWORD_FN}, {"struct", TokenType::KEYWORD_STRUCT}, {"pub", TokenType::KEYWORD_PUB}, 
 	{"import", TokenType::KEYWORD_IMPORT}, {"__C", TokenType::DUNDER_CEXTERN}, {"__va", TokenType::DUNDER_VA}, 
 };
 
@@ -153,13 +141,10 @@ constexpr const char* toString[] = {
 	"bool","","raw",
 	"unique","vague","mut",
 	"if","else","for",
-	"while","do","return",
-	"switch","case","default",
-	"goto","break","continue",
-	"cast","steal","build_new",
-	"allocate","construct","from",
-	"as","global","null",
-	"junk","fn","pub",
+	"while","return","switch",
+	"case","default","cast",
+	"global","null","junk",
+	"fn","struct","pub",
 	"import","__C","__va",
 };
 	return toString[std::to_underlying(e)];
@@ -176,16 +161,12 @@ constexpr bool isCategoryPRIMITIVES(const TokenType e) { return std::to_underlyi
 
 constexpr bool isCategoryTYPE_MODIFIERS(const TokenType e) { return std::to_underlying(e) >= 59 && std::to_underlying(e) < 60; }
 
-constexpr bool isCategoryCONTROL_FLOW(const TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 72; }
+constexpr bool isCategoryCONTROL_FLOW(const TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 68; }
 
-constexpr bool isCategoryCAST(const TokenType e) { return std::to_underlying(e) >= 72 && std::to_underlying(e) < 73; }
+constexpr bool isCategoryMODULE(const TokenType e) { return std::to_underlying(e) >= 74 && std::to_underlying(e) < 76; }
 
-constexpr bool isCategoryALLOC_LIFETIMES(const TokenType e) { return std::to_underlying(e) >= 73 && std::to_underlying(e) < 77; }
+constexpr bool isCategoryDUNDER(const TokenType e) { return std::to_underlying(e) >= 76 && std::to_underlying(e) < 78; }
 
-constexpr bool isCategoryMODULE(const TokenType e) { return std::to_underlying(e) >= 83 && std::to_underlying(e) < 85; }
-
-constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 32 && std::to_underlying(e) < 85; }
-
-constexpr bool isCategoryDUNDER(const TokenType e) { return std::to_underlying(e) >= 85 && std::to_underlying(e) < 87; }
+constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 32 && std::to_underlying(e) < 78; }
 
 }; //namespace LOM::Lexer

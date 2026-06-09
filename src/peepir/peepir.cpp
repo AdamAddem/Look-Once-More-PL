@@ -17,12 +17,15 @@ using namespace LOM;
 using namespace LOM::PeepMIR;
 using namespace LOM::AST;
 
+/*
+ *  For now, globals will be parsed but not added to the symbol table or validated, and can't be used in anyway.
+ */
+
 namespace {
 
 eden_return_nonnull eden_nonull_args
 [[nodiscard]] constexpr char*
 combineWithDot(char* before_dot, char* after_dot) noexcept {
-
   eden::releasing_string combined{eden::flags::reserve_initial<10>};
   while (*before_dot not_eq '\0')
     combined.push_back(*before_dot), ++before_dot;
@@ -40,7 +43,7 @@ castForType(const Type* type) noexcept {
     return Instruction::PCAST;
 
   if (type->isPrimitive()) {
-    const auto primitive = type->castToPrimitive();
+    auto const primitive = type->castToPrimitive();
     if (primitive->isString())
       return Instruction::PCAST;
     if (primitive->isFloating())
@@ -61,7 +64,7 @@ class TreeView {
   std::vector<ASTNode>::iterator end;
 public:
   TreeView(std::vector<ASTNode>::iterator begin, std::vector<ASTNode>::iterator end) noexcept
-  :begin(begin), end(end) {}
+  : begin(begin), end(end) {}
 
   [[nodiscard]] constexpr ASTNode&
   peek() const noexcept
@@ -97,9 +100,13 @@ public:
   {return begin == end;}
 };
 
-template <bool global_peeping>
 class Peeper {
-  Module* table;
+  Module* module;
+
+  const SymbolTable* subscope;
+  bool subscope_is_module{true};
+  InstantiatedType::Qualifiers subscope_qualifiers;
+
   std::unordered_map<std::string_view, Module*>& imports;
 
   std::vector<const Type*> locals;
@@ -111,14 +118,16 @@ class Peeper {
   u64_t current_line_number{};
 
   [[nodiscard]] constexpr Block&
-  current_block() noexcept {return blocks.back();}
+  current_block() noexcept
+  { return blocks.back(); }
 
   [[nodiscard]] constexpr u32_t
-  current_block_index() const noexcept {return blocks.size() - 1;}
+  current_block_index() const noexcept
+  { return blocks.size() - 1; }
 
   [[nodiscard]] constexpr bool
   is_current_block_empty() const noexcept
-  {return blocks.back().first_instruction_idx == instructions.size();}
+  { return blocks.back().first_instruction_idx == instructions.size(); }
 
   //creates a br that goes to the next block, as if it had fallen through (does not create next block)
   //does nothing if current block is empty
@@ -144,12 +153,11 @@ class Peeper {
   eden_nonull_args constexpr bool //returns whether coersion was successful
   coerce_if_integerliteral(Instruction& possible_literal, const Type* expected_type) const noexcept {
     if (not possible_literal.is_literal() or not expected_type->isIntegral()) return false;
-    const auto expected_type_primitive = expected_type->castToPrimitive();
-    const auto is_signed = expected_type_primitive->isSignedIntegral();
+    auto const expected_type_primitive = expected_type->castToPrimitive();
+    auto const is_signed = expected_type_primitive->isSignedIntegral();
     possible_literal.adjust_literal(expected_type_primitive->bitwidth(), is_signed);
     return true;
   }
-
 
   InstantiatedType peepLiteral() {
     auto& node = nodes.pop();
@@ -181,50 +189,65 @@ class Peeper {
     }
   }
 
-  eden_nonull_args InstantiatedType
-  peepDotIdentifier(char* identifier) {
-    if constexpr(global_peeping)
-      throw ValidationError("Module usage not allowed during global initialization.", identifier, current_line_number);
-
-    const auto import_name = std::string_view(identifier);
-    if (not imports.contains(import_name))
-      throw ValidationError("Module not imported!", import_name.data(), current_line_number);
-
-    const auto module = imports[import_name];
-    auto sub_identifier = nodes.pop().identifier();
-
-    auto combined_name = combineWithDot(identifier, sub_identifier);
-
-    if (const auto global = module->getPublicGlobal(sub_identifier)) {
-      instructions.emplace_back(Instruction::IMPORTED_GLOBAL, std::bit_cast<u64_t>(combined_name));
-      return global.value();
+  InstantiatedType peepMemberAccess() {
+    if (nodes.peek().type() == ASTNode::IDENTIFIER) {
+      auto const possible_module = imports.find(nodes.peek().identifier());
+      if (possible_module not_eq imports.end()) {
+        nodes.pop();
+        subscope = possible_module->second; subscope_is_module = true;
+        auto const res = peepExpression();
+        subscope = nullptr;
+        return res;
+      }
     }
-    if (auto func = module->getPublicFunction(sub_identifier)) {
-      instructions.emplace_back(Instruction::IMPORTED_FUNCTION, std::bit_cast<u64_t>(combined_name));
-      return {func.value(), {}};
-    }
-    throw ValidationError("Identifier not a public member of module.",
-      std::format("Module: {}, Identifier: {}", combined_name, sub_identifier),
-      current_line_number);
+
+    auto const object_expression = peepExpression();
+    if (not object_expression.type->isCustom())
+      throw ValidationError("Attempt to access member of non-custom type.", object_expression.toString(), current_line_number);
+
+    subscope_is_module = false; subscope_qualifiers = object_expression.qualifiers;
+    subscope = object_expression.type->castToCustom()->member_table();
+    auto const res = peepExpression();
+    subscope = nullptr;
+    return res;
   }
 
   eden_nonull_args InstantiatedType
   peepIdentifier(char* identifier) {
-    if constexpr(not global_peeping) {
-      if (const auto variable = table->getLocal(identifier)) {
-        instructions.emplace_back(Instruction::LOCAL, variable->second + 1);
-        return variable->first;
+    if (subscope) {
+      if (auto const member_variable = subscope->getPublicVariable(identifier)) {
+        assert(member_variable->get_id() not_eq u16_max);
+        InstantiatedType res = member_variable->type;
+        if (subscope_is_module)
+          instructions.emplace_back(Instruction::MODULE_GLOBAL, static_cast<const Module*>(subscope), member_variable->get_id());
+        else {
+          instructions.emplace_back(Instruction::TYPE_VARIABLE, subscope, member_variable->get_id());
+          res.qualifiers = subscope_qualifiers;
+        }
+        return res;
       }
 
-      if (auto func = table->typeOfFunction(identifier)) {
-        instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier));
-        return {func.value(), {}};
+      if (auto const member_function = subscope->getPublicFunction(identifier)) {
+        assert(member_function->get_id() not_eq u16_max);
+        if (subscope_is_module)
+          instructions.emplace_back(Instruction::MODULE_FUNCTION, static_cast<const Module*>(subscope), member_function->get_id());
+        else
+          instructions.emplace_back(Instruction::TYPE_FUNCTION, subscope, member_function->get_id());
+        return {member_function->type, {}};
       }
+
+      const char* err_msg = subscope_is_module ? "Identifier is not a public member of module." : "Identifier is not a public member of type.";
+      throw ValidationError(err_msg, identifier, current_line_number);
     }
 
-    if (const auto global = table->getGlobal(identifier)) {
-      instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(identifier));
-      return global.value();
+    if (auto const variable = module->getLocal(identifier)) {
+      instructions.emplace_back(Instruction::LOCAL, variable->second + 1); // adjust by 1 accounting for return type
+      return variable->first;
+    }
+
+    if (auto const function = module->getFunction(identifier)) {
+      instructions.emplace_back(Instruction::FUNCTION, std::bit_cast<u64_t>(identifier));
+      return {function->type, {}};
     }
 
     throw ValidationError("Undeclared Identifier.", identifier, current_line_number);
@@ -234,11 +257,11 @@ class Peeper {
 
   eden_nonull_args InstantiatedType
   peepCastExpression(const Type* cast_type) {
-    const auto cast_idx = instructions.size();
+    auto const cast_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP, std::bit_cast<u64_t>(cast_type));
     const InstantiatedType res{cast_type, {}};
 
-    const auto casted_expr = peepExpression();
+    auto const casted_expr = peepExpression();
     if (not casted_expr.type->castableTo(cast_type))
       throw ValidationError("Invalid cast.",
         std::format("Cast from {} to {}", casted_expr.type->toString(), cast_type->toString()),
@@ -251,19 +274,16 @@ class Peeper {
   }
 
   InstantiatedType peepCallingExpression(u64_t call_parameter_count) {
-    if constexpr (global_peeping)
-      throw ValidationError("Function calls not allowed when initializing globals.", "Sorry!", current_line_number);
-
     instructions.emplace_back(Instruction::CALL, call_parameter_count);
-    const auto called = peepExpression();
+    auto const called = peepExpression();
     if (not called.type->isCallable())
       throw ValidationError("Call operator used on non-callable.", std::format("Expression has type '{}'", called.toString()), current_line_number);
     if (not called.type->isFunction())
       throw ValidationError("Callable non-functions not implemented.", "Woopsie", current_line_number);
 
     const FunctionType* function_type = called.type->castToFunction();
-    const auto function_parameter_types = function_type->parameterTypes();
-    const auto function_parameter_count = function_parameter_types.size();
+    auto const function_parameter_types = function_type->parameterTypes();
+    auto const function_parameter_count = function_parameter_types.size();
 
     if (call_parameter_count < function_parameter_count)
       throw ValidationError("Too few parameters for function call.", "PLACEHOLDER", current_line_number);
@@ -272,9 +292,9 @@ class Peeper {
 
     auto i{0uz};
     for (; i<call_parameter_count; ++i) {
-      const auto given_parameter_idx = instructions.size();
-      const auto given_parameter = peepExpression();
-      const auto function_parameter_type = function_parameter_types[i];
+      auto const given_parameter_idx = instructions.size();
+      auto const given_parameter = peepExpression();
+      auto const function_parameter_type = function_parameter_types[i];
 
       if (given_parameter.type not_eq function_parameter_type) {
         if (not given_parameter.type->coercibleTo(function_parameter_type)) {
@@ -295,20 +315,20 @@ class Peeper {
 
   //TODO: Add Short Circuiting
   InstantiatedType peepBinaryExpression(const Operator opr) {
-    const auto opr_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
+    auto const opr_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
 
-    const auto left_idx = instructions.size();
+    auto const left_idx = instructions.size();
     auto left = peepExpression();
 
     const bool left_signed = left.type->isSignedIntegral();
     const bool left_float = left.type->isFloating();
     const bool arithmetic = left.type->isArithmetic();
 
-    const auto right_idx = instructions.size();
+    auto const right_idx = instructions.size();
     auto right = peepExpression();
 
     if (left.type not_eq right.type) {
-      //if left or right is an integer literal, coerce its type to the other
+      // if left or right is an integer literal, coerce its type to the other
       if (coerce_if_integerliteral(instructions[left_idx], right.type))
         left.type = right.type;
       else if (coerce_if_integerliteral(instructions[right_idx], left.type))
@@ -328,7 +348,7 @@ class Peeper {
       if (not arithmetic)
         throw ValidationError("Non-arithmetic expression in arithmetic binary operation.",
           std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
-      left.details.is_mutable = false;
+      left.qualifiers.is_mutable = false;
       break;
 
     case Operator::LESS:
@@ -356,11 +376,11 @@ class Peeper {
       if (not arithmetic)
         throw ValidationError("Non-arithmetic expression(s) in bitwise operation.",
           std::format("'{}' and '{}'", left.type->toString(), right.type->toString()), current_line_number);
-      left.details.is_mutable = false;
+      left.qualifiers.is_mutable = false;
       break;
 
     case Operator::ASSIGN:
-      if (not left.details.is_mutable)
+      if (not left.qualifiers.is_mutable)
         throw ValidationError("Left expression in assignment non-mutable.",
           std::format("Type of expression is '{}'", left.type->toString()), current_line_number);
       break;
@@ -453,10 +473,10 @@ class Peeper {
   InstantiatedType peepUnaryExpression(const Operator opr) {
     if (opr == Operator::ADDRESS_OF) {
       instructions.emplace_back(Instruction::ADDRESS_OF, 0);
-      return {table->addRawPointer(peepExpression()), {}};
+      return {module->getRawPointerType(peepExpression()), {}};
     }
 
-    const auto instruction_idx = instructions.size();
+    auto const instruction_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP, 0);
 
     auto expression = peepExpression();
@@ -465,29 +485,29 @@ class Peeper {
     switch (opr) {
     case Operator::PRE_INCREMENT:
     case Operator::PRE_DECREMENT:
-      if (not expression.details.is_mutable)
+      if (not expression.qualifiers.is_mutable)
         throw ValidationError("Prefix operator used on non-mutable expression.", expression.toString(), current_line_number);
       break;
     case Operator::UNARY_MINUS:
       if (not arithmetic)
         throw ValidationError("Unary minus used on non-arithmetic expression.", expression.toString(), current_line_number);
-      expression.details.is_mutable = false;
+      expression.qualifiers.is_mutable = false;
       break;
     case Operator::BITNOT:
       if (not arithmetic)
         throw ValidationError("bitnot operator used non-arithmetic expression", expression.toString(), current_line_number);
-      expression.details.is_mutable = false;
+      expression.qualifiers.is_mutable = false;
       break;
     case Operator::NOT:
       if (not expression.type->isBool())
         throw ValidationError("not operator used non-boolean expression", expression.toString(), current_line_number);
-      expression.details.is_mutable = false;
+      expression.qualifiers.is_mutable = false;
       break;
     case Operator::POST_INCREMENT:
     case Operator::POST_DECREMENT:
-      if (not expression.details.is_mutable)
+      if (not expression.qualifiers.is_mutable)
         throw ValidationError("Postfix decrement operator used on non-mutable expression.", expression.toString(), current_line_number);
-      expression.details.is_mutable = false;
+      expression.qualifiers.is_mutable = false;
       break;
     case Operator::ARROW:
       if (not expression.type->isPointer())
@@ -530,12 +550,15 @@ class Peeper {
     return expression;
   }
 
+
   [[nodiscard]] InstantiatedType
   peepExpression() {
-    const auto& node = nodes.pop();
+    auto const& node = nodes.pop();
 
     switch (node.type()) {
     using enum ASTNode::Type;
+    case MEMBER_ACCESS:
+      return peepMemberAccess();
     case UNARY:
       return peepUnaryExpression(node.operator_val());
     case BINARY:
@@ -544,8 +567,6 @@ class Peeper {
       return peepCallingExpression(node.parameter_count());
     case SUBSCRIPT:
       eden_unreachable("Subscript unimplemented.");
-    case DOT_IDENTIFIER:
-      return peepDotIdentifier(node.identifier());
     case IDENTIFIER:
       return peepIdentifier(node.identifier());
     case CAST:
@@ -577,7 +598,7 @@ class Peeper {
   }
 
   void peepReturnStatement() {
-    const auto return_type = current_function_type->returnType();
+    auto const return_type = current_function_type->returnType();
     if (nodes.pop_if_empty()) {
       if (not return_type->isDevoid())
         throw ValidationError("Non-devoid function expects return value",
@@ -588,11 +609,11 @@ class Peeper {
       return;
     }
 
-    const auto assign_idx = instructions.size();
+    auto const assign_idx = instructions.size();
     instructions.emplace_back(Instruction::ASSIGN, 0);
     instructions.emplace_back(Instruction::LOCAL, 0);
 
-    const auto return_expression = peepExpression();
+    auto const return_expression = peepExpression();
     if (return_type->isDevoid())
       throw ValidationError("Cannot return value from devoid function",
       std::format("Return value type is '{}'", return_expression.toString()), current_line_number);
@@ -619,18 +640,18 @@ class Peeper {
     br_fallthrough();
     new_block();
     const u32_t condition_idx = current_block_index();
-    const auto condition = peepExpression();
+    auto const condition = peepExpression();
     if (not condition.type->isBool())
       throw ValidationError("While Loop condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
-    const auto loop_body_idx = current_block_index() + 1;
+    auto const loop_body_idx = current_block_index() + 1;
     force_new_block();
     peepScopedStatement(nodes.pop_scoped());
     if (is_current_block_empty())
       instructions.emplace_back(Instruction::NOOP, 0);
     current_block().set_br(condition_idx);
     force_new_block();
-    const auto after_loop_idx = current_block_index();
+    auto const after_loop_idx = current_block_index();
 
     blocks[condition_idx].set_brc(loop_body_idx, after_loop_idx);
   }
@@ -638,7 +659,7 @@ class Peeper {
   void peepForLoop() const {assert(false and "Not sure about for loop form yet");}
 
   void peepIfStatement() {
-    const auto condition = peepExpression();
+    auto const condition = peepExpression();
     if (not condition.type->isBool())
       throw ValidationError("If statement condition non-boolean.", std::format("Condition is of type '{}'", condition.toString()), current_line_number);
 
@@ -646,7 +667,7 @@ class Peeper {
     const u32_t true_block_idx = condition_block_idx + 1;
 
     new_block(); //true block
-    const auto num_true_statements = nodes.pop_scoped();
+    auto const num_true_statements = nodes.pop_scoped();
     peepScopedStatement(num_true_statements); //true statement(s)
 
     new_block(); //false block
@@ -663,57 +684,36 @@ class Peeper {
   }
 
   void peepVarDeclaration() {
-    const auto declaration_type = nodes.pop().instance_type();
+    auto const declaration_type = nodes.pop().instance_type();
     locals.emplace_back(declaration_type.type);
-    auto name = nodes.pop().identifier();
-    char* name_cstr = name;
+    auto const name = nodes.pop().identifier();
 
-    if constexpr (global_peeping) {
-      if (table->containsGlobal(name_cstr))
-        throw ValidationError("Redefinition of global variable.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
-    }
-    else {
-      if (table->containsLocal(name_cstr))
-        throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name_cstr), current_line_number);
-    }
+    if (module->containsLocal(name))
+      throw ValidationError("Redefinition of symbol name in variable declaration.", std::format("Symbol name: '{}'", name), current_line_number);
 
     if (nodes.pop_if_empty()) {
-      if constexpr(global_peeping)
-        throw ValidationError("Global variable may not be junk initialized.", name_cstr, current_line_number);
-      else
-        table->addLocalVariable(name, declaration_type);
+      module->addLocal(name, declaration_type);
       return;
     }
 
-    const auto assign_idx = instructions.size();
+    auto const assign_idx = instructions.size();
     instructions.emplace_back(Instruction::ASSIGN, 0);
-    if constexpr(global_peeping) {
-      instructions.emplace_back(Instruction::GLOBAL, std::bit_cast<u64_t>(name_cstr));
-      table->addGlobalVariable(name, declaration_type);
-    }
-    else {
-      instructions.emplace_back(Instruction::LOCAL, locals.size() - 1);
-      table->addLocalVariable(name, declaration_type);
-    }
+    instructions.emplace_back(Instruction::LOCAL, locals.size() - 1);
+    module->addLocal(name, declaration_type);
 
-    const auto init_expr_idx = instructions.size();
-    const auto init_expr = peepExpression();
+    auto const init_expr_idx = instructions.size();
+    auto const init_expr = peepExpression();
     if (not init_expr.type->coercibleTo(declaration_type.type))
       throw ValidationError("Variable initialization's type is not compatible with variable type.",
         std::format("Variable '{}' is of type '{}' and expression '{}' is of type '{}'.",
-        name_cstr,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", init_expr.toString()), current_line_number);
+        name,  declaration_type.toString(), "PLACEHOLDER EXPRESSION STRING", init_expr.toString()), current_line_number);
 
     coerce_if_integerliteral(instructions[init_expr_idx], declaration_type.type);
     adjustAssignExpression(instructions[assign_idx], declaration_type, init_expr);
   }
 
   void peepStatement() {
-    auto& node = nodes.pop();
-    if constexpr (global_peeping) {
-      assert(node.type() == ASTNode::DECLARATION);
-      return peepVarDeclaration();
-    }
-
+    auto const& node = nodes.pop();
     switch (node.type()) {
     case ASTNode::EMPTY:
       assert(false);
@@ -768,7 +768,7 @@ class Peeper {
   void peepUntilEmpty() {
     assert(instructions.empty());
     assert(blocks.empty());
-    const auto return_type = current_function_type->returnType();
+    auto const return_type = current_function_type->returnType();
     blocks.emplace_back(0);
     while (not nodes.empty())
       peepStatement();
@@ -813,7 +813,7 @@ class Peeper {
     TU& tu,
     SyntaxTree& tree,
     const FunctionType* function_type)
-  : table(tu.table), imports(tu.imports),
+  : module(tu.table), imports(tu.imports),
     nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(function_type) {
     locals.emplace_back(function_type->returnType());
     for (auto parameter_type : function_type->parameterTypes())
@@ -821,13 +821,12 @@ class Peeper {
   }
 
   Peeper(TU& tu, SyntaxTree& tree)
-  : table(tu.table), imports(tu.imports),
+  : module(tu.table), imports(tu.imports),
     nodes{tree.nodes.begin(), tree.nodes.end()}, current_function_type(nullptr) {}
 public:
 
-  static void peepFunction(TU& tu, Parser::Function &func)
-  requires (not global_peeping) {
-    const auto function_type = tu.table->enterFunctionScope(func.name);
+  static void peepFunction(TU& tu, Parser::Function &func) {
+    auto const function_type = tu.table->enterFunctionScope(func.name);
     Peeper function_peeper(tu, func.body, function_type);
     function_peeper.peepUntilEmpty();
     tu.functions.emplace_back(
@@ -840,24 +839,14 @@ public:
     tu.table->leaveFunctionScope();
   }
 
-  static void peepGlobals(TU& tu, SyntaxTree& global_tree)
-  requires global_peeping {
-    assert(false);
-    Peeper<true> global_peeper(tu, global_tree);
-    while (not global_peeper.nodes.empty())
-      global_peeper.peepStatement();
-
-  }
 };
 
 }
 
 TU::TU(const Parser::TU& ptu) noexcept
 : name(ptu.name), table(ptu.module) {
-  for (auto import : ptu.imports) {
-    auto m = getModule(import);
-    imports.emplace(std::pair(import, m));
-  }
+  for (auto import : ptu.imports)
+    imports.emplace(std::pair(import, getModule(import)));
 }
 
 //printing functions
@@ -869,8 +858,12 @@ void printPeepInstruction(Instruction instruction) {
   case NOOP: return std::println("NOOP");
   case GLOBAL: return std::println("GLOBAL {}", instruction.global_name());
   case FUNCTION: return std::println("FUNCTION {}", instruction.function_name());
-  case IMPORTED_GLOBAL: return std::println("IMPORTED GLOBAL {}", instruction.imported_global_name());
-  case IMPORTED_FUNCTION: return std::println("IMPORTED FUNCTION {}", instruction.imported_function_name());
+
+  case MODULE_GLOBAL: return std::println("MODULE_GLOBAL {}", instruction.module_global()->nameof());
+  case MODULE_FUNCTION: return std::println("MODULE_FUNCTION {}", instruction.module_function()->nameof());
+  case TYPE_VARIABLE: return std::println("TYPE_VARIABLE {}", instruction.type_variable()->nameof());
+  case TYPE_FUNCTION: return std::println("TYPE_FUNCTION {}", instruction.type_function()->nameof());
+
   case LOCAL: return std::println("LOCAL {}", instruction.local_idx());
 
   case I8_LITERAL: return std::println("I8_LITERAL {}", instruction.int_value());
@@ -963,7 +956,7 @@ void printPeepBlockTerminator(Block block) {
 }
 
 void printPeepBlocks(std::vector<Block> const& blocks, std::vector<Instruction> const& instructions) {
-  const auto num_blocks = blocks.size();
+  auto const num_blocks = blocks.size();
   sz_t current_block{};
   sz_t current_instruction{};
 
@@ -993,10 +986,10 @@ void printPeepFunction(Function& func) {
 
   std::println("Return Type: {}", func.locals[0]->toString());
   std::print("| Locals: | ");
-  auto num_locals = func.locals.size() - 1;
-  for (auto i{0uz}; i<num_locals; ++i) {
+  auto const num_locals = func.locals.size() - 1;
+  for (auto i{0uz}; i<num_locals; ++i)
     std::print("{}: {} | ", i + 1, func.locals[i + 1]->toString());
-  }
+
   std::println();
 
   printPeepBlocks(func.blocks, func.instructions);
@@ -1007,7 +1000,7 @@ void printPeepFunction(Function& func) {
 
 void PeepMIR::printPeep(TU& tu) {
   /* std::println("--- Global ---");
-  for (const auto global : tu.globals) {
+  for (auto const global : tu.globals) {
     std::println("{}", global.name);
   }
   std::println("--- Globals ---\n"); */
@@ -1017,18 +1010,13 @@ void PeepMIR::printPeep(TU& tu) {
   }
 }
 
-using GlobalPeeper = Peeper<true>;
-using FunctionPeeper = Peeper<false>;
-
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   TU tu(parsed_tu);
   tu.imports.emplace(std::pair(std::string_view("__C"), getModule("__C")));
   tu.functions.reserve(parsed_tu.functions.size());
 
-  //GlobalPeeper::peepGlobals(tu, parsed_tu.global_tree, table);
-
   for (auto &func : parsed_tu.functions)
-    FunctionPeeper::peepFunction(tu, func);
+    Peeper::peepFunction(tu, func);
 
   return tu;
 }

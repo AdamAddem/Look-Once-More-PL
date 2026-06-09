@@ -87,20 +87,19 @@ struct SyntaxTree {
   void print(u64_t starting_line_number) const noexcept;
 };
 
-//Is this overengineered? Yes. yeah. yep.
+// Is this overengineered? Absolutely.
 class ASTNode {
 
-  //This language is so garbage icl
   static_assert(alignof(InstantiatedType) == 8);
   static_assert(sizeof(InstantiatedType) == 16);
   alignas(InstantiatedType)
-  u8_t data[sizeof(InstantiatedType)];
+  std::byte data[sizeof(InstantiatedType)];
 public:
 
   enum Type : u8_t {
     EMPTY,
                     // HAS <value> | <Following Nodes...>
-    //Statements:
+    // Statements:
     DECLARATION,    // LN          | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
     IF,             // LN          | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STMT
     FOR,            // LN          | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
@@ -109,16 +108,16 @@ public:
     RETURN,         // LN          | EMPTY or EXPRESSION
     EXPR_STMT,      // LN          | EMPTY or EXPRESSION
 
-    //Expressions:
+    // Expressions:
+    MEMBER_ACCESS,  // N/A         | SCOPE_EXPRESSION, MEMBER_EXPRESSION | SCOPE_EXPRESSION may be IDENTIFIER with the name of a module, or an expression producing a custom type
     UNARY,          // OPERATOR    | EXPRESSION
     BINARY,         // OPERATOR    | LEFT_EXPRESSION, RIGHT_EXPRESSION
     CALLING,        // NUM         | CALLED_EXPRESSION, PARAMETERS... * NUM
     SUBSCRIPT,      // N/A         | ARRAY_EXPRESSION, INSIDE_EXPRESSION
-    DOT_IDENTIFIER, // Char*       | DOT_IDENTIFIER or IDENTIFIER
-    IDENTIFIER,     // Char*       |
+    IDENTIFIER,     // char*       |
     CAST,           // const Type* | EXPRESSION
 
-    //value holds the bitwise representation of their respective type
+    // value holds the bitwise representation of their respective type
     SIGNED_LITERAL,
     UNSIGNED_LITERAL,
     FLOAT_LITERAL,
@@ -130,11 +129,13 @@ public:
     STRING_LITERAL
   };
 
-  //data is purposefully uninitialized, to prevent the expression tree
-  //from having to initialize everything
+  // data is purposefully uninitialized here to prevent the expression tree initializing every node when it doesn't need to
   ASTNode() = default;
-  constexpr explicit ASTNode(Type type, u64_t value_ = 0) {data[0] = type; value() = value_;}
-  constexpr explicit ASTNode(InstantiatedType instantiated) {std::construct_at<InstantiatedType>(reinterpret_cast<InstantiatedType *>(data), instantiated);}
+
+  constexpr explicit ASTNode(Type type, u64_t value_ = 0) noexcept
+  { data[0] = static_cast<std::byte>(type); value() = value_; }
+  constexpr explicit ASTNode(InstantiatedType instantiated) noexcept
+  { std::construct_at<InstantiatedType>(reinterpret_cast<InstantiatedType *>(data), instantiated); }
 
   [[nodiscard]] constexpr u64_t&
   value() noexcept
@@ -177,7 +178,7 @@ public:
   eden_return_nonnull
   [[nodiscard]] constexpr char*
   identifier() const noexcept {
-    assert(type() == IDENTIFIER or type() == DOT_IDENTIFIER);
+    assert(type() == IDENTIFIER);
     return std::bit_cast<char*>(value());
   }
 

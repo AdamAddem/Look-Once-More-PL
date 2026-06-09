@@ -33,7 +33,7 @@ class TU final : public Backend {
   llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
   llvm::Type* f32; llvm::Type* f64; llvm::Type* devoid; llvm::PointerType* ptr;
 
-  std::unordered_map<std::string_view, llvm::Value*> imports;
+  std::unordered_map<const SymbolTable::Function*, llvm::Value*> imports;
 
   [[nodiscard]] std::filesystem::path
   createASMFile(const std::filesystem::path &file) override {
@@ -128,29 +128,26 @@ class TU final : public Backend {
   }
 
   [[nodiscard]] llvm::Value*
-  getFunctionImport(const char* name) {
-    std::string_view name_view(name);
-    if (imports.contains(name_view))
-      return imports[name_view];
+  getFunctionImport(StabilizedModule imported_module, u16_t function_id) {
+    auto const function = imported_module.getFunction(function_id); assume_assert(function);
+    if (imports.contains(function))
+      return imports[function];
 
-    auto i{0uz};
-    while (name[i] not_eq '.') {
-      ++i;
+    auto const module_name = imported_module.nameof();
+    std::string function_name;
+    if (module_name not_eq "__C") {
+      function_name.append(module_name);
+      function_name.push_back('.');
     }
-    const std::string_view module_name(name, i);
+    function_name.append(function->nameof());
 
-    const char* func_name = name+i+1;
-    auto m = getModule(module_name);
-    auto func = m->getPublicFunction(func_name); assert(func);
-    auto function_type = translateFunctionType(func.value());
-    if (module_name == "__C") {
-      name = func_name;
-    }
-    return imports[name_view] = module.getOrInsertFunction(name, function_type).getCallee();
+    auto const function_type = translateFunctionType(function->type);
+
+    return imports[function] = module.getOrInsertFunction(function_name, function_type).getCallee();
   }
 
   [[nodiscard]] llvm::FunctionType*
-  translateFunctionType(const FunctionType* t) {
+  translateFunctionType(const FunctionType* t) const {
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
     auto num_params{0uz};
     for (const auto param_type : t->parameterTypes()) {
@@ -158,8 +155,8 @@ class TU final : public Backend {
       ++num_params;
     }
 
-    //hack
-    auto return_type =
+    // hack
+    auto const return_type =
     t->returnType()->isBool()
     ? i1
     : translateType(t->returnType());
@@ -459,7 +456,7 @@ class TU final : public Backend {
     }
 
     [[nodiscard]] llvm::Value*
-    genValueExpression() noexcept { //only relevant for that which can be used by value, with the addition of functions
+    genValueExpression() noexcept { // only relevant for that which can be used by value, with the addition of functions
       auto const& instruction = instructions[instruction_idx++];
       switch (instruction.type) {
         using enum PeepMIR::Instruction::Type;
@@ -474,8 +471,8 @@ class TU final : public Backend {
         const auto local = locals[instruction.local_idx()];
         return builder.CreateLoad(local->getAllocatedType(), local);
       }
-      case IMPORTED_FUNCTION:
-        return tu->getFunctionImport(instruction.imported_function_name());
+      case MODULE_FUNCTION:
+        return tu->getFunctionImport(instruction.module(), instruction.module_function_id());
 
       case I8_LITERAL:
         return llvm::ConstantInt::get(tu->i8, instruction.value, true);
@@ -592,7 +589,7 @@ class TU final : public Backend {
     }
 
     [[nodiscard]] llvm::Value*
-    genRefExpression() noexcept { //only relevant for that which can be referenced
+    genRefExpression() noexcept { // only relevant for that which can be referenced
       auto const& instruction = instructions[instruction_idx++];
       switch (instruction.type) {
       using enum PeepMIR::Instruction::Type;
@@ -600,8 +597,8 @@ class TU final : public Backend {
         const auto function = tu->module.getFunction(instruction.function_name()); assert(function);
         return function;
       }
-      case IMPORTED_FUNCTION:
-        return tu->getFunctionImport(instruction.imported_function_name());
+      case MODULE_FUNCTION:
+        return tu->getFunctionImport(instruction.module(), instruction.module_function_id());
 
       case LOCAL:
         assert(instruction.local_idx() < locals.size());
@@ -695,7 +692,7 @@ public:
 
   void lowerToLLVM(PeepMIR::TU& tu) {
     char buff[256];
-    const auto module_name = tu.table->getName();
+    const auto module_name = tu.name;
     auto i{0uz};
     if (not module_name.empty()) [[likely]] {
       for (const auto c : module_name) {

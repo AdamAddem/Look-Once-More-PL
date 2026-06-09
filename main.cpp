@@ -12,7 +12,6 @@ int main(int argc, const char* argv[]) {
   LOM::Settings::setArgs(argc, argv);
 
   LOM::build();
-  LOM::reset_compilation_state();
 
 
   return 0;

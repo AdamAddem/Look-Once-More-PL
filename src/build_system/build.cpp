@@ -28,15 +28,15 @@ namespace fs = std::filesystem;
 lex_and_parse_module(const fs::path& directory) {
   std::vector<Lexer::Token> tokens; tokens.reserve(128); // cuz why not
   auto file_start = 0;
-  const auto output_lexer = Settings::doOutputLexer();
+  bool const output_lexer = Settings::doOutputLexer();
 
   //set up module
   assert(not modules.contains(directory.c_str()));
   const sz_t n = directory.filename().string().size() + 1; // this is so stupid i hate this language
-  const auto module_name = new char[n]; //purposeful memory leak
+  auto const module_name = new char[n]; //purposeful memory leak
   std::strcpy(module_name, directory.filename().c_str());
   const std::string_view key_view(module_name, n-1);
-  auto module_ptr = &modules.emplace(std::pair(key_view, Module{key_view, &types})).first->second;
+  auto const module_ptr = &modules.emplace(std::pair(key_view, Module{key_view, &types})).first->second;
 
   Parser::TU module_tu(module_ptr, module_name);
   for (auto const& entry : fs::directory_iterator{directory}) {
@@ -45,9 +45,9 @@ lex_and_parse_module(const fs::path& directory) {
 
     Lexer::tokenizeFile(tokens, entry);
     if (output_lexer) {
-      std::cout << "\n--- Lexer Output --- " << directory.string();
+      std::print("\n--- Lexer Output --- {}", directory.string());
       Lexer::TokenView(tokens.begin() + file_start, tokens.end()).print();
-      std::cout << "\n--- Lexer Output ---\n";
+      std::println("\n--- Lexer Output ---");
     }
 
     Parser::parseTokens(module_tu, tokens.begin() + file_start, tokens.end());
@@ -56,11 +56,7 @@ lex_and_parse_module(const fs::path& directory) {
   return module_tu;
 }
 
-void LOM::reset_compilation_state() {
-  modules.clear();
-  main_module.reset();
-  types.~TypeContext(); std::construct_at(&types);
-}
+
 
 void LOM::build()
 try {
@@ -82,9 +78,9 @@ try {
       std::vector<Lexer::Token> main_tokens;
       Lexer::tokenizeFile(main_tokens, entry);
       if (Settings::doOutputLexer()) {
-        std::cout << "\n--- Lexer Output --- " << "main.lom";
+        std::print("\n--- Lexer Output --- main.lom");
         Lexer::TokenView(main_tokens.begin(), main_tokens.end()).print();
-        std::cout << "\n--- Lexer Output ---\n";
+        std::println("\n--- Lexer Output ---");
       }
 
       module_names.emplace_back(entry.path().filename());
@@ -137,4 +133,4 @@ try {
   if (Settings::doLinking())
     Backend::linkObjects(module_names);
 }
-catch (LOMError& e) { std::cout << e.error_message << std::endl; std::quick_exit(1); }
+catch (LOMError& e) { std::println("{}", e.error_message); std::quick_exit(1); }

@@ -26,7 +26,6 @@ add_executable(lom
         src/semantic_analysis/types.hpp
         src/semantic_analysis/types.cpp
         src/semantic_analysis/symbol_table.hpp
-        src/semantic_analysis/symbol_table.cpp
 
         src/peepir/peepir.hpp
         src/peepir/peepir.cpp
@@ -37,6 +36,7 @@ add_executable(lom
         src/backends/llvm/tollvm.cpp
         src/build_system/build.cpp
         src/build_system/build.hpp
+        src/semantic_analysis/table_and_module_sync.hpp
 )
 
 

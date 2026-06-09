@@ -3,8 +3,9 @@
 #include "edenlib/enum_utils.hpp"
 #include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
-#include "semantic_analysis/types.hpp"
 #include "settings.hpp"
+#include "table_and_module_sync.hpp"
+#include "types.hpp"
 
 #include <cassert>
 #include <limits>
@@ -22,18 +23,23 @@ class PrimitiveType;
 class PointerType;
 class VariantType;
 class FunctionType;
+class CustomType;
 
 class Type {
   friend class TypeContext;
 
   static constexpr u8_t is_arithmetic_mask = 1 << 0;
   static constexpr u8_t is_callable_mask = 1 << 1;
-  static constexpr u8_t is_array_mask = 1 << 2;
-  u8_t flags{};
+  static constexpr u8_t RESERVED_MASK3 = 1 << 2;
+  static constexpr u8_t RESERVED_MASK4 = 1 << 3;
+  static constexpr u8_t RESERVED_MASK5 = 1 << 4;
+  static constexpr u8_t RESERVED_MASK6 = 1 << 5;
+  static constexpr u8_t RESERVED_MASK7 = 1 << 6;
+  static constexpr u8_t RESERVED_MASK8 = 1 << 7;
+  u8_t flags{}; //flags for quicker type checking
 protected:
   constexpr void setArithmetic() noexcept {flags or_eq is_arithmetic_mask;}
   constexpr void setCallable()   noexcept {flags or_eq is_callable_mask;}
-  constexpr void setArray()      noexcept {flags or_eq is_array_mask;}
   enum : u8_t {DEVOID, PRIMITIVE, POINTER, VARIANT, FUNCTION, CUSTOM}
   derived_type{};
 
@@ -54,7 +60,6 @@ public:
 
   [[nodiscard]] constexpr bool isArithmetic()       const noexcept  {return flags bitand is_arithmetic_mask;}
   [[nodiscard]] constexpr bool isCallable()         const noexcept  {return flags bitand is_callable_mask;}
-  [[nodiscard]] constexpr bool isArray()            const noexcept  {return flags bitand is_array_mask;}
 
   [[nodiscard]] constexpr bool isBool()             const noexcept;
   [[nodiscard]] constexpr bool isIntegral()         const noexcept;
@@ -64,10 +69,11 @@ public:
   [[nodiscard]] constexpr sz_t bitwidth()           const noexcept;
 
 
-  eden_return_nonnull [[nodiscard]] constexpr const PrimitiveType* castToPrimitive() const noexcept;
-  eden_return_nonnull [[nodiscard]] constexpr const PointerType* castToPointer() const noexcept;
-  eden_return_nonnull [[nodiscard]] constexpr const VariantType* castToVariant() const noexcept;
-  eden_return_nonnull [[nodiscard]] constexpr const FunctionType* castToFunction() const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const PrimitiveType*  castToPrimitive() const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const PointerType*    castToPointer()   const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const VariantType*    castToVariant()   const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const FunctionType*   castToFunction()  const noexcept;
+  eden_return_nonnull [[nodiscard]] constexpr const CustomType*     castToCustom()    const noexcept;
 
   eden_nonull_args [[nodiscard]] bool coercibleTo(const Type* other) const noexcept;
   eden_nonull_args [[nodiscard]] bool castableTo(const Type* other) const noexcept;
@@ -84,34 +90,34 @@ public:
 struct InstantiatedType {
   const Type* type;
 
-  struct InstanceDetails {
-    bool is_mutable : 1 = false;
-    bool is_public : 1 = false;
+  struct Qualifiers {
+    bool is_mutable;
 
-    constexpr InstanceDetails() = default;
-    constexpr explicit InstanceDetails(const bool is_mutable) : is_mutable(is_mutable) {}
+    constexpr Qualifiers() noexcept : is_mutable(false) {}
+    explicit constexpr Qualifiers(eden::flags::DoNotInitialize) noexcept {}
+    explicit constexpr Qualifiers(bool is_mutable) noexcept : is_mutable(is_mutable) {}
 
     [[nodiscard]] constexpr bool
-    operator ==(const InstanceDetails &) const = default;
-  }details;
+    operator ==(const Qualifiers &) const = default;
+  }qualifiers;
 
-  constexpr InstantiatedType() = default;
-  constexpr InstantiatedType(const Type* type, const InstanceDetails instance_details)
-  : type(type), details(instance_details) {}
+  constexpr InstantiatedType() noexcept : type(nullptr) {}
+  explicit constexpr InstantiatedType(eden::flags::DoNotInitialize flag) noexcept : qualifiers(flag) {}
 
-  constexpr InstantiatedType(const Type* type, const bool is_mutable)
-  : type(type), details(is_mutable) {}
+  explicit constexpr InstantiatedType(const Type* type) noexcept : type(type), qualifiers(false) {}
+  constexpr InstantiatedType(const Type* type, Qualifiers instance_qualifiers) noexcept : type(type), qualifiers(instance_qualifiers) {}
+  constexpr InstantiatedType(const Type* type, bool is_mutable) : type(type), qualifiers(is_mutable) {}
 
   [[nodiscard]] constexpr bool
   operator==(const InstantiatedType&) const = default;
 
   [[nodiscard]] constexpr bool
-  isPlain() const noexcept
-  {return details == InstanceDetails{};}
+  isUnqualified() const noexcept
+  {return qualifiers == Qualifiers{};}
 
   [[nodiscard]] constexpr std::string
   toString() const noexcept
-  {return std::string(details.is_public ? "pub " : "") + (details.is_mutable ? "mut " : "") + type->toString();}
+  {return (qualifiers.is_mutable ? "mut " : "") + type->toString();}
 };
 
 class PrimitiveType final : public Type {
@@ -130,7 +136,7 @@ class PrimitiveType final : public Type {
   constexpr explicit
   PrimitiveType(decltype(primitive_type) type) noexcept
   : Type(PRIMITIVE), primitive_type(type)
-  { eden::enumBetween(type, I8, F64) ? setArithmetic() : void{}; }
+  {eden::enumBetween(type, I8, F64) ? setArithmetic() : void{};}
 
 public:
 
@@ -151,16 +157,13 @@ public:
   {return eden::enumBetween(primitive_type, F32, F64);}
 
   [[nodiscard]] constexpr bool
-  isBool() const noexcept
-  {return primitive_type == BOOL;}
+  isBool() const noexcept {return primitive_type == BOOL;}
 
   [[nodiscard]] constexpr bool
-  isChar() const noexcept
-  {return primitive_type == CHAR;}
+  isChar() const noexcept {return primitive_type == CHAR;}
 
   [[nodiscard]] constexpr bool
-  isString() const noexcept
-  {return primitive_type == STRING;}
+  isString() const noexcept {return primitive_type == STRING;}
 
   [[nodiscard]] constexpr sz_t
   bitwidth() const noexcept {
@@ -229,11 +232,11 @@ public:
 #undef type_singleton
 };
 
-constexpr bool Type::isBool()               const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isBool();    }
-constexpr bool Type::isIntegral()           const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isIntegral();}
-constexpr bool Type::isUnsignedIntegral()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isUnsignedIntegral();}
-constexpr bool Type::isSignedIntegral()     const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isSignedIntegral();}
-constexpr bool Type::isFloating()           const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isFloating();}
+[[nodiscard]] constexpr bool Type::isBool()               const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isBool();    }
+[[nodiscard]] constexpr bool Type::isIntegral()           const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isIntegral();}
+[[nodiscard]] constexpr bool Type::isUnsignedIntegral()   const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isUnsignedIntegral();}
+[[nodiscard]] constexpr bool Type::isSignedIntegral()     const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isSignedIntegral();}
+[[nodiscard]] constexpr bool Type::isFloating()           const noexcept {return derived_type == PRIMITIVE and static_cast<const PrimitiveType*>(this)->isFloating();}
 
 class PointerType final : public Type {
   friend class TypeContext;
@@ -289,14 +292,19 @@ class VariantType final : public Type {
   friend class TypeContext;
 
   bool is_nullable;
-  std::vector<const Type* eden_notnullptr> subtypes;
+  u32_t num_subtypes;
+  const Type* subtypes[Settings::MAX_TYPELIST_MEMBERS];
 
-  constexpr VariantType(std::vector<const Type* eden_notnullptr> subtypes, bool nullable)
-  : Type(VARIANT), is_nullable(nullable), subtypes(std::move(subtypes)) {
-#ifndef NDEBUG
-    for (const auto subtype : this->subtypes)
-    {assert(subtype not_eq this); assert(not subtype->isVariant());}
-#endif
+  constexpr VariantType(std::span<const Type*> variant_subtypes, bool nullable)
+  : Type(VARIANT), is_nullable(nullable), num_subtypes(variant_subtypes.size()) {
+    assume_assert(num_subtypes <= Settings::MAX_TYPELIST_MEMBERS);
+
+    for (auto i{0uz}; i<variant_subtypes.size(); ++i) {
+      const auto subtype = variant_subtypes[i];
+      assert(subtype not_eq this); assert(not subtype->isVariant());
+      subtypes[i] = subtype;
+    }
+
   }
 
 public:
@@ -309,38 +317,40 @@ public:
 
   eden_nonull_args [[nodiscard]] bool contains(const Type* type) const noexcept;
   [[nodiscard]] std::string toString() const noexcept;
-  [[nodiscard]] bool sameAs(const std::vector<const Type* eden_notnullptr>& subtypes, bool nullable) const noexcept;
+  [[nodiscard]] bool sameAs(std::span<const Type*> subtypes, bool nullable) const noexcept;
 };
 
 class FunctionType final : public Type {
   friend class TypeContext;
 
   bool is_variadic;
-  std::vector<const Type* eden_notnullptr> subtypes; //last is return type
+  u32_t num_parameters;
+  const Type* subtypes[Settings::MAX_FUNCTION_PARAMETERS + 1]; //last is return type
 
 public:
 
   eden_nonull_args
-  constexpr FunctionType(std::span<const Type* eden_notnullptr> parameters, const Type* return_type, bool is_variadic)
-  : Type(FUNCTION), is_variadic(is_variadic) {
-    setCallable();
-    for (auto p : parameters)
-      subtypes.push_back(p);
-    subtypes.push_back(return_type);
+  constexpr FunctionType(std::span<const Type*> parameters, const Type* return_type, bool is_variadic)
+  : Type(FUNCTION), is_variadic(is_variadic), num_parameters(parameters.size()) { setCallable();
+    assume_assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
+    auto i{0uz};
+    for (; i<num_parameters; ++i)
+      subtypes[i] = parameters[i];
+    subtypes[i] = return_type;
   }
 
   [[nodiscard]] constexpr sz_t
-  numParameters() const noexcept {return subtypes.size() - 1;}
+  numParameters() const noexcept {return num_parameters;}
 
   [[nodiscard]] constexpr bool
   isVariadic() const noexcept {return is_variadic;}
 
-  [[nodiscard]] constexpr std::span<const Type* eden_notnullptr const>
-  parameterTypes() const noexcept {return std::span(subtypes.data(), subtypes.size() - 1);}
+  [[nodiscard]] constexpr std::span<const Type* const>
+  parameterTypes() const noexcept {return std::span(subtypes, num_parameters);}
 
   eden_return_nonnull
   [[nodiscard]] constexpr const Type*
-  returnType() const noexcept {return subtypes.back();}
+  returnType() const noexcept {return subtypes[num_parameters];}
 
   eden_nonull_args
   [[nodiscard]] bool
@@ -351,8 +361,11 @@ public:
 
   eden_nonull_args
   [[nodiscard]] constexpr bool
-  sameAs(std::span<const Type* eden_notnullptr> parameters, const Type* ret_type, bool variadic) const noexcept {
-    if (parameters.size() not_eq subtypes.size()-1 or subtypes.back() not_eq ret_type or is_variadic not_eq variadic)
+  sameAs(std::span<const Type*> parameters, const Type* ret_type, bool variadic) const noexcept {
+    if (
+      parameters.size() not_eq num_parameters or
+      returnType() not_eq ret_type or
+      is_variadic not_eq variadic)
       return false;
 
     for (auto i{0uz}; i < parameters.size(); ++i)
@@ -364,13 +377,43 @@ public:
 
 };
 
+class SymbolTable; class Module;
 class CustomType final : public Type {
-  friend class TypeContext;
+  friend class TypeContext; friend SymbolTable; friend class Module;
+  u32_t name_len; //not using string_view reduces size 72 -> 64
+  const char* name;
+
+  alignas(SYMBOL_TABLE_ALIGNMENT)
+  std::byte symboltable_buff[SYMBOL_TABLE_SIZE];
+
+  [[nodiscard]] SymbolTable*
+  member_table() noexcept;
+
 public:
-  CustomType() = delete;
+
+  explicit CustomType(std::string_view name);
+
+  [[nodiscard]] const SymbolTable*
+  member_table() const noexcept;
+
+  [[nodiscard]] constexpr bool
+  sameAs(std::string_view other_name) const noexcept
+  { return nameof() == other_name; }
+
+  [[nodiscard]] constexpr std::string_view
+  nameof() const noexcept
+  { return {name, name_len}; }
+
+  [[nodiscard]] constexpr std::string
+  toString() const noexcept
+  { return std::string(nameof()); }
+
+  [[nodiscard]] std::string
+  definitionToString() const noexcept;
 };
 
-constexpr sz_t Type::bitwidth() const noexcept {
+[[nodiscard]] constexpr sz_t
+Type::bitwidth() const noexcept {
   switch (derived_type) {
   case PRIMITIVE:
     return static_cast<const PrimitiveType*>(this)->bitwidth();
@@ -384,22 +427,11 @@ constexpr sz_t Type::bitwidth() const noexcept {
   }
 }
 
-constexpr const PrimitiveType* Type::castToPrimitive() const noexcept {
-  assume_assert(derived_type == PRIMITIVE);
-  return static_cast<const PrimitiveType*>(this);
-}
-constexpr const PointerType* Type::castToPointer() const noexcept {
-  assume_assert(derived_type == POINTER);
-  return static_cast<const PointerType*>(this);
-}
-constexpr const VariantType* Type::castToVariant() const noexcept {
-  assume_assert(derived_type == VARIANT);
-  return static_cast<const VariantType*>(this);
-}
-constexpr const FunctionType* Type::castToFunction() const noexcept {
-  assume_assert(derived_type == FUNCTION);
-  return static_cast<const FunctionType*>(this);
-}
+[[nodiscard]] constexpr const PrimitiveType* Type::castToPrimitive()  const noexcept { assume_assert(derived_type == PRIMITIVE); return static_cast<const PrimitiveType*>(this); }
+[[nodiscard]] constexpr const PointerType* Type::castToPointer()      const noexcept { assume_assert(derived_type == POINTER); return static_cast<const PointerType*>(this); }
+[[nodiscard]] constexpr const VariantType* Type::castToVariant()      const noexcept { assume_assert(derived_type == VARIANT); return static_cast<const VariantType*>(this); }
+[[nodiscard]] constexpr const FunctionType* Type::castToFunction()    const noexcept { assume_assert(derived_type == FUNCTION); return static_cast<const FunctionType*>(this); }
+[[nodiscard]] constexpr const CustomType* Type::castToCustom()        const noexcept { assume_assert(derived_type == CUSTOM); return static_cast<const CustomType*>(this); }
 
 static constexpr InstantiatedType devoid_literal{Type::devoid(), {}};
 static constexpr InstantiatedType i8_literal{PrimitiveType::i8(), {}};
@@ -447,20 +479,21 @@ static constexpr InstantiatedType unsignedToLiteralInstance(u64_t val) {
 
 class TypeContext {
   eden::Arena<> type_arena;
-  std::vector<PointerType* eden_notnullptr> pointers;
-  std::vector<VariantType* eden_notnullptr> variants;
-  std::vector<FunctionType* eden_notnullptr> functions;
+  std::vector<PointerType*> pointers;
+  std::vector<VariantType*> variants;
+  std::vector<FunctionType*> functions;
+  std::vector<CustomType*> custom_types;
 
   template <std::derived_from<Type> T, class... Args>
-  eden_return_nonnull
+  eden_return_nonnull [[nodiscard]]
   constexpr T*
   allocateAndConstruct(Args&&... args)
   {return new (type_arena.allocate<T>()) T (std::forward<Args>(args)...);}
 
-  template <std::derived_from<Type> T, class ... Args>
-  eden_return_nonnull
+  template <std::derived_from<Type> T, class... Args>
+  eden_return_nonnull [[nodiscard]]
   constexpr T*
-  returnExistingOrNew(std::vector<T* eden_notnullptr>& types, Args&&... args) {
+  returnExistingOrNew(std::vector<T*>& types, Args&&... args) {
     auto curr = types.rbegin();
     const auto end = types.rend();
     while (curr not_eq end) {
@@ -479,34 +512,46 @@ class TypeContext {
   }
 
 public:
-  TypeContext() = default;
-  TypeContext(TypeContext&& other) noexcept = default;
 
   eden_return_nonnull
-  [[nodiscard]] const PointerType*
+  [[nodiscard]] PointerType*
   addRawPointer(InstantiatedType subtype) noexcept
   {return returnExistingOrNew(pointers, subtype, false);}
 
   eden_return_nonnull
-  [[nodiscard]] const PointerType*
+  [[nodiscard]] PointerType*
   addUniquePointer(InstantiatedType subtype) noexcept
   {return returnExistingOrNew(pointers, subtype, true);}
 
   eden_return_nonnull
-  [[nodiscard]] const VariantType*
-  addVariant(std::vector<const Type* eden_notnullptr> subtypes, bool nullable) noexcept
-  {return returnExistingOrNew(variants, std::move(subtypes), nullable);}
+  [[nodiscard]] VariantType*
+  addVariant(std::span<const Type*> subtypes, bool nullable) noexcept
+  {return returnExistingOrNew(variants, subtypes, nullable);}
 
   eden_return_nonnull eden_nonull_args
-  [[nodiscard]] const FunctionType*
-  addFunction(std::span<const Type* eden_notnullptr> parameter_types, const Type* return_type, bool is_variadic = false) noexcept
+  [[nodiscard]] FunctionType*
+  addFunction(std::span<const Type*> parameter_types, const Type* return_type, bool is_variadic = false) noexcept
   {return returnExistingOrNew(functions, parameter_types, return_type, is_variadic);}
 
-  ~TypeContext() { //not sure if this is necessary. Type Context will only be destroyed at the end of the program
-    for (const auto variant : variants)
-      std::destroy_at(variant);
-    for (const auto function : functions)
-      std::destroy_at(function);
+  eden_return_nonnull
+  [[nodiscard]] CustomType*
+  addCustomType(std::string_view name) noexcept
+  {return returnExistingOrNew(custom_types, name);}
+
+  //returns nullptr if not found
+  [[nodiscard]] const CustomType*
+  getCustomType(std::string_view name) noexcept {
+    auto curr = custom_types.rbegin();
+    const auto end = custom_types.rend();
+    while (curr not_eq end) {
+      const auto type = *curr;
+      if (type->nameof() == name) {
+        std::swap(custom_types.back(), *curr);
+        return type;
+      }
+      ++curr;
+    }
+    return nullptr;
   }
 };
 

@@ -3,6 +3,7 @@
 #include "edenlib/macros.hpp"
 #include "error.hpp"
 #include "lexing/lex.hpp"
+#include <utility>
 
 using namespace LOM;
 
@@ -82,6 +83,7 @@ std::string Type::toString() const noexcept {
   case FUNCTION:
     return static_cast<const FunctionType*>(this)->toString();
   case CUSTOM:
+    return static_cast<const CustomType*>(this)->toString();
   default:
     eden_unreachable("Invalid derived type.");
   }
@@ -120,7 +122,7 @@ bool PrimitiveType::coercibleTo(const PrimitiveType* other) const noexcept {
   case STRING: //only converts to char pointer
     if (other->isPointer()) {
       auto other_subtype = other->castToPointer()->getSubtype();
-      if (other_subtype.details.is_mutable == false and other_subtype.type == char_())
+      if (other_subtype.qualifiers.is_mutable == false and other_subtype.type == char_())
         return true;
     }
     return false;
@@ -154,7 +156,7 @@ bool PrimitiveType::castableTo(const PrimitiveType* other) const noexcept {
   case STRING: //Right now string types can only be literals, so it is only convertible to raw -> char
     if (other->isPointer()) {
       const auto other_subtype = other->castToPointer()->getSubtype();
-      if (not other_subtype.details.is_mutable and other_subtype.type == char_())
+      if (not other_subtype.qualifiers.is_mutable and other_subtype.type == char_())
         return true;
     }
     return false;
@@ -212,7 +214,7 @@ bool PointerType::coercibleTo(const PointerType* other) const noexcept {
     return false;
 
   //reject const to mutable conversion
-  if (not subtype.details.is_mutable and other_subtype.details.is_mutable)
+  if (not subtype.qualifiers.is_mutable and other_subtype.qualifiers.is_mutable)
     return false;
 
   //if our subtype is a pointer, return whether other subtype is a pointer and our sub-pointer is convertible to theirs
@@ -269,12 +271,11 @@ std::string VariantType::toString() const noexcept {
   return retval;
 }
 
-bool VariantType::sameAs(const std::vector<const Type* eden_notnullptr>& subtypes_, bool nullable) const noexcept {
-  const auto sz = subtypes.size();
-  if (nullable not_eq is_nullable or subtypes_.size() not_eq sz)
+bool VariantType::sameAs(std::span<const Type*> subtypes_, bool nullable) const noexcept {
+  if (nullable not_eq is_nullable or subtypes_.size() not_eq num_subtypes)
     return false;
 
-  for (auto i{0uz}; i < sz; ++i)
+  for (auto i{0uz}; i < num_subtypes; ++i)
     if (subtypes_[i] not_eq subtypes[i])
       return false;
 
@@ -285,7 +286,7 @@ bool VariantType::sameAs(const std::vector<const Type* eden_notnullptr>& subtype
 /* Function Type */
 std::string FunctionType::toString() const noexcept {
   std::string string_rep("(");
-  for (auto i{0uz}; i<subtypes.size() - 1; ++i) {
+  for (auto i{0uz}; i<num_parameters; ++i) {
     string_rep.append(subtypes[i]->toString());
     string_rep.append(", ");
   }
@@ -293,17 +294,51 @@ std::string FunctionType::toString() const noexcept {
   if (is_variadic) {
     string_rep.append("...");
   }
-  else if (subtypes.size() not_eq 1) {
+  else if (num_parameters not_eq 0) {
     string_rep.pop_back();
     string_rep.pop_back();
   }
 
-  string_rep.push_back(')');
-  if (not subtypes.back()->isDevoid()) {
-    string_rep.append(" -> ");
-    string_rep.append(subtypes.back()->toString());
-  }
+  string_rep.append(") ");
+  if (not returnType()->isDevoid())
+    string_rep.append(returnType()->toString());
 
   return string_rep;
 }
 /* Function Type */
+
+#include "symbol_table.hpp"
+/* Custom Type */
+CustomType::CustomType(std::string_view name)
+: Type(CUSTOM),  name_len(name.length()), name(name.data())
+{ std::construct_at<SymbolTable>(reinterpret_cast<SymbolTable*>(symboltable_buff)); }
+
+[[nodiscard]] SymbolTable*
+CustomType::member_table() noexcept
+{ return std::launder(reinterpret_cast<SymbolTable*>(symboltable_buff)); }
+
+[[nodiscard]] const SymbolTable*
+CustomType::member_table() const noexcept
+{ return std::launder(reinterpret_cast<const SymbolTable*>(symboltable_buff)); }
+
+std::string CustomType::definitionToString() const noexcept {
+  std::string string_rep("struct ");
+  string_rep.append(nameof());
+  string_rep.append(" {");
+
+  auto const& member_variables = member_table()->getVariableList();
+  for (auto const& member : member_variables) {
+    string_rep.append("\n\t");
+    string_rep.append(member.type.toString());
+    string_rep.push_back(' ');
+    string_rep.append(member.name);
+    string_rep.push_back(',');
+  }
+
+  if (not member_variables.empty())
+    string_rep.pop_back();
+  string_rep.append("\n}");
+
+  return string_rep;
+}
+/* Custom Type */

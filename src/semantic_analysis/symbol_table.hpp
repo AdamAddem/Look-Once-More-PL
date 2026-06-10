@@ -1,12 +1,11 @@
 #pragma once
+#include "../edenlib/metaprogramming/type_class.hpp"
+#include "../edenlib/vectors/vector16.hpp"
 #include "edenlib/macros.hpp"
-#include "edenlib/metaprogramming.hpp"
 #include "edenlib/typedefs.hpp"
-#include "edenlib/vector16.hpp"
 #include "table_and_module_sync.hpp"
 #include "types.hpp"
 
-#include <algorithm>
 #include <optional>
 #include <vector>
 
@@ -305,8 +304,8 @@ public:
 };
 
 
-// Stabilized table and module exist so Variable* and Function* can be used stabily
-// They only allow for id-based search which is O(1), except for the first search which will sort the array
+// Stabilized table and module exist so Variable* and Function* can be used without worry of being free'd
+// They only allow for id-based search which is O(1)
 class StabilizedTable {
   const SymbolTable* table;
 public:

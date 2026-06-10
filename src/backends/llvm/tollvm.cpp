@@ -33,6 +33,7 @@ class TU final : public Backend {
   llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
   llvm::Type* f32; llvm::Type* f64; llvm::Type* devoid; llvm::PointerType* ptr;
 
+  std::unordered_map<const Type*, llvm::Type*> type_map;
   std::unordered_map<const SymbolTable::Function*, llvm::Value*> imports;
 
   [[nodiscard]] std::filesystem::path
@@ -147,7 +148,7 @@ class TU final : public Backend {
   }
 
   [[nodiscard]] llvm::FunctionType*
-  translateFunctionType(const FunctionType* t) const {
+  translateFunctionType(const FunctionType* t) const noexcept {
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
     auto num_params{0uz};
     for (const auto param_type : t->parameterTypes()) {
@@ -165,15 +166,14 @@ class TU final : public Backend {
   }
 
   [[nodiscard]] llvm::Type*
-  translateType(const Type* type) const {
-    assert(not type->isCustom());
+  translateType(const Type* type) const noexcept {
     assert(not type->isVariant());
     assert(type not_eq PrimitiveType::string());
 
     if (type->isPrimitive()) {
-      const auto prim_type = type->castToPrimitive();
-      const auto is_integral = prim_type->isIntegral();
-      const auto bitwidth = prim_type->bitwidth();
+      auto const prim_type = type->castToPrimitive();
+      auto const is_integral = prim_type->isIntegral();
+      auto const bitwidth = prim_type->bitwidth();
 
       if (is_integral)
         switch (bitwidth) {
@@ -182,7 +182,7 @@ class TU final : public Backend {
         case 32: return i32;
         case 64: return i64;
         default:
-          eden_unreachable("Invalid type bitwidth.");
+          eden_unreachable("Invalid integral bitwidth.");
         }
 
       if (prim_type->isFloating())
@@ -195,10 +195,16 @@ class TU final : public Backend {
 
       if (prim_type == PrimitiveType::bool_() or prim_type == PrimitiveType::char_())
         return i8;
+
+      eden_unreachable("Invalid primitive type.");
     }
 
     if (type->isPointer())
       return ptr;
+
+    if (type->isCustom()) {
+      llvm::StructType::create(context,
+    }
 
     if (type == Type::devoid())
       return devoid;
@@ -694,7 +700,7 @@ public:
     char buff[256];
     const auto module_name = tu.name;
     auto i{0uz};
-    if (not module_name.empty()) [[likely]] {
+    if (not module_name.empty()) {
       for (const auto c : module_name) {
         buff[i] = c;
         ++i;
@@ -723,6 +729,7 @@ public:
 
   explicit TU(const std::string& filename)
   : module(filename, context) {
+    type_map.res
     i1 = llvm::Type::getInt1Ty(context);
     i8 = llvm::Type::getInt8Ty(context); bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0);
     i16 = llvm::Type::getInt16Ty(context);

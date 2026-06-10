@@ -1,5 +1,5 @@
 #pragma once
-#include "edenlib/releasing_vector.hpp"
+#include "../edenlib/vectors/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 #include <unordered_map>

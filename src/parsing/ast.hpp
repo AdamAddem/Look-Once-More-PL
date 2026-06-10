@@ -1,7 +1,7 @@
 #pragma once
 #pragma once
+#include "../edenlib/vectors/releasing_vector.hpp"
 #include "edenlib/macros.hpp"
-#include "edenlib/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
 #include <cassert>

@@ -1,6 +1,6 @@
 #include "lex.hpp"
 
-#include "edenlib/releasing_vector.hpp"
+#include "../edenlib/vectors/releasing_vector.hpp"
 #include "error.hpp"
 #include "settings.hpp"
 

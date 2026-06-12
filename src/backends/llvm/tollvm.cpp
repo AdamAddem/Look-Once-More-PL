@@ -97,7 +97,7 @@ class TU final : public Backend {
     static const llvm::Triple target_triple{llvm::sys::getDefaultTargetTriple()};
     module.setTargetTriple(target_triple);
     std::string err;
-    const auto target = llvm::TargetRegistry::lookupTarget(module.getTargetTriple(), err);
+    auto const target = llvm::TargetRegistry::lookupTarget(module.getTargetTriple(), err);
     if (not target) {
       llvm::errs() << err;
       std::quick_exit(1);
@@ -106,7 +106,7 @@ class TU final : public Backend {
     static constexpr auto CPU = "generic";
     static constexpr auto Features = "";
     static const llvm::TargetOptions opt;
-    const auto target_machine = target->createTargetMachine(
+    auto const target_machine = target->createTargetMachine(
       target_triple, CPU, Features, opt, llvm::Reloc::PIC_);
     module.setDataLayout(target_machine->createDataLayout());
 
@@ -148,80 +148,58 @@ class TU final : public Backend {
   }
 
   [[nodiscard]] llvm::FunctionType*
-  translateFunctionType(const FunctionType* t) const noexcept {
+  translateFunctionType(const FunctionType* func_type) noexcept {
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
     auto num_params{0uz};
-    for (const auto param_type : t->parameterTypes()) {
-      arg_types[num_params] = translateType(param_type);
+    for (auto const param_type : func_type->parameterTypes()) {
+      assert(type_map.contains(param_type));
+      arg_types[num_params] = type_map[param_type];
       ++num_params;
     }
 
     // hack
-    auto const return_type =
-    t->returnType()->isBool()
-    ? i1
-    : translateType(t->returnType());
+    auto const lom_return_type = func_type->returnType(); assert(type_map.contains(lom_return_type));
+    auto const llvm_return_type =
+      lom_return_type->isBool() ?
+      i1 :
+      type_map[lom_return_type];
 
-    return llvm::FunctionType::get(return_type, {arg_types, num_params}, t->isVariadic());
+    return llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, func_type->isVariadic());
   }
 
   [[nodiscard]] llvm::Type*
-  translateType(const Type* type) const noexcept {
-    assert(not type->isVariant());
-    assert(type not_eq PrimitiveType::string());
+  translateType(const Type* type) noexcept {
+    auto const element = type_map.find(type);
+    if (element not_eq type_map.end()) return element->second;
 
-    if (type->isPrimitive()) {
-      auto const prim_type = type->castToPrimitive();
-      auto const is_integral = prim_type->isIntegral();
-      auto const bitwidth = prim_type->bitwidth();
+    assert(type->isCustom());
+    auto const custom_type = type->castToCustom();
+    auto const member_table = custom_type->member_table();
+    member_table->orderVariableList();
+    auto const& members = member_table->getVariableList();
+    llvm::Type* member_types[Settings::MAX_STRUCT_MEMBER_VARIABLES];
+    auto i{0uz};
+    for (auto const& member : members) {
+      auto* const member_type = member.type.type;
+      if (member_type->isCustom()) member_types[i] = translateType(member_type->castToCustom());
+      else member_types[i] = type_map[member_type];
 
-      if (is_integral)
-        switch (bitwidth) {
-        case 8: return i8;
-        case 16: return i16;
-        case 32: return i32;
-        case 64: return i64;
-        default:
-          eden_unreachable("Invalid integral bitwidth.");
-        }
-
-      if (prim_type->isFloating())
-        switch (bitwidth) {
-        case 32: return f32;
-        case 64: return f64;
-        default:
-          eden_unreachable("Invalid float bitwidth.");
-        }
-
-      if (prim_type == PrimitiveType::bool_() or prim_type == PrimitiveType::char_())
-        return i8;
-
-      eden_unreachable("Invalid primitive type.");
+      ++i;
     }
 
-    if (type->isPointer())
-      return ptr;
-
-    if (type->isCustom()) {
-      llvm::StructType::create(context,
-    }
-
-    if (type == Type::devoid())
-      return devoid;
-
-    eden_unreachable("Invalid type.");
+    return llvm::StructType::create(context, llvm::ArrayRef(member_types, i), custom_type->nameof());
   }
 
   [[nodiscard]] llvm::IntegerType*
   typeForInteger(i64_t int_literal) noexcept {
-    return
-    llvm::cast<llvm::IntegerType>(translateType(signedToLiteralInstance(int_literal).type));
+    auto const lom_type = signedToLiteralInstance(int_literal).type; assert(type_map.contains(lom_type));
+    return llvm::cast<llvm::IntegerType>(type_map[lom_type]);
   }
 
   [[nodiscard]] llvm::IntegerType*
   typeForUnsigned(u64_t uint_literal) noexcept {
-    return
-    llvm::cast<llvm::IntegerType>(translateType(unsignedToLiteralInstance(uint_literal).type));
+    auto const lom_type = unsignedToLiteralInstance(uint_literal).type; assert(type_map.contains(lom_type));
+    return llvm::cast<llvm::IntegerType>(type_map[lom_type]);
   }
 
   friend struct Function;
@@ -240,16 +218,16 @@ class TU final : public Backend {
     Function(PeepMIR::Function& func, TU* tu)
     : tu(tu), builder(tu->context) {
       llvm_blocks.reserve(func.blocks.size());
-      const auto func_type = tu->translateFunctionType(func.type);
+      auto const func_type = tu->translateFunctionType(func.type);
       return_type = func_type->getReturnType();
 
-      const auto num_params = func_type->getNumParams();
-      const auto arg_types = func_type->param_begin();
+      auto const num_params = func_type->getNumParams();
+      auto const arg_types = func_type->param_begin();
 
-      const auto linkage = func.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
+      auto const linkage = func.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
       llvmfunc = llvm::Function::Create(func_type, linkage, 0, std::string_view(func.name), &tu->module);
 
-      const auto entry = llvm::BasicBlock::Create(tu->context, "", llvmfunc);
+      auto const entry = llvm::BasicBlock::Create(tu->context, "", llvmfunc);
       builder.SetInsertPoint(entry);
       llvm_blocks.emplace_back(entry);
       for (auto i{1uz}; i<func.blocks.size(); ++i) {
@@ -270,7 +248,7 @@ class TU final : public Backend {
         ++arg;
       }
 
-      const auto num_locals = func.locals.size();
+      auto const num_locals = func.locals.size();
       for (auto i{num_params + 1}; i<num_locals; ++i) {
           locals.emplace_back(
             builder.CreateAlloca(tu->translateType(func.locals[i]), nullptr)
@@ -299,8 +277,8 @@ class TU final : public Backend {
       switch (type) {
       using enum PeepMIR::Instruction::Type;
       case PRE_INC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
-        const auto var_type = var->getAllocatedType();
+        auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
+        auto const var_type = var->getAllocatedType();
         res = builder.CreateAdd(
           builder.CreateLoad(var_type, var),
           unsignedConstant(var_type, 1));
@@ -308,8 +286,8 @@ class TU final : public Backend {
         return var;
       }
       case FPRE_INC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
-        const auto var_type = var->getAllocatedType();
+        auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
+        auto const var_type = var->getAllocatedType();
         res = builder.CreateFAdd(
           builder.CreateLoad(var_type, var),
           fpConstant(var_type, 1));
@@ -317,8 +295,8 @@ class TU final : public Backend {
         return var;
       }
       case PRE_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
-        const auto var_type = var->getAllocatedType();
+        auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
+        auto const var_type = var->getAllocatedType();
         res = builder.CreateSub(
           builder.CreateLoad(var_type, var),
           unsignedConstant(var_type, 1));
@@ -326,8 +304,8 @@ class TU final : public Backend {
         return var;
       }
       case FPRE_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
-        const auto var_type = var->getAllocatedType();
+        auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
+        auto const var_type = var->getAllocatedType();
         res = builder.CreateFSub(
           builder.CreateLoad(var_type, var),
           fpConstant(var_type, 1));
@@ -343,32 +321,32 @@ class TU final : public Backend {
       case BITNOT:
         return builder.CreateNot(genValueExpression());
       case POST_INC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
-        const auto var_type = var->getAllocatedType();
+        auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
+        auto const var_type = var->getAllocatedType();
         auto load = builder.CreateLoad(var_type, var);
         res = builder.CreateAdd(load, unsignedConstant(var_type, 1));
         builder.CreateStore(res, var);
         return load;
       }
       case FPOST_INC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
-        const auto var_type = var->getAllocatedType();
+        auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
+        auto const var_type = var->getAllocatedType();
         auto load = builder.CreateLoad(var_type, var);
         res = builder.CreateFAdd(load, fpConstant(var_type, 1));
         builder.CreateStore(res, var);
         return load;
       }
       case POST_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
-        const auto var_type = var->getAllocatedType();
+        auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
+        auto const var_type = var->getAllocatedType();
         auto load = builder.CreateLoad(var_type, var);
         res = builder.CreateSub(load, unsignedConstant(var_type, 1));
         builder.CreateStore(res, var);
         return load;
       }
       case FPOST_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genRefExpression());
-        const auto var_type = var->getAllocatedType();
+        auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
+        auto const var_type = var->getAllocatedType();
         auto load = builder.CreateLoad(var_type, var);
         res = builder.CreateFSub(load, fpConstant(var_type, 1));
         builder.CreateStore(res, var);
@@ -381,8 +359,8 @@ class TU final : public Backend {
 
     [[nodiscard]] llvm::Value*
     genBinary(PeepMIR::Instruction::Type type) noexcept {
-      const auto left = genValueExpression();
-      const auto right = genValueExpression();
+      auto const left = genValueExpression();
+      auto const right = genValueExpression();
 
       switch (type) {
         using enum PeepMIR::Instruction::Type;
@@ -440,7 +418,7 @@ class TU final : public Backend {
 
     [[nodiscard]] llvm::Value*
     genAssign(PeepMIR::Instruction::Type type, u64_t bitwidth = 0) noexcept {
-      const auto left = genRefExpression();
+      auto const left = genRefExpression();
       llvm::Value* right;
       switch (type) {
         using enum PeepMIR::Instruction::Type;
@@ -469,13 +447,25 @@ class TU final : public Backend {
       case NOOP:
         return nullptr;
       case FUNCTION: {
-        const auto function = tu->module.getFunction(instruction.function_name()); assert(function);
+        auto const function = tu->module.getFunction(instruction.function_name()); assert(function);
         return function;
       }
       case LOCAL: {
         assert(instruction.local_idx() < locals.size());
-        const auto local = locals[instruction.local_idx()];
-        return builder.CreateLoad(local->getAllocatedType(), local);
+        auto const local = locals[instruction.local_idx()];
+        auto const local_type = local->getAllocatedType();
+        auto const load = builder.CreateLoad(local_type, local);
+        auto const& member_access = instructions[instruction_idx];
+        if (member_access.type not_eq TYPE_VARIABLE)
+          return load;
+        ++instruction_idx;
+
+        auto const member_table = member_access.member_table();
+        auto const id = member_access.type_variable_id();
+        auto const& member = member_table.getVariable(id);
+        auto const member_ptr = builder.CreateStructGEP(local_type, local, id);
+
+        return builder.CreateLoad(tu->translateType(member->type.type), member_ptr);
       }
       case MODULE_FUNCTION:
         return tu->getFunctionImport(instruction.module(), instruction.module_function_id());
@@ -534,7 +524,7 @@ class TU final : public Backend {
       case FPRE_INC:
       case PRE_DEC:
       case FPRE_DEC: {
-        const auto var = llvm::cast<llvm::AllocaInst>(genUnary(instruction.type));
+        auto const var = llvm::cast<llvm::AllocaInst>(genUnary(instruction.type));
         return builder.CreateLoad(var->getAllocatedType(), var);
       }
 
@@ -550,24 +540,24 @@ class TU final : public Backend {
           genValueExpression());
 
       case UCAST: {
-        const auto dest_type = instruction.cast_type();
-        const auto llvm_dest_type = tu->translateType(dest_type);
+        auto const dest_type = instruction.cast_type();
+        auto const llvm_dest_type = tu->translateType(dest_type);
         if (dest_type->isFloating())
           return builder.CreateUIToFP(genValueExpression(), llvm_dest_type);
         return builder.CreateZExtOrTrunc(genValueExpression(), llvm_dest_type);
       }
       case SCAST: {
-        const auto dest_type = instruction.cast_type();
-        const auto llvm_dest_type = tu->translateType(dest_type);
+        auto const dest_type = instruction.cast_type();
+        auto const llvm_dest_type = tu->translateType(dest_type);
         if (dest_type->isFloating())
           return builder.CreateSIToFP(genValueExpression(), llvm_dest_type);
         return builder.CreateSExtOrTrunc(genValueExpression(), llvm_dest_type);
       }
       case FCAST: {
-        const auto dest_type = instruction.cast_type();
-        const auto llvm_dest_type = tu->translateType(dest_type);
+        auto const dest_type = instruction.cast_type();
+        auto const llvm_dest_type = tu->translateType(dest_type);
         if (dest_type->isIntegral()) {
-          const auto primitive_dest_type = dest_type->castToPrimitive();
+          auto const primitive_dest_type = dest_type->castToPrimitive();
           if (primitive_dest_type->isSignedIntegral())
             return builder.CreateFPToSI(genValueExpression(), llvm_dest_type);
           return builder.CreateSIToFP(genValueExpression(), llvm_dest_type);
@@ -578,7 +568,7 @@ class TU final : public Backend {
         return genValueExpression();
 
       case CALL: {
-        const auto fn = genRefExpression();
+        auto const fn = genRefExpression();
         llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
         for (auto i{0uz}; i<instruction.num_params(); ++i)
           parameters[i] = genValueExpression();
@@ -600,32 +590,42 @@ class TU final : public Backend {
       switch (instruction.type) {
       using enum PeepMIR::Instruction::Type;
       case FUNCTION: {
-        const auto function = tu->module.getFunction(instruction.function_name()); assert(function);
+        auto const function = tu->module.getFunction(instruction.function_name()); assert(function);
         return function;
       }
       case MODULE_FUNCTION:
         return tu->getFunctionImport(instruction.module(), instruction.module_function_id());
 
-      case LOCAL:
+      case LOCAL: {
         assert(instruction.local_idx() < locals.size());
-        return locals[instruction.local_idx()];
+        auto const local = locals[instruction.local_idx()];
+        auto const member_access = instructions[instruction_idx];
+        if (member_access.type not_eq TYPE_VARIABLE)
+          return local;
+        ++instruction_idx;
+
+        auto const id = member_access.type_variable_id();
+        return builder.CreateStructGEP(local->getAllocatedType(), local, id);
+
+      }
+
 
       case PRE_INC: case FPRE_INC:
       case PRE_DEC: case FPRE_DEC:
         return genUnary(instruction.type);
       case ASSIGN: {
-        const auto left = genRefExpression();
-        const auto right = genValueExpression();
+        auto const left = genRefExpression();
+        auto const right = genValueExpression();
         return builder.CreateStore(right, left);
       }
       case UCAST_ASSIGN: {
-        const auto left = genRefExpression();
-        const auto right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_bitwidth()));
+        auto const left = genRefExpression();
+        auto const right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_bitwidth()));
         return builder.CreateStore(right, left);
       }
       case SCAST_ASSIGN: {
-        const auto left = genRefExpression();
-        const auto right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_bitwidth()));
+        auto const left = genRefExpression();
+        auto const right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_bitwidth()));
         return builder.CreateStore(right, left);
       }
 
@@ -643,7 +643,7 @@ class TU final : public Backend {
       while (instruction_idx < instruction_cut_off)
         branch_value = genValueExpression();
 
-      const auto& block = mir_blocks[block_idx];
+      auto const& block = mir_blocks[block_idx];
       switch (block.terminator_type) {
         using enum PeepMIR::Block::Terminator;
       case BR:
@@ -665,7 +665,7 @@ class TU final : public Backend {
     }
 
     void codegenFunction() {
-      const auto num_blocks = mir_blocks.size();
+      auto const num_blocks = mir_blocks.size();
       while (block_idx < (num_blocks - 1)) {
         genBlock(mir_blocks[block_idx+1].first_instruction_idx);
         ++block_idx;
@@ -697,11 +697,12 @@ class TU final : public Backend {
 public:
 
   void lowerToLLVM(PeepMIR::TU& tu) {
+    // All of this is so stupid
     char buff[256];
-    const auto module_name = tu.name;
+    auto const module_name = tu.name;
     auto i{0uz};
     if (not module_name.empty()) {
-      for (const auto c : module_name) {
+      for (auto const c : module_name) {
         buff[i] = c;
         ++i;
       }
@@ -716,9 +717,11 @@ public:
         public_functions.push_back(x);
     }
 
-    for (auto func : public_functions) {
+    for (auto const func : public_functions) {
       auto j{0uz};
-      for (auto c : func->getName()) {
+      auto func_name = func->getName();
+      if (func_name == "main") continue;
+      for (auto c : func_name) {
         buff[i + j] = c;
         ++j;
       }
@@ -727,15 +730,24 @@ public:
     }
   }
 
-  explicit TU(const std::string& filename)
+  explicit TU(const std::string& filename, const TypeContext* type_context)
   : module(filename, context) {
-    type_map.res
+    type_map.reserve(type_context->totalNumberOfTypes());
     i1 = llvm::Type::getInt1Ty(context);
-    i8 = llvm::Type::getInt8Ty(context); bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0);
-    i16 = llvm::Type::getInt16Ty(context);
-    i32 = llvm::Type::getInt32Ty(context); i64 = llvm::Type::getInt64Ty(context);
-    f32 = llvm::Type::getFloatTy(context); f64 = llvm::Type::getDoubleTy(context);
-    devoid = llvm::Type::getVoidTy(context); ptr = llvm::PointerType::get(context, 0);
+    i8 = llvm::Type::getInt8Ty(context); bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0); type_map.emplace(PrimitiveType::i8(), i8);
+    i16 = llvm::Type::getInt16Ty(context); type_map.emplace(PrimitiveType::i16(), i8);
+    i32 = llvm::Type::getInt32Ty(context); type_map.emplace(PrimitiveType::i32(), i32);
+    i64 = llvm::Type::getInt64Ty(context); type_map.emplace(PrimitiveType::i64(), i64);
+    f32 = llvm::Type::getFloatTy(context); type_map.emplace(PrimitiveType::f32(), f32);
+    f64 = llvm::Type::getDoubleTy(context); type_map.emplace(PrimitiveType::f64(), f64);
+    devoid = llvm::Type::getVoidTy(context); type_map.emplace(PrimitiveType::devoid(), devoid);
+    ptr = llvm::PointerType::get(context, 0); type_map.emplace(PointerType::vague(false), ptr); type_map.emplace(PointerType::vague(true), ptr);
+
+    for (auto pointer : type_context->getPointers()) type_map.emplace(pointer, ptr);
+    assert(type_context->getVariants().empty());
+    for (auto func : type_context->getFunctions()) type_map.emplace(func, translateFunctionType(func));
+    for (auto custom : type_context->getCustomTypes()) type_map.emplace(custom, translateType(custom));
+
   }
 
   void printModule(llvm::raw_ostream& out = llvm::outs()) const
@@ -745,7 +757,7 @@ public:
 }
 
 std::unique_ptr<Backend> ToLLVM::codegen(PeepMIR::TU&& peeped_tu, const std::filesystem::path &file) {
-  auto ptr = std::make_unique<TU>(file.string());
+  auto ptr = std::make_unique<TU>(file.string(), peeped_tu.table->getTypeContext());
   ptr->lowerToLLVM(peeped_tu);
   return ptr;
 }

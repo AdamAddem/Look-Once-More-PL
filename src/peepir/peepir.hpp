@@ -17,10 +17,9 @@ struct Instruction {
     GLOBAL,             // value is char* to global name
     FUNCTION,           // value is char* to function name
 
-    MODULE_GLOBAL,      // value is const StabilizedModule*, aux_value is order of global in module
-    MODULE_FUNCTION,    // value is const StabilizedModule*, aux_value is order of function in module
-    TYPE_VARIABLE,      // value is const StabilizedTable*, aux_value is order of variable in type
-    TYPE_FUNCTION,      // value is const StabilizedTable*, aux_value is order of function in type
+    MODULE_GLOBAL,      // value is StabilizedModule, aux_value is order of global in module
+    MODULE_FUNCTION,    // value is StabilizedModule, aux_value is order of function in module
+    TYPE_VARIABLE,      // value is const CustomType*, aux_value is order of variable in type
 
     LOCAL,              //value is local idx
 
@@ -68,18 +67,15 @@ struct Instruction {
 
   constexpr Instruction(Type type, u64_t value) noexcept
   : type(type), value(value)
-  { assert( not eden::enumBetween(type, MODULE_GLOBAL, TYPE_FUNCTION) ); }
+  { assert( not eden::enumBetween(type, MODULE_GLOBAL, TYPE_VARIABLE) ); }
 
-  static_assert(std::derived_from<Module, SymbolTable>);
   constexpr Instruction(Type type, const Module* module, u32_t order) noexcept
   : type(type), aux_value(order), value(std::bit_cast<u64_t>(module))
   { assert( eden::enumBetween(type, MODULE_GLOBAL, MODULE_FUNCTION) ); }
 
   constexpr Instruction(Type type, const SymbolTable* table, u32_t order) noexcept
   : type(type), aux_value(order), value(std::bit_cast<u64_t>(table))
-  { assert( eden::enumBetween(type, TYPE_VARIABLE, TYPE_FUNCTION) ); }
-
-
+  { assume_assert( type == TYPE_VARIABLE ); }
 
   [[nodiscard]] constexpr bool
   is_literal() const noexcept
@@ -146,8 +142,24 @@ struct Instruction {
   { assume_assert(type == FUNCTION); return std::bit_cast<char*>(value); }
 
   [[nodiscard]] constexpr StabilizedTable
-  symbol_table() const noexcept
-  { assert(eden::enumBetween(type, TYPE_VARIABLE, TYPE_FUNCTION));  return std::bit_cast<const SymbolTable*>(value); }
+  member_table() const noexcept
+  { assert(type == TYPE_VARIABLE);  return std::bit_cast<const SymbolTable*>(value); }
+
+  [[nodiscard]] constexpr u16_t
+  type_variable_id() const noexcept
+  { assume_assert(type == TYPE_VARIABLE); return static_cast<u16_t>(aux_value); }
+
+  [[nodiscard]] constexpr const SymbolTable::Variable&
+  type_variable() const noexcept
+  { assume_assert(type == TYPE_VARIABLE); return *member_table().getVariable(type_variable_id()); }
+
+  //[[nodiscard]] constexpr u16_t
+  //type_function_id() const noexcept
+  //{ assume_assert(type == TYPE_FUNCTION); return static_cast<u16_t>(aux_value); }
+
+  //[[nodiscard]] constexpr const SymbolTable::Function&
+  //type_function() const noexcept
+  //{ assume_assert(type == TYPE_FUNCTION); return *member_owned_type()->member_table()->getFunction(type_function_id()); }
 
   [[nodiscard]] constexpr StabilizedModule
   module() const noexcept
@@ -157,33 +169,17 @@ struct Instruction {
   module_global_id() const noexcept
   { assume_assert(type == MODULE_GLOBAL); return static_cast<u16_t>(aux_value); }
 
-  [[nodiscard]] constexpr const SymbolTable::Variable*
+  [[nodiscard]] constexpr const SymbolTable::Variable&
   module_global() const noexcept
-  { assume_assert(type == MODULE_GLOBAL); return module().getVariable(module_global_id()); }
+  { assume_assert(type == MODULE_GLOBAL); return *module().getVariable(module_global_id()); }
 
   [[nodiscard]] constexpr u16_t
   module_function_id() const noexcept
   { assume_assert(type == MODULE_FUNCTION); return static_cast<u16_t>(aux_value); }
 
-  [[nodiscard]] constexpr const SymbolTable::Function*
+  [[nodiscard]] constexpr const SymbolTable::Function&
   module_function() const noexcept
-  { assume_assert(type == MODULE_FUNCTION); return module().getFunction(module_function_id()); }
-
-  [[nodiscard]] constexpr u16_t
-  type_variable_id() const noexcept
-  { assume_assert(type == TYPE_VARIABLE); return static_cast<u16_t>(aux_value); }
-
-  [[nodiscard]] constexpr const SymbolTable::Variable*
-  type_variable() const noexcept
-  { assume_assert(type == TYPE_VARIABLE); return symbol_table().getVariable(type_variable_id()); }
-
-  [[nodiscard]] constexpr u16_t
-  type_function_id() const noexcept
-  { assume_assert(type == TYPE_FUNCTION); return static_cast<u16_t>(aux_value); }
-
-  [[nodiscard]] constexpr const SymbolTable::Function*
-  type_function() const noexcept
-  { assume_assert(type == TYPE_FUNCTION); return symbol_table().getFunction(type_function_id()); }
+  { assume_assert(type == MODULE_FUNCTION); return *module().getFunction(module_function_id()); }
 
   [[nodiscard]] constexpr u64_t
   num_params() const noexcept

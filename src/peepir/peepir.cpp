@@ -23,19 +23,6 @@ using namespace LOM::AST;
 
 namespace {
 
-eden_return_nonnull eden_nonull_args
-[[nodiscard]] constexpr char*
-combineWithDot(char* before_dot, char* after_dot) noexcept {
-  eden::releasing_string combined{eden::flags::reserve_initial<10>};
-  while (*before_dot not_eq '\0')
-    combined.push_back(*before_dot), ++before_dot;
-  combined.push_back('.');
-  while (*after_dot not_eq '\0')
-    combined.push_back(*after_dot), ++after_dot;
-
-  return combined.release().get();
-}
-
 eden_nonull_args
 [[nodiscard]] constexpr Instruction::Type
 castForType(const Type* type) noexcept {
@@ -232,7 +219,7 @@ class Peeper {
         if (subscope_is_module)
           instructions.emplace_back(Instruction::MODULE_FUNCTION, static_cast<const Module*>(subscope), member_function->get_id());
         else
-          instructions.emplace_back(Instruction::TYPE_FUNCTION, subscope, member_function->get_id());
+          assert(false and "Unimplemented");
         return {member_function->type, {}};
       }
 
@@ -859,10 +846,10 @@ void printPeepInstruction(Instruction instruction) {
   case GLOBAL: return std::println("GLOBAL {}", instruction.global_name());
   case FUNCTION: return std::println("FUNCTION {}", instruction.function_name());
 
-  case MODULE_GLOBAL: return std::println("MODULE_GLOBAL {}", instruction.module_global()->nameof());
-  case MODULE_FUNCTION: return std::println("MODULE_FUNCTION {}", instruction.module_function()->nameof());
-  case TYPE_VARIABLE: return std::println("TYPE_VARIABLE {}", instruction.type_variable()->nameof());
-  case TYPE_FUNCTION: return std::println("TYPE_FUNCTION {}", instruction.type_function()->nameof());
+  case MODULE_GLOBAL: return std::println("MODULE_GLOBAL {}", instruction.module_global().nameof());
+  case MODULE_FUNCTION: return std::println("MODULE_FUNCTION {}", instruction.module_function().nameof());
+  case TYPE_VARIABLE: return std::println("TYPE_VARIABLE {}", instruction.type_variable().nameof());
+  //case TYPE_FUNCTION: return std::println("TYPE_FUNCTION {}", instruction.type_function().nameof());
 
   case LOCAL: return std::println("LOCAL {}", instruction.local_idx());
 

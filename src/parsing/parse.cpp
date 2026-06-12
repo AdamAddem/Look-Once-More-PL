@@ -800,7 +800,7 @@ void parseStructDecl(TU& tu, Body& global_body) {
   }while (tokens.pop_if(TokenType::COMMA));
   tokens.expect_then_pop(TokenType::RBRACE, "Expected closing curly brace after struct definition.");
 
-  tu.module->addCustomType(name, std::span(members, i + 1));
+  tu.module->addCustomType(name, std::span(members, i));
 }
 
 void parseImports(TU& tu, Body& global_body) {

@@ -10,11 +10,12 @@ using namespace LOM;
 eden_nonull_args
 bool Type::coercibleTo(const Type* other) const noexcept {
   const auto other_type = other->derived_type;
-  assume_assert(derived_type not_eq CUSTOM); assume_assert(derived_type not_eq VARIANT);
-  assume_assert(other_type not_eq CUSTOM); assume_assert(other_type not_eq VARIANT);
+  assume_assert(derived_type not_eq VARIANT);
+  assume_assert(other_type not_eq VARIANT);
   if (other == this)
     return true;
 
+  // temporary to allow string literal to raw<char> conversion
   if (derived_type == PRIMITIVE and castToPrimitive()->isString()) {
     if (other->isPointer() and other->castToPointer()->getSubtype().type == PrimitiveType::char_())
       return true;
@@ -33,6 +34,7 @@ bool Type::coercibleTo(const Type* other) const noexcept {
   case VARIANT:
   case FUNCTION:
   case CUSTOM:
+    return castToCustom()->coercibleTo(other->castToCustom());
   default:
     eden_unreachable("Invalid derived type.");
   }

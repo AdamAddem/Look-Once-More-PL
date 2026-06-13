@@ -34,4 +34,7 @@ void printTU(TU&);
 using TokenIter = std::vector<Lexer::Token>::iterator;
 
 void parseTokens(TU& tu, TokenIter begin, TokenIter end);
+
+inline constexpr bool STRUCT_MEMBERS_START_PUBLIC = true;
+
 } // namespace Parser

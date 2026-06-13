@@ -34,6 +34,7 @@ TokenType LOM::Lexer
     LESSEQ <=
     GTREQ >=
     SEMI_COLON ;
+    COLON :
     ADDR @
     COMMA ,
     DOT .
@@ -93,21 +94,10 @@ TokenType LOM::Lexer
     KEYWORD_DEFAULT default
 !END CONTROL_FLOW
 
+!BEGIN CAST
     KEYWORD_CAST cast
-<<<<<<< Updated upstream
 !END CAST
 
-!BEGIN ALLOC_LIFETIMES
-    KEYWORD_STEAL steal
-    KEYWORD_BUILD_NEW build_new
-    KEYWORD_ALLOCATE allocate
-    KEYWORD_CONSTRUCT construct
-!END ALLOC_LIFETIMES
-
-    KEYWORD_FROM from
-    KEYWORD_AS as
-=======
->>>>>>> Stashed changes
     KEYWORD_GLOBAL global
     KEYWORD_NULL null
     KEYWORD_JUNK junk

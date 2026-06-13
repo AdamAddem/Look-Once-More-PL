@@ -90,9 +90,7 @@ public:
 class Peeper {
   Module* module;
 
-  const SymbolTable* subscope;
-  bool subscope_is_module{true};
-  InstantiatedType::Qualifiers subscope_qualifiers;
+
 
   std::unordered_map<std::string_view, Module*>& imports;
 
@@ -133,9 +131,8 @@ class Peeper {
   }
 
   constexpr void
-  force_new_block() noexcept {
-    blocks.emplace_back(instructions.size(), Block::Terminator::NONE);
-  }
+  force_new_block() noexcept
+  { blocks.emplace_back(instructions.size(), Block::Terminator::NONE); }
 
   eden_nonull_args constexpr bool //returns whether coersion was successful
   coerce_if_integerliteral(Instruction& possible_literal, const Type* expected_type) const noexcept {
@@ -177,56 +174,60 @@ class Peeper {
   }
 
   InstantiatedType peepMemberAccess() {
+    auto const member_access_idx = instructions.size();
+    instructions.emplace_back(Instruction::NOOP, 0).~Instruction(); // doing this to reuse the constructor
+
     if (nodes.peek().type() == ASTNode::IDENTIFIER) {
       auto const possible_module = imports.find(nodes.peek().identifier());
-      if (possible_module not_eq imports.end()) {
-        nodes.pop();
-        subscope = possible_module->second; subscope_is_module = true;
-        auto const res = peepExpression();
-        subscope = nullptr;
-        return res;
+      if (possible_module == imports.end()) goto not_module;
+
+      auto const member_access_instruction = &instructions[member_access_idx];
+      nodes.pop();
+      auto const other_module = possible_module->second;
+
+      auto const identifier = std::string_view(nodes.pop().identifier());
+      if (auto const member_variable = other_module->getPublicVariable(identifier)) {
+        assert(member_variable->get_id() not_eq u16_max);
+        new (member_access_instruction) Instruction(Instruction::MODULE_GLOBAL, other_module, member_variable->get_id());
+        return member_variable->type;
       }
+
+      if (auto const member_function = other_module->getPublicFunction(identifier)) {
+        assert(member_function->get_id() not_eq u16_max);
+        new (member_access_instruction) Instruction(Instruction::MODULE_FUNCTION, other_module, member_function->get_id());
+        return {member_function->type, {}};
+      }
+
+      throw ValidationError("Identifier is not a public member of module.", identifier.data(), current_line_number);
     }
 
+    not_module:
     auto const object_expression = peepExpression();
     if (not object_expression.type->isCustom())
-      throw ValidationError("Attempt to access member of non-custom type.", object_expression.toString(), current_line_number);
+        throw ValidationError("Attempt to access member of non-custom type.", object_expression.toString(), current_line_number);
 
-    subscope_is_module = false; subscope_qualifiers = object_expression.qualifiers;
-    subscope = object_expression.type->castToCustom()->member_table();
-    auto const res = peepExpression();
-    subscope = nullptr;
-    return res;
+    auto const member_access_instruction = &instructions[member_access_idx];
+    auto const custom_type = object_expression.type->castToCustom();
+    auto const member_table = custom_type->member_table();
+    auto const identifier = std::string_view(nodes.pop().identifier());
+
+    if (auto const member_variable = member_table->getPublicVariable(identifier)) {
+      assert(member_variable->get_id() not_eq u16_max);
+
+      new (member_access_instruction) Instruction(Instruction::TYPE_VARIABLE, custom_type, member_variable->get_id());
+      return {member_variable->type.type, object_expression.qualifiers};
+    }
+
+    if (auto const member_function = member_table->getPublicFunction(identifier)) {
+      assert(false and "Unimplemented"); assert(member_function->get_id() not_eq u16_max); return {member_function->type, {}};
+    }
+
+    new (member_access_instruction) Instruction(Instruction::UCAST, 0); // this is only here to avoid the UB from double destruction once this throws
+    throw ValidationError("Identifier is not a public member of type.", identifier.data(), current_line_number);
   }
 
   eden_nonull_args InstantiatedType
   peepIdentifier(char* identifier) {
-    if (subscope) {
-      if (auto const member_variable = subscope->getPublicVariable(identifier)) {
-        assert(member_variable->get_id() not_eq u16_max);
-        InstantiatedType res = member_variable->type;
-        if (subscope_is_module)
-          instructions.emplace_back(Instruction::MODULE_GLOBAL, static_cast<const Module*>(subscope), member_variable->get_id());
-        else {
-          instructions.emplace_back(Instruction::TYPE_VARIABLE, subscope, member_variable->get_id());
-          res.qualifiers = subscope_qualifiers;
-        }
-        return res;
-      }
-
-      if (auto const member_function = subscope->getPublicFunction(identifier)) {
-        assert(member_function->get_id() not_eq u16_max);
-        if (subscope_is_module)
-          instructions.emplace_back(Instruction::MODULE_FUNCTION, static_cast<const Module*>(subscope), member_function->get_id());
-        else
-          assert(false and "Unimplemented");
-        return {member_function->type, {}};
-      }
-
-      const char* err_msg = subscope_is_module ? "Identifier is not a public member of module." : "Identifier is not a public member of type.";
-      throw ValidationError(err_msg, identifier, current_line_number);
-    }
-
     if (auto const variable = module->getLocal(identifier)) {
       instructions.emplace_back(Instruction::LOCAL, variable->second + 1); // adjust by 1 accounting for return type
       return variable->first;
@@ -271,30 +272,35 @@ class Peeper {
     const FunctionType* function_type = called.type->castToFunction();
     auto const function_parameter_types = function_type->parameterTypes();
     auto const function_parameter_count = function_parameter_types.size();
+    bool const is_variadic = function_type->isVariadic();
 
     if (call_parameter_count < function_parameter_count)
       throw ValidationError("Too few parameters for function call.", "PLACEHOLDER", current_line_number);
-    if (call_parameter_count > function_parameter_count and not function_type->isVariadic())
+    if (call_parameter_count > function_parameter_count and not is_variadic)
       throw ValidationError("Too many parameters for function call.", "PLACEHOLDER", current_line_number);
 
     auto i{0uz};
-    for (; i<call_parameter_count; ++i) {
+    for (; i<function_parameter_count; ++i) {
       auto const given_parameter_idx = instructions.size();
       auto const given_parameter = peepExpression();
       auto const function_parameter_type = function_parameter_types[i];
 
       if (given_parameter.type not_eq function_parameter_type) {
-        if (not given_parameter.type->coercibleTo(function_parameter_type)) {
+        if (not given_parameter.type->coercibleTo(function_parameter_type))
           throw ValidationError("Cannot convert parameter to parameter type.",
           std::format("Parameter of type '{}' cannot convert to type '{}'", given_parameter.toString(), function_parameter_type->toString()),
           current_line_number);
-        }
 
         if (not coerce_if_integerliteral(instructions[given_parameter_idx], function_parameter_type)) {
           Instruction cast{castForType(given_parameter.type), std::bit_cast<u64_t>(function_parameter_type)};
           instructions.insert(instructions.begin() + given_parameter_idx, cast);
         }
       }
+    }
+
+    if (is_variadic) {
+      for (; i<call_parameter_count; ++i)
+        (void)peepExpression();
     }
 
     return {function_type->returnType(), {}};
@@ -822,8 +828,6 @@ public:
       std::move(function_peeper.instructions),
       std::move(function_peeper.blocks),
       func.is_public);
-
-    tu.table->leaveFunctionScope();
   }
 
 };

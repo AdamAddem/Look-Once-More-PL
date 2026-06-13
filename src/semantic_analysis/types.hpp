@@ -468,12 +468,12 @@ static constexpr InstantiatedType unsignedToLiteralInstance(u64_t val) {
 }
 
 class TypeContext {
-  static constexpr auto search_predicate = [] (auto* type, auto&&... args) { return type->sameAs(std::forward<decltype(args)>(args)...); };
+  static constexpr auto search_pred = [] (auto* type, auto&&... args) { return type->sameAs(std::forward<decltype(args)>(args)...); };
   eden::Arena<> type_arena;
-  eden::swap_vector<PointerType*, search_predicate> pointers;
-  eden::swap_vector<VariantType*, search_predicate> variants;
-  eden::swap_vector<FunctionType*, search_predicate> functions;
-  eden::swap_vector<CustomType*, search_predicate> custom_types;
+  eden::swap_vector<PointerType*> pointers;
+  eden::swap_vector<VariantType*> variants;
+  eden::swap_vector<FunctionType*> functions;
+  eden::swap_vector<CustomType*> custom_types;
 
   template <std::derived_from<Type> T, class... Args>
   eden_return_nonnull [[nodiscard]]
@@ -484,8 +484,8 @@ class TypeContext {
   template <std::derived_from<Type> T, class... Args>
   eden_return_nonnull [[nodiscard]]
   constexpr T*
-  returnExistingOrNew(eden::swap_vector<T*, search_predicate>& types, Args&&... args) {
-    auto res = types.search(std::forward<Args>(args)...);
+  returnExistingOrNew(eden::swap_vector<T*>& types, Args&&... args) {
+    auto res = types.search(search_pred, std::forward<Args>(args)...);
     if (res) return *res;
 
     const auto new_type =
@@ -510,16 +510,15 @@ public:
   [[nodiscard]] auto const& getCustomTypes() const noexcept { return custom_types; }
 
 
-
   eden_return_nonnull
   [[nodiscard]] PointerType*
   addRawPointer(InstantiatedType subtype) noexcept
-  {return returnExistingOrNew(pointers, subtype, false);}
+  { return returnExistingOrNew(pointers, subtype, false); }
 
   eden_return_nonnull
   [[nodiscard]] PointerType*
   addUniquePointer(InstantiatedType subtype) noexcept
-  {return returnExistingOrNew(pointers, subtype, true);}
+  { return returnExistingOrNew(pointers, subtype, true); }
 
   eden_return_nonnull
   [[nodiscard]] VariantType*

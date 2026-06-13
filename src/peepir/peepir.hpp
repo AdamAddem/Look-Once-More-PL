@@ -73,7 +73,7 @@ struct Instruction {
   : type(type), aux_value(order), value(std::bit_cast<u64_t>(module))
   { assert( eden::enumBetween(type, MODULE_GLOBAL, MODULE_FUNCTION) ); }
 
-  constexpr Instruction(Type type, const SymbolTable* table, u32_t order) noexcept
+  constexpr Instruction(Type type, const CustomType* table, u32_t order) noexcept
   : type(type), aux_value(order), value(std::bit_cast<u64_t>(table))
   { assume_assert( type == TYPE_VARIABLE ); }
 
@@ -141,9 +141,9 @@ struct Instruction {
   function_name() const noexcept
   { assume_assert(type == FUNCTION); return std::bit_cast<char*>(value); }
 
-  [[nodiscard]] constexpr StabilizedTable
-  member_table() const noexcept
-  { assert(type == TYPE_VARIABLE);  return std::bit_cast<const SymbolTable*>(value); }
+  [[nodiscard]] constexpr const CustomType*
+  custom_type() const noexcept
+  { assert(type == TYPE_VARIABLE);  return std::bit_cast<const CustomType*>(value); }
 
   [[nodiscard]] constexpr u16_t
   type_variable_id() const noexcept
@@ -151,7 +151,7 @@ struct Instruction {
 
   [[nodiscard]] constexpr const SymbolTable::Variable&
   type_variable() const noexcept
-  { assume_assert(type == TYPE_VARIABLE); return *member_table().getVariable(type_variable_id()); }
+  { assume_assert(type == TYPE_VARIABLE); return *custom_type()->member_table()->getVariable(type_variable_id()); }
 
   //[[nodiscard]] constexpr u16_t
   //type_function_id() const noexcept

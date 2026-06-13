@@ -293,6 +293,17 @@ struct Body {
         value = static_cast<u64_t>(Operator::POST_DECREMENT);
         break;
       case TokenType::ARROW:
+        if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER)) { // should only occur when accessing a member.
+          tokens.pop();
+          left = expression_tree.create(
+            ASTNode::UNARY, static_cast<u64_t>(Operator::ARROW),
+            left, 0);
+          left = expression_tree.create(
+            ASTNode::MEMBER_ACCESS, 0,
+            left, generatePostfixExpression());
+
+          continue;
+        }
         value = static_cast<u64_t>(Operator::ARROW);
         break;
       case TokenType::LPAREN: {
@@ -789,15 +800,31 @@ void parseStructDecl(TU& tu, Body& global_body) {
 
   SymbolTable::Variable members[Settings::MAX_STRUCT_MEMBER_VARIABLES];
   tokens.expect_then_pop(TokenType::LBRACE, "Expected opening curly brace in struct definition.");
-
   auto i{0uz};
+  if (tokens.pop_if(TokenType::RBRACE))
+    return (void)tu.module->addCustomType(name, {});
+
+  bool in_pub_block = STRUCT_MEMBERS_START_PUBLIC;
   do {
-    bool const is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
+    if (in_pub_block) {
+      if (tokens.pop_if(TokenType::COLON)) {
+        tokens.expect_then_pop(TokenType::KEYWORD_PUB, "Expected closing 'pub' in 'pub:   :pub' block.");
+        if (tokens.peek_is(TokenType::RBRACE)) break;
+        in_pub_block = false;
+      }
+    }
+    else {
+      if (tokens.pop_if(TokenType::KEYWORD_PUB)) {
+        tokens.expect_then_pop(TokenType::COLON, "Expected opening colon in 'pub:   :pub' block.");
+        in_pub_block = true;
+      }
+    }
+
     auto member_type = parseUnqualifiedType(tokens, *tu.module);
     auto member_name = parseIdentifier(tokens);
-    members[i] = {member_type, member_name, is_public};
+    members[i] = {member_type, member_name, in_pub_block};
     ++i;
-  }while (tokens.pop_if(TokenType::COMMA));
+  }while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
   tokens.expect_then_pop(TokenType::RBRACE, "Expected closing curly brace after struct definition.");
 
   tu.module->addCustomType(name, std::span(members, i));
@@ -876,16 +903,16 @@ void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& 
 
     table.enterFunctionScope(functions[i].name);
     function_body.parseStatementsUntilEmpty();
-    table.leaveFunctionScope();
     functions[i].body.nodes = std::move(function_body.tree);
   }
 }
 
-void printFunction(const Function& func, Module& table, u64_t ln) {
-  std::cout << "fn " << func.name << "(";
+void printFunction(Function const& func, Module const& table, u64_t ln) {
   auto const function = table.getFunction(func.name);
   auto const parameters = function->parameters();
   auto const return_type = function->returnType();
+
+  std::print("id: {}\nfn {} (", function->get_id(), func.name);
 
   for (auto &parameter : parameters) {
     std::cout << parameter.type.toString();

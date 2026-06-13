@@ -131,8 +131,8 @@ class TU final : public Backend {
   [[nodiscard]] llvm::Value*
   getFunctionImport(StabilizedModule imported_module, u16_t function_id) {
     auto const function = imported_module.getFunction(function_id); assume_assert(function);
-    if (imports.contains(function))
-      return imports[function];
+    auto const element = imports.find(function);
+    if (element not_eq imports.end()) return element->second;
 
     auto const module_name = imported_module.nameof();
     std::string function_name;
@@ -144,11 +144,16 @@ class TU final : public Backend {
 
     auto const function_type = translateFunctionType(function->type);
 
-    return imports[function] = module.getOrInsertFunction(function_name, function_type).getCallee();
+    auto const res = module.getOrInsertFunction(function_name, function_type).getCallee();
+    imports.emplace(function, res);
+    return res;
   }
 
   [[nodiscard]] llvm::FunctionType*
   translateFunctionType(const FunctionType* func_type) noexcept {
+    auto const element = type_map.find(func_type);
+    if (element not_eq type_map.end()) return llvm::cast<llvm::FunctionType>(element->second);
+
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
     auto num_params{0uz};
     for (auto const param_type : func_type->parameterTypes()) {
@@ -164,7 +169,9 @@ class TU final : public Backend {
       i1 :
       type_map[lom_return_type];
 
-    return llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, func_type->isVariadic());
+    auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, func_type->isVariadic());
+    type_map.emplace(func_type, res);
+    return res;
   }
 
   [[nodiscard]] llvm::Type*
@@ -187,7 +194,9 @@ class TU final : public Backend {
       ++i;
     }
 
-    return llvm::StructType::create(context, llvm::ArrayRef(member_types, i), custom_type->nameof());
+    auto const res = llvm::StructType::create(context, llvm::ArrayRef(member_types, i), custom_type->nameof());
+    type_map.emplace(type, res);
+    return res;
   }
 
   [[nodiscard]] llvm::IntegerType*
@@ -454,17 +463,14 @@ class TU final : public Backend {
         assert(instruction.local_idx() < locals.size());
         auto const local = locals[instruction.local_idx()];
         auto const local_type = local->getAllocatedType();
-        auto const load = builder.CreateLoad(local_type, local);
-        auto const& member_access = instructions[instruction_idx];
-        if (member_access.type not_eq TYPE_VARIABLE)
-          return load;
-        ++instruction_idx;
+        return builder.CreateLoad(local_type, local);
+      }
 
-        auto const member_table = member_access.member_table();
-        auto const id = member_access.type_variable_id();
-        auto const& member = member_table.getVariable(id);
-        auto const member_ptr = builder.CreateStructGEP(local_type, local, id);
-
+      case TYPE_VARIABLE: {
+        auto const type = instruction.custom_type();
+        auto const id = instruction.type_variable_id();
+        auto const& member = type->member_table()->getVariable(id);
+        auto const member_ptr = builder.CreateStructGEP(tu->translateType(type), genRefExpression(), id);
         return builder.CreateLoad(tu->translateType(member->type.type), member_ptr);
       }
       case MODULE_FUNCTION:
@@ -596,17 +602,15 @@ class TU final : public Backend {
       case MODULE_FUNCTION:
         return tu->getFunctionImport(instruction.module(), instruction.module_function_id());
 
-      case LOCAL: {
+      case LOCAL:
         assert(instruction.local_idx() < locals.size());
-        auto const local = locals[instruction.local_idx()];
-        auto const member_access = instructions[instruction_idx];
-        if (member_access.type not_eq TYPE_VARIABLE)
-          return local;
-        ++instruction_idx;
+        return locals[instruction.local_idx()];
 
-        auto const id = member_access.type_variable_id();
-        return builder.CreateStructGEP(local->getAllocatedType(), local, id);
 
+      case TYPE_VARIABLE: {
+        auto const type = instruction.custom_type();
+        auto const id = instruction.type_variable_id();
+        return builder.CreateStructGEP(tu->translateType(type), genRefExpression(), id);
       }
 
 
@@ -734,10 +738,12 @@ public:
   : module(filename, context) {
     type_map.reserve(type_context->totalNumberOfTypes());
     i1 = llvm::Type::getInt1Ty(context);
-    i8 = llvm::Type::getInt8Ty(context); bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0); type_map.emplace(PrimitiveType::i8(), i8);
-    i16 = llvm::Type::getInt16Ty(context); type_map.emplace(PrimitiveType::i16(), i8);
-    i32 = llvm::Type::getInt32Ty(context); type_map.emplace(PrimitiveType::i32(), i32);
-    i64 = llvm::Type::getInt64Ty(context); type_map.emplace(PrimitiveType::i64(), i64);
+    i8 = llvm::Type::getInt8Ty(context); type_map.emplace(PrimitiveType::i8(), i8); type_map.emplace(PrimitiveType::u8(), i8); type_map.emplace(PrimitiveType::char_(), i8); type_map.emplace(PrimitiveType::bool_(), i8);
+    bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0);
+
+    i16 = llvm::Type::getInt16Ty(context); type_map.emplace(PrimitiveType::i16(), i16); type_map.emplace(PrimitiveType::u16(), i16);
+    i32 = llvm::Type::getInt32Ty(context); type_map.emplace(PrimitiveType::i32(), i32); type_map.emplace(PrimitiveType::u32(), i32);
+    i64 = llvm::Type::getInt64Ty(context); type_map.emplace(PrimitiveType::i64(), i64); type_map.emplace(PrimitiveType::u64(), i64);
     f32 = llvm::Type::getFloatTy(context); type_map.emplace(PrimitiveType::f32(), f32);
     f64 = llvm::Type::getDoubleTy(context); type_map.emplace(PrimitiveType::f64(), f64);
     devoid = llvm::Type::getVoidTy(context); type_map.emplace(PrimitiveType::devoid(), devoid);
@@ -745,9 +751,8 @@ public:
 
     for (auto pointer : type_context->getPointers()) type_map.emplace(pointer, ptr);
     assert(type_context->getVariants().empty());
-    for (auto func : type_context->getFunctions()) type_map.emplace(func, translateFunctionType(func));
     for (auto custom : type_context->getCustomTypes()) type_map.emplace(custom, translateType(custom));
-
+    for (auto func : type_context->getFunctions()) type_map.emplace(func, translateFunctionType(func)); // func should be last since it may contain anything as a subtype
   }
 
   void printModule(llvm::raw_ostream& out = llvm::outs()) const

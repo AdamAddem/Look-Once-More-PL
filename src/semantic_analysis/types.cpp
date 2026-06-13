@@ -237,11 +237,11 @@ bool PointerType::castableTo(const PointerType* other) const noexcept {
 std::string PointerType::toString() const noexcept {
   switch (pointer_type) {
   case RAW:
-    return "raw -> " + subtype.toString();
+    return "raw<" + subtype.toString() + ">";
   case UNIQUE:
-    return "unique -> " + subtype.toString();
+    return "unique<" + subtype.toString() + ">";
   case VAGUE:
-    return "vague -> ";
+    return "vague<" + std::string(subtype.qualifiers.is_mutable ? "mut " : "") + ">";
   default:
     eden_unreachable("Invalid pointer type.");
   }

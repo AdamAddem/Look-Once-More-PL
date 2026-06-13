@@ -11,7 +11,6 @@
 #include <vector>
 
 namespace {
-
 using namespace LOM;
 using namespace LOM::Lexer;
 using eden::releasing_string;
@@ -30,31 +29,23 @@ struct FileInAnalysis {
 void grabNumber(FileInAnalysis& file);
 
 [[nodiscard]] bool
-is_num(int c) { return c >= '0' and c <= '9'; }
+is_num(int c)
+{ return c >= '0' and c <= '9'; }
 
 [[nodiscard]] int
 charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
   switch (c) {
-  case 'n':
-    return '\n';
-  case 't':
-    return '\t';
-  case 'b':
-    return '\b';
-  case 'r':
-    return '\r';
-  case 'f':
-    return '\f';
-  case '\\':
-    return '\\';
-  case '"':
-    return '"';
-  case '\'':
-    return '\'';
-  case '0':
-    return '\0';
-  case 'v':
-    return '\v';
+  case 'n':   return '\n';
+  case 't':   return '\t';
+  case 'b':   return '\b';
+  case 'r':   return '\r';
+  case 'f':   return '\f';
+  case '\\':  return '\\';
+  case '"':   return '"';
+  case '\'':  return '\'';
+  case '0':   return '\0';
+  case 'v':   return '\v';
+
   default:
     throw LexingError("Unknown escape sequence.", std::to_string(c), file.line_number);
   }
@@ -64,7 +55,7 @@ charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
 void grabStringLiteral(FileInAnalysis &file) {
 
   releasing_string literal{reserve_initial<5>};
-  int c = file.stream.get();
+  auto c = file.stream.get();
   while (c not_eq EOF) {
     // stupid and dumb
     switch (c) {
@@ -84,14 +75,14 @@ void grabStringLiteral(FileInAnalysis &file) {
     c = file.stream.get();
   }
 
-ending_quote_found: // don't crucify me for this pls
-  file.token_list.emplace_back(TokenType::STRING_LITERAL, std::bit_cast<u64_t>(literal.release().get()), file.line_number);
+  ending_quote_found: // don't crucify me for this pls
+    file.token_list.emplace_back(TokenType::STRING_LITERAL, std::bit_cast<u64_t>(literal.release().get()), file.line_number);
 }
 
 // called when opening single-quote already consumed
 void grabCharLiteral(FileInAnalysis &file) {
-  int c1 = file.stream.get();
-  const int c2 = file.stream.get();
+  auto c1 = file.stream.get();
+  auto const c2 = file.stream.get();
 
   if (c1 == '\\') {
     c1 = charToEscapeSequenceEquivalent(file, c2);
@@ -105,106 +96,54 @@ void grabCharLiteral(FileInAnalysis &file) {
 
 void grabSymbol(FileInAnalysis &file) {
   TokenType type;
-  const int c = file.stream.get();
-  const auto prev_token_type = file.token_list.back().getType();
+  auto const c = file.stream.get();
+  auto const prev_token_type = file.token_list.back().getType();
   if (c == '-' and
     (isCategorySYMBOLS(prev_token_type) or isCategoryKEYWORDS(prev_token_type)) and  //this is dumb but it works
     is_num(file.stream.peek())) {
     file.stream.putback('-');
     return grabNumber(file);
-  }
+    }
 
-  std::string symbol(1, static_cast<char>(c));
-  switch (c) {
-
-  // compound symbols up first, single char symbols down there
-  case '+':
+  auto const peek = file.stream.peek();
+  switch (c) { using enum TokenType;
+  case '+': type = peek == '+' ? (file.stream.get(), PLUSPLUS) : PLUS; break;
   case '-':
-    if (file.stream.peek() == c) {
-      symbol.push_back(static_cast<char>(file.stream.get()));
-      type = stringToTokenType.at(symbol);
-      break;
-    }
-
-    if (c == '-' && file.stream.peek() == '>') {
-      file.stream.get();
-      type = TokenType::ARROW;
-      break;
-    }
-    [[fallthrough]];
-  case '/':
-  case '*':
-  case '%':
-    if (file.stream.peek() == '=') {
-      // desugaring for x _= (...) -> x = x _ (...)
-      const auto &d = file.token_list.back();
-      if (d.getType() not_eq TokenType::IDENTIFIER)
-        throw LexingError("Expected identifier to the left of assignment operator.", d.toString(), file.line_number);
-
-      file.token_list.emplace_back(TokenType::ASSIGN, file.line_number);
-      file.token_list.emplace_back(d);
-      file.token_list.emplace_back(stringToTokenType.at(symbol), file.line_number);
-      file.token_list.emplace_back(TokenType::LPAREN, file.line_number);
-      ++file.needs_closing_paren;
-      file.stream.get();
-      return;
-    }
-    [[fallthrough]];
-
-
-  case '<':
-  case '>':
-    if (file.stream.peek() == '=')
-      symbol.push_back(static_cast<char>(file.stream.get()));
-    [[fallthrough]];
-
-  case '(':
-  case ')':
-  case '{':
-  case '}':
-  case '[':
-  case ']':
-  case '@':
-  case ',':
-  case '.':
-    type = stringToTokenType.at(symbol);
+    if (peek == '-') file.stream.get(), type = MINUSMINUS;
+    else if (peek == '>') file.stream.get(), type = ARROW;
+    else type = MINUS;
     break;
 
-  case '!':
-    if (file.stream.peek() == '=') [[likely]] {
-      file.stream.get();
-      type = TokenType::KEYWORD_NOT_EQUAL;
-      break;
-    }
-    throw LexingError("! token not supported.", "", file.line_number);
+  case '/': type = SLASH; break;
+  case '*': type = STAR; break;
+  case '%': type = MOD; break;
+  case '<': type = peek == '=' ? (file.stream.get(), LESSEQ) : LESS; break;
+  case '>': type = peek == '=' ? (file.stream.get(), GTREQ) : GTR; break;
+  case '(': type = LPAREN; break;
+  case ')': type = RPAREN; break;
+  case '{': type = LBRACE; break;
+  case '}': type = RBRACE; break;
+  case '[': type = LBRACKET; break;
+  case ']': type = RBRACKET; break;
+  case '@': type = ADDR; break;
+  case ',': type = COMMA; break;
+  case '.': type = DOT; break;
+  case ':': type = COLON; break;
+  case '!': type = peek == '=' ? (file.stream.get(), KEYWORD_NOT_EQUAL) : throw LexingError("! token only supported in !=.", "Use keyword 'not' instead.", file.line_number); break;
+  case '=': type = peek == '=' ? (file.stream.get(), KEYWORD_EQUALS) : ASSIGN; break;
 
-  case '=':
-    if (file.stream.peek() == '=') {
-      file.stream.get();
-      type = TokenType::KEYWORD_EQUALS;
-    }
-    else
-      type = TokenType::ASSIGN;
-    break;
-
-
-  case ';':
+  case ';': type = SEMI_COLON; break;
     while (file.needs_closing_paren) {
-      file.token_list.emplace_back(TokenType::RPAREN, file.line_number);
+      file.token_list.emplace_back(RPAREN, file.line_number);
       --file.needs_closing_paren;
     }
-    type = TokenType::SEMI_COLON;
+    type = SEMI_COLON;
     break;
 
-  case '\"':
-    grabStringLiteral(file);
-    return;
-  case '\'':
-    grabCharLiteral(file);
-    return;
+  case '\"': return grabStringLiteral(file);
+  case '\'': return grabCharLiteral(file);
 
-  default:
-    throw LexingError("Invalid symbol found.", std::string(1, static_cast<char>(c)), file.line_number);
+  default: throw LexingError("Invalid symbol.", std::string(1, static_cast<char>(c)), file.line_number);
   }
 
   file.token_list.emplace_back(type, file.line_number);
@@ -318,10 +257,10 @@ void grabIdentOrKeyword(FileInAnalysis &file) {
 void skipWS(FileInAnalysis& file) {
   while (std::isspace(file.stream.peek())) {
     const int c = file.stream.get();
-     if (c == '\n')
-       ++file.line_number;
+    if (c == '\n')
+      ++file.line_number;
 
-     else if (c == EOF)
+    else if (c == EOF)
       return;
   }
 }
@@ -344,6 +283,7 @@ skipComments(FileInAnalysis& file) {
 [[nodiscard]] bool
 canStartIdentifier(int c)
 {return std::isalpha(c) or c == '_';}
+
 }
 
 void Lexer::tokenizeFile(std::vector<Token>& out_tokens, const std::filesystem::path &file_path) {

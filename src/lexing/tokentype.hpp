@@ -34,6 +34,7 @@ enum class TokenType : unsigned {
   LESSEQ,
   GTREQ,
   SEMI_COLON,
+  COLON,
   ADDR,
   COMMA,
   DOT,
@@ -97,23 +98,24 @@ inline const std::unordered_map<std::string_view, TokenType> stringToTokenType{
 	{")", TokenType::RPAREN}, {"{", TokenType::LBRACE}, {"}", TokenType::RBRACE}, 
 	{"[", TokenType::LBRACKET}, {"]", TokenType::RBRACKET}, {"<", TokenType::LESS}, 
 	{"->", TokenType::ARROW}, {">", TokenType::GTR}, {"<=", TokenType::LESSEQ}, 
-	{">=", TokenType::GTREQ}, {";", TokenType::SEMI_COLON}, {"@", TokenType::ADDR}, 
-	{",", TokenType::COMMA}, {".", TokenType::DOT}, {"and", TokenType::KEYWORD_AND}, 
-	{"or", TokenType::KEYWORD_OR}, {"xor", TokenType::KEYWORD_XOR}, {"not", TokenType::KEYWORD_NOT}, 
-	{"eq", TokenType::KEYWORD_EQUALS}, {"not_eq", TokenType::KEYWORD_NOT_EQUAL}, {"bitand", TokenType::KEYWORD_BITAND}, 
-	{"bitor", TokenType::KEYWORD_BITOR}, {"bitxor", TokenType::KEYWORD_BITXOR}, {"bitnot", TokenType::KEYWORD_BITNOT}, 
-	{"i8", TokenType::KEYWORD_i8}, {"i16", TokenType::KEYWORD_i16}, {"i32", TokenType::KEYWORD_i32}, 
-	{"i64", TokenType::KEYWORD_i64}, {"u8", TokenType::KEYWORD_u8}, {"u16", TokenType::KEYWORD_u16}, 
-	{"u32", TokenType::KEYWORD_u32}, {"u64", TokenType::KEYWORD_u64}, {"f32", TokenType::KEYWORD_f32}, 
-	{"f64", TokenType::KEYWORD_f64}, {"char", TokenType::KEYWORD_CHAR}, {"string", TokenType::KEYWORD_STRING}, 
-	{"bool", TokenType::KEYWORD_BOOL}, {"", TokenType::KEYWORD_DEVOID}, {"raw", TokenType::KEYWORD_RAW}, 
-	{"unique", TokenType::KEYWORD_UNIQUE}, {"vague", TokenType::KEYWORD_VAGUE}, {"mut", TokenType::KEYWORD_MUT}, 
-	{"if", TokenType::KEYWORD_IF}, {"else", TokenType::KEYWORD_ELSE}, {"for", TokenType::KEYWORD_FOR}, 
-	{"while", TokenType::KEYWORD_WHILE}, {"return", TokenType::KEYWORD_RETURN}, {"switch", TokenType::KEYWORD_SWITCH}, 
-	{"case", TokenType::KEYWORD_CASE}, {"default", TokenType::KEYWORD_DEFAULT}, {"cast", TokenType::KEYWORD_CAST}, 
-	{"global", TokenType::KEYWORD_GLOBAL}, {"null", TokenType::KEYWORD_NULL}, {"junk", TokenType::KEYWORD_JUNK}, 
-	{"fn", TokenType::KEYWORD_FN}, {"struct", TokenType::KEYWORD_STRUCT}, {"pub", TokenType::KEYWORD_PUB}, 
-	{"import", TokenType::KEYWORD_IMPORT}, {"__C", TokenType::DUNDER_CEXTERN}, {"__va", TokenType::DUNDER_VA}, 
+	{">=", TokenType::GTREQ}, {";", TokenType::SEMI_COLON}, {":", TokenType::COLON}, 
+	{"@", TokenType::ADDR}, {",", TokenType::COMMA}, {".", TokenType::DOT}, 
+	{"and", TokenType::KEYWORD_AND}, {"or", TokenType::KEYWORD_OR}, {"xor", TokenType::KEYWORD_XOR}, 
+	{"not", TokenType::KEYWORD_NOT}, {"eq", TokenType::KEYWORD_EQUALS}, {"not_eq", TokenType::KEYWORD_NOT_EQUAL}, 
+	{"bitand", TokenType::KEYWORD_BITAND}, {"bitor", TokenType::KEYWORD_BITOR}, {"bitxor", TokenType::KEYWORD_BITXOR}, 
+	{"bitnot", TokenType::KEYWORD_BITNOT}, {"i8", TokenType::KEYWORD_i8}, {"i16", TokenType::KEYWORD_i16}, 
+	{"i32", TokenType::KEYWORD_i32}, {"i64", TokenType::KEYWORD_i64}, {"u8", TokenType::KEYWORD_u8}, 
+	{"u16", TokenType::KEYWORD_u16}, {"u32", TokenType::KEYWORD_u32}, {"u64", TokenType::KEYWORD_u64}, 
+	{"f32", TokenType::KEYWORD_f32}, {"f64", TokenType::KEYWORD_f64}, {"char", TokenType::KEYWORD_CHAR}, 
+	{"string", TokenType::KEYWORD_STRING}, {"bool", TokenType::KEYWORD_BOOL}, {"", TokenType::KEYWORD_DEVOID}, 
+	{"raw", TokenType::KEYWORD_RAW}, {"unique", TokenType::KEYWORD_UNIQUE}, {"vague", TokenType::KEYWORD_VAGUE}, 
+	{"mut", TokenType::KEYWORD_MUT}, {"if", TokenType::KEYWORD_IF}, {"else", TokenType::KEYWORD_ELSE}, 
+	{"for", TokenType::KEYWORD_FOR}, {"while", TokenType::KEYWORD_WHILE}, {"return", TokenType::KEYWORD_RETURN}, 
+	{"switch", TokenType::KEYWORD_SWITCH}, {"case", TokenType::KEYWORD_CASE}, {"default", TokenType::KEYWORD_DEFAULT}, 
+	{"cast", TokenType::KEYWORD_CAST}, {"global", TokenType::KEYWORD_GLOBAL}, {"null", TokenType::KEYWORD_NULL}, 
+	{"junk", TokenType::KEYWORD_JUNK}, {"fn", TokenType::KEYWORD_FN}, {"struct", TokenType::KEYWORD_STRUCT}, 
+	{"pub", TokenType::KEYWORD_PUB}, {"import", TokenType::KEYWORD_IMPORT}, {"__C", TokenType::DUNDER_CEXTERN}, 
+	{"__va", TokenType::DUNDER_VA}, 
 };
 
 
@@ -129,44 +131,47 @@ constexpr const char* toString[] = {
 	")","{","}",
 	"[","]","<",
 	"->",">","<=",
-	">=",";","@",
-	",",".","and",
-	"or","xor","not",
-	"eq","not_eq","bitand",
-	"bitor","bitxor","bitnot",
-	"i8","i16","i32",
-	"i64","u8","u16",
-	"u32","u64","f32",
-	"f64","char","string",
-	"bool","","raw",
-	"unique","vague","mut",
-	"if","else","for",
-	"while","return","switch",
-	"case","default","cast",
-	"global","null","junk",
-	"fn","struct","pub",
-	"import","__C","__va",
+	">=",";",":",
+	"@",",",".",
+	"and","or","xor",
+	"not","eq","not_eq",
+	"bitand","bitor","bitxor",
+	"bitnot","i8","i16",
+	"i32","i64","u8",
+	"u16","u32","u64",
+	"f32","f64","char",
+	"string","bool","",
+	"raw","unique","vague",
+	"mut","if","else",
+	"for","while","return",
+	"switch","case","default",
+	"cast","global","null",
+	"junk","fn","struct",
+	"pub","import","__C",
+	"__va",
 };
 	return toString[std::to_underlying(e)];
 }
 constexpr bool isCategoryLITERALS(const TokenType e) { return std::to_underlying(e) >= 2 && std::to_underlying(e) < 9; }
 
-constexpr bool isCategorySYMBOLS(const TokenType e) { return std::to_underlying(e) >= 9 && std::to_underlying(e) < 32; }
+constexpr bool isCategorySYMBOLS(const TokenType e) { return std::to_underlying(e) >= 9 && std::to_underlying(e) < 33; }
 
-constexpr bool isCategoryBITWISE(const TokenType e) { return std::to_underlying(e) >= 32 && std::to_underlying(e) < 42; }
+constexpr bool isCategoryBITWISE(const TokenType e) { return std::to_underlying(e) >= 33 && std::to_underlying(e) < 43; }
 
-constexpr bool isCategoryPOINTERS(const TokenType e) { return std::to_underlying(e) >= 56 && std::to_underlying(e) < 59; }
+constexpr bool isCategoryPOINTERS(const TokenType e) { return std::to_underlying(e) >= 57 && std::to_underlying(e) < 60; }
 
-constexpr bool isCategoryPRIMITIVES(const TokenType e) { return std::to_underlying(e) >= 42 && std::to_underlying(e) < 59; }
+constexpr bool isCategoryPRIMITIVES(const TokenType e) { return std::to_underlying(e) >= 43 && std::to_underlying(e) < 60; }
 
-constexpr bool isCategoryTYPE_MODIFIERS(const TokenType e) { return std::to_underlying(e) >= 59 && std::to_underlying(e) < 60; }
+constexpr bool isCategoryTYPE_MODIFIERS(const TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 61; }
 
-constexpr bool isCategoryCONTROL_FLOW(const TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 68; }
+constexpr bool isCategoryCONTROL_FLOW(const TokenType e) { return std::to_underlying(e) >= 61 && std::to_underlying(e) < 69; }
 
-constexpr bool isCategoryMODULE(const TokenType e) { return std::to_underlying(e) >= 74 && std::to_underlying(e) < 76; }
+constexpr bool isCategoryCAST(const TokenType e) { return std::to_underlying(e) >= 69 && std::to_underlying(e) < 70; }
 
-constexpr bool isCategoryDUNDER(const TokenType e) { return std::to_underlying(e) >= 76 && std::to_underlying(e) < 78; }
+constexpr bool isCategoryMODULE(const TokenType e) { return std::to_underlying(e) >= 75 && std::to_underlying(e) < 77; }
 
-constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 32 && std::to_underlying(e) < 78; }
+constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 33 && std::to_underlying(e) < 77; }
+
+constexpr bool isCategoryDUNDER(const TokenType e) { return std::to_underlying(e) >= 77 && std::to_underlying(e) < 79; }
 
 }; //namespace LOM::Lexer

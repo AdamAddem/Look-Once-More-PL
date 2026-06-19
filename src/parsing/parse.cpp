@@ -40,8 +40,9 @@ parseTypeQualifiers(TokenView& tokens) {
 
 eden_return_nonnull
 [[nodiscard]] const Type*
-parseUnqualifiedType(TokenView& tokens, Module& table) {
+parseUnqualifiedType(TokenView& tokens, TU& tu) {
   auto const token = tokens.take();
+  auto& module = *tu.module;
 
   if (token.isPrimitive()) {
     if (token.isPointer()) {
@@ -52,13 +53,13 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
         return PointerType::vague(subtype_qualifiers.is_mutable);
       }
 
-      const InstantiatedType subtype_instance = parseType(tokens, table);
+      const InstantiatedType subtype_instance = parseType(tokens, module);
       tokens.expect_then_pop(TokenType::GTR, "Expected closing < in pointer declaration.");
       switch (token.getType()) {
       case TokenType::KEYWORD_RAW:
-        return table.getRawPointerType(subtype_instance);
+        return module.getRawPointerType(subtype_instance);
       case TokenType::KEYWORD_UNIQUE:
-        return table.getUniquePointerType(subtype_instance);
+        return module.getUniquePointerType(subtype_instance);
       default:
         eden_unreachable("Pointer type unsupported.");
       }
@@ -100,7 +101,7 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
   }
 
   if (token.is(TokenType::IDENTIFIER)) {
-    auto const type = table.getCustomType(token.getString());
+    auto const type = module.getCustomType(token.getString(tu.file_text));
     if (not type) throw ParsingError("Expected typename.", token);
     return type;
   }
@@ -112,28 +113,26 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
     std::vector<const Type*> subtypes;
     std::unordered_set<const Type*> typenames; //prevent duplicate types
 
-    const unsigned variant_ln = variant_types_tokens.peek().getLN();
     do {
-      const unsigned subtype_ln = variant_types_tokens.peek().getLN();
-      auto subtype = parseUnqualifiedType(variant_types_tokens, table);
+      auto subtype = parseUnqualifiedType(variant_types_tokens, tu);
       if (subtype->isVariant())
-        throw ParsingError("Nested variant types not allowed.", subtype->toString(), subtype_ln);
+        throw ParsingError("Nested variant types not allowed.", subtype->toString(), 0);
 
       if (subtype->isDevoid()) {
-        if (nullable) throw ParsingError("Devoid may not be specified more than once in variant declaration", "", subtype_ln);
+        if (nullable) throw ParsingError("Devoid may not be specified more than once in variant declaration", "", 0);
         nullable = true;
       }
       else if (typenames.contains(subtype))
-        throw ParsingError("Duplicate types specified in variant declaration.", subtype->toString(), subtype_ln);
+        throw ParsingError("Duplicate types specified in variant declaration.", subtype->toString(), 0);
       else typenames.emplace(subtype);
 
       subtypes.push_back(subtype);
     } while (variant_types_tokens.pop_if(TokenType::COMMA));
 
     if (subtypes.size() < 2)
-      throw ParsingError("Two or more types must be specified in variant type list.", "", variant_ln);
+      throw ParsingError("Two or more types must be specified in variant type list.", "", 0);
 
-    return table.getVariantType(subtypes, nullable);
+    return module.getVariantType(subtypes, nullable);
   }
 
   throw ParsingError("Expected typename.", token);
@@ -141,16 +140,18 @@ parseUnqualifiedType(TokenView& tokens, Module& table) {
 
 template<bool allow_qualifiers>
 [[maybe_unused]] [[nodiscard]] auto
-parseTypeList(TokenView& tokens, Module& table) {
+parseTypeList(TokenView& tokens, TU& tu) {
   using type = std::conditional_t<allow_qualifiers, InstantiatedType, const Type*>;
   std::vector<type> list;
   list.reserve(2);
 
+  auto& module = *tu.module;
+
   do {
     if constexpr(allow_qualifiers)
-      list.emplace_back(parseType(tokens, table));
+      list.emplace_back(parseType(tokens, module));
     else
-      list.emplace_back(parseUnqualifiedType(tokens, table));
+      list.emplace_back(parseUnqualifiedType(tokens, tu));
   }
   while (tokens.pop_if(TokenType::COMMA));
 
@@ -159,16 +160,16 @@ parseTypeList(TokenView& tokens, Module& table) {
 }
 
 [[nodiscard]] InstantiatedType
-parseType(TokenView& tokens, Module& table) {
+parseType(TokenView& tokens, TU& tu) {
   const auto qualifiers = parseTypeQualifiers(tokens);
-  return {parseUnqualifiedType(tokens, table), qualifiers};
+  return {parseUnqualifiedType(tokens, tu), qualifiers};
 }
 
-eden_return_nonnull
-char* parseIdentifier(TokenView& tokens) {
+std::string_view
+parseIdentifier(TokenView& tokens, TU& tu) {
   Token token = tokens.take();
   token.throw_if_not(TokenType::IDENTIFIER, "Expected identifier.");
-  return token.getString();
+  return token.getString(tu.file_text);
 }
 
 struct Body {
@@ -202,11 +203,14 @@ struct Body {
 
   std::vector<ASTNode> tree;
   TokenView tokens;
-  Module& table;
+  TU& tu;
   ExpressionTree& expression_tree;
 
-  Body(TokenView tokens, Module& table, ExpressionTree& expression_tree)
-  : tokens(tokens), table(table), expression_tree(expression_tree) {}
+  Body(TokenView tokens, TU& tu, ExpressionTree& expression_tree)
+  : tokens(tokens), tu(tu), expression_tree(expression_tree) {}
+
+
+
 
   u16_t generateParameters() {
     const auto parameter = generateAssignmentExpression();
@@ -230,7 +234,7 @@ struct Body {
     }
     else {
       tokens.expect(TokenType::IDENTIFIER, "Expected identifier.");
-      identifier_value = std::bit_cast<u64_t>(tokens.take().getString());
+      identifier_value = std::bit_cast<u64_t>(tokens.take().getString(tu.file_text));
     }
 
     return expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
@@ -623,7 +627,7 @@ struct Body {
   void parseExpressionUntil(TokenType ending_token) {
     expression_tree.reset();
     if (tokens.pop_if(ending_token)) {
-      tree.emplace_back(ASTNode::EMPTY, tokens.current_line_number());
+      tree.emplace_back(ASTNode::EMPTY, 0);
       return;
     }
     const auto idx = generateExpressionUntil(ending_token);
@@ -631,12 +635,12 @@ struct Body {
   }
 
   void parseExpressionStatement() {
-    tree.emplace_back(ASTNode::EXPR_STMT, tokens.current_line_number());
+    tree.emplace_back(ASTNode::EXPR_STMT, 0);
     parseExpressionUntil(TokenType::SEMI_COLON);
   }
 
   void parseVarDecl() {
-    tree.emplace_back(ASTNode::DECLARATION, tokens.current_line_number());
+    tree.emplace_back(ASTNode::DECLARATION, 0);
     tree.emplace_back(parseType(tokens, table));
 
     tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(parseIdentifier(tokens)));
@@ -653,7 +657,7 @@ struct Body {
   }
 
   void parseIf() {
-    tree.emplace_back(ASTNode::IF, tokens.current_line_number());
+    tree.emplace_back(ASTNode::IF, 0);
     tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in if statement condition.");
     tokens.reject(TokenType::RPAREN, "Expected condition in if statement.");
     parseExpressionBetweenParenthesis();
@@ -664,21 +668,10 @@ struct Body {
       tree.emplace_back(ASTNode::EMPTY);
   }
 
-  void parseFor() {
-    assert(false and "Sorry, unimplemented.");
-    /*
-    tree.emplace_back(ASTNode::FOR, tokens.current_line_number());
-    tokens.expect_then_pop(TokenType::LPAREN, "Expected opening patenthesis in for loop statement.");
-    tokens.reject(TokenType::RPAREN, "Expected for loop header.");
-
-    parseVarDecl();
-    parseExpressionUntil(TokenType::SEMI_COLON);
-    parseExpressionUntil(TokenType::RPAREN);
-    parseScoped(); */
-  }
+  void parseFor() { assert(false and "Sorry, unimplemented."); }
 
   void parseWhile() {
-    tree.emplace_back(ASTNode::WHILE, tokens.current_line_number());
+    tree.emplace_back(ASTNode::WHILE, 0);
     tokens.expect_then_pop(TokenType::LPAREN,"Expected open parenthesis in while loop condition.");
     tokens.reject(TokenType::RPAREN, "Expected while loop condition.");
 
@@ -698,7 +691,7 @@ struct Body {
         parseStatement();
         ++num_statements;
         if (tokens.empty())
-          throw ParsingError("Expected ending rbrace to scoped statement.", tokens.previousToken());
+          throw ParsingError("Expected ending rbrace to scoped statement.", {});
       }
       tree[scoped_idx].value() = num_statements;
     }
@@ -707,7 +700,7 @@ struct Body {
   }
 
   void parseReturn() {
-    tree.emplace_back(ASTNode::RETURN, tokens.current_line_number());
+    tree.emplace_back(ASTNode::RETURN, 0);
     parseExpressionUntil(TokenType::SEMI_COLON);
   }
 
@@ -783,7 +776,7 @@ void parseCExtern(TU& tu, Body& global_body) {
   if (tokens.pop_if(TokenType::ARROW)) {
     const auto instance = parseType(tokens, table);
     if (not instance.isUnqualified())
-      throw ParsingError("Return type may not have type qualifiers.", instance.toString(), tokens.current_line_number());
+      throw ParsingError("Return type may not have type qualifiers.", instance.toString(), 0);
     return_type = instance.type;
   }
 
@@ -834,9 +827,9 @@ void parseImports(TU& tu, Body& global_body) {
   TokenView& tokens = global_body.tokens;
   while (tokens.pop_if(TokenType::KEYWORD_IMPORT)) {
     tokens.expect(TokenType::IDENTIFIER, "Expected module name.");
-    auto name = tokens.take().getString();
-    if (tu.name == name)
-      throw ValidationError("Cannot import from current module!", name, 0);
+    auto name = tokens.take().getString(tu.file_text);
+    if (tu.module->nameof() == name)
+      throw ValidationError("Cannot import from current module!", std::string(name), 0);
 
     tu.imports.emplace_back(name);
     tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon.");
@@ -884,7 +877,7 @@ void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& 
     if (not tokens.peek_is(TokenType::LBRACE)) {
       InstantiatedType return_instance = parseType(tokens, table);
       if (not return_instance.isUnqualified())
-        throw ParsingError("Return type may not have type qualifiers.", return_instance.toString(), tokens.current_line_number());
+        throw ParsingError("Return type may not have type qualifiers.", return_instance.toString(), 0);
       return_type = return_instance.type;
     }
 

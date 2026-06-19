@@ -6,17 +6,12 @@
 #include "edenlib/vectors/swap_vector.hpp"
 #include "settings.hpp"
 #include "table_and_module_sync.hpp"
-#include "types.hpp"
 
 #include <cassert>
 #include <limits>
 #include <span>
 #include <utility>
 #include <vector>
-
-namespace LOM::Lexer {
-class Token;
-}
 
 namespace LOM {
 

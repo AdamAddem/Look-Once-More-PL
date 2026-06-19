@@ -3,7 +3,7 @@
 #include "semantic_analysis/symbol_table.hpp"
 
 namespace LOM::Lexer {
-class Token;
+struct Token;
 }
 
 namespace LOM::Parser {
@@ -15,14 +15,7 @@ struct Function {
 };
 
 struct TU {
-
-  eden_nonull_args
-  TU(Module* module, std::string_view name)
-  : name(name), module(module) {}
-
-  TU(TU&&) noexcept = default;
-
-  std::string_view name;
+  std::string file_text;
   Module* module;
   AST::SyntaxTree global_tree;
   std::vector<std::string_view> imports;

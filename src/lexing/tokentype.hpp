@@ -4,7 +4,7 @@
 #include <utility>
 
 namespace LOM::Lexer {
-enum class TokenType : unsigned {
+enum class TokenType : u8_t {
   INVALID_TOKEN,
   IDENTIFIER,
   SIGNED_LITERAL,

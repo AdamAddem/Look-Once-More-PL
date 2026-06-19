@@ -26,31 +26,33 @@ LOM::getModule(std::string_view name) {
 namespace fs = std::filesystem;
 [[maybe_unused]] static Parser::TU
 lex_and_parse_module(const fs::path& directory) {
-  std::vector<Lexer::Token> tokens; tokens.reserve(128); // cuz why not
+  std::vector<Lexer::Token> tokens; tokens.reserve(64); // cuz why not
   auto file_start = 0;
   bool const output_lexer = Settings::doOutputLexer();
 
-  //set up module
+  // set up module
   assert(not modules.contains(directory.c_str()));
   const sz_t n = directory.filename().string().size() + 1; // this is so stupid i hate this language
-  auto const module_name = new char[n]; //purposeful memory leak
+  auto const module_name = new char[n]; // purposeful memory leak
   std::strcpy(module_name, directory.filename().c_str());
   const std::string_view key_view(module_name, n-1);
   auto const module_ptr = &modules.emplace(std::pair(key_view, Module{key_view, &types})).first->second;
 
-  Parser::TU module_tu(module_ptr, module_name);
+  Parser::TU module_tu; module_tu.module = module_ptr;
   for (auto const& entry : fs::directory_iterator{directory}) {
     if (not entry.is_regular_file())
       throw std::runtime_error("LookOnceMore: Sorry! Submodules not supported yet.");
 
-    Lexer::tokenizeFile(tokens, entry);
+    module_tu.file_text = Lexer::tokenizeFile(tokens, entry);
     if (output_lexer) {
       std::print("\n--- Lexer Output --- {}", directory.string());
       Lexer::TokenView(tokens.begin() + file_start, tokens.end()).print();
       std::println("\n--- Lexer Output ---");
+      continue;
     }
 
     Parser::parseTokens(module_tu, tokens.begin() + file_start, tokens.end());
+    file_start = tokens.size();
   }
 
   return module_tu;

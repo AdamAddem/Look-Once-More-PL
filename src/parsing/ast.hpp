@@ -1,6 +1,6 @@
 #pragma once
 #pragma once
-#include "../edenlib/vectors/releasing_vector.hpp"
+#include "edenlib/vectors/releasing_vector.hpp"
 #include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
@@ -100,20 +100,20 @@ public:
     EMPTY,
                     // HAS <value> | <Following Nodes...>
     // Statements:
-    DECLARATION,    // LN          | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
-    IF,             // LN          | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STMT
-    FOR,            // LN          | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
-    WHILE,          // LN          | CONDITION_EXPR, SCOPED
+    DECLARATION,    //             | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
+    IF,             //             | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STMT
+    FOR,            //             | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
+    WHILE,          //             | CONDITION_EXPR, SCOPED
     SCOPED,         // NUM         | SUB_STATEMENTS... * NUM
-    RETURN,         // LN          | EMPTY or EXPRESSION
-    EXPR_STMT,      // LN          | EMPTY or EXPRESSION
+    RETURN,         //             | EMPTY or EXPRESSION
+    EXPR_STMT,      //             | EMPTY or EXPRESSION
 
     // Expressions:
-    MEMBER_ACCESS,  // N/A         | SCOPE_EXPRESSION, MEMBER_EXPRESSION | SCOPE_EXPRESSION may be IDENTIFIER with the name of a module, or an expression producing a custom type
+    MEMBER_ACCESS,  //             | SCOPE_EXPRESSION, MEMBER_EXPRESSION | SCOPE_EXPRESSION may be IDENTIFIER with the name of a module, or an expression producing a custom type
     UNARY,          // OPERATOR    | EXPRESSION
     BINARY,         // OPERATOR    | LEFT_EXPRESSION, RIGHT_EXPRESSION
     CALLING,        // NUM         | CALLED_EXPRESSION, PARAMETERS... * NUM
-    SUBSCRIPT,      // N/A         | ARRAY_EXPRESSION, INSIDE_EXPRESSION
+    SUBSCRIPT,      //             | ARRAY_EXPRESSION, INSIDE_EXPRESSION
     IDENTIFIER,     // char*       |
     CAST,           // const Type* | EXPRESSION
 

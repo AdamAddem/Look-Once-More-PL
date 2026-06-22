@@ -1,5 +1,6 @@
 #pragma once
 #pragma once
+#include "file.hpp"
 #include "edenlib/vectors/releasing_vector.hpp"
 #include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
@@ -76,9 +77,8 @@ constexpr bool isCategoryPOSTFIX_OPS(const Operator e) { return std::to_underlyi
 constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 28; }
 
 
-class ASTNode;
+struct ASTNode;
 struct SyntaxTree {
-  explicit SyntaxTree(std::vector<ASTNode> nodes);
   SyntaxTree() = default;
   SyntaxTree(const SyntaxTree&) = delete;
   SyntaxTree(SyntaxTree&&) noexcept = default;
@@ -88,13 +88,7 @@ struct SyntaxTree {
 };
 
 // Is this overengineered? Absolutely.
-class ASTNode {
-
-  static_assert(alignof(InstantiatedType) == 8);
-  static_assert(sizeof(InstantiatedType) == 16);
-  alignas(InstantiatedType)
-  std::byte data[sizeof(InstantiatedType)];
-public:
+struct ASTNode {
 
   enum Type : u8_t {
     EMPTY,
@@ -114,108 +108,124 @@ public:
     BINARY,         // OPERATOR    | LEFT_EXPRESSION, RIGHT_EXPRESSION
     CALLING,        // NUM         | CALLED_EXPRESSION, PARAMETERS... * NUM
     SUBSCRIPT,      //             | ARRAY_EXPRESSION, INSIDE_EXPRESSION
-    IDENTIFIER,     // char*       |
     CAST,           // const Type* | EXPRESSION
 
-    // value holds the bitwise representation of their respective type
+    // value holds char*, len of string representation
+    IDENTIFIER,     // char*, len  |
     SIGNED_LITERAL,
     UNSIGNED_LITERAL,
     FLOAT_LITERAL,
     DOUBLE_LITERAL,
     BOOL_LITERAL,
     CHAR_LITERAL,
-
-    //HAS STRING*
     STRING_LITERAL
   };
 
+  struct NodeData {
+    Type type;
+    u16_t length_in_file;
+    u32_t position_in_file;
+    union {
+      Operator opr;
+      u64_t num_substatements;
+      u64_t num_parameters;
+      const LOM::Type* cast_type;
+      i64_t signed_value;
+      u64_t unsigned_value;
+      f32_t float_value;
+      f64_t double_value;
+      char char_value;
+      bool bool_value;
+    };
+  };
+
+  static_assert(alignof(InstantiatedType) == 8);
+  static_assert(sizeof(InstantiatedType) == 16);
+  union {
+    NodeData m;
+    InstantiatedType declaration_inst_type{eden::flags::do_not_initialize};
+  };
+
+
   // data is purposefully uninitialized here to prevent the expression tree initializing every node when it doesn't need to
-  ASTNode() = default;
+  constexpr ASTNode() noexcept = default;
 
-  constexpr explicit ASTNode(Type type, u64_t value_ = 0) noexcept
-  { data[0] = static_cast<std::byte>(type); value() = value_; }
-  constexpr explicit ASTNode(InstantiatedType instantiated) noexcept
-  { std::construct_at<InstantiatedType>(reinterpret_cast<InstantiatedType *>(data), instantiated); }
-
-  [[nodiscard]] constexpr u64_t&
-  value() noexcept
-  {return *std::launder(reinterpret_cast<u64_t*>(data + 8));}
-
-  [[nodiscard]] constexpr u64_t
-  value() const noexcept
-  {return *std::launder(reinterpret_cast<const u64_t*>(data + 8));}
-
-  [[nodiscard]] constexpr Type
-  type() const noexcept
-  {return static_cast<Type>(data[0]);}
-
-  [[nodiscard]] constexpr u64_t
-  line_number() const noexcept {
-    assert(not eden::enumBetween(type(), UNARY, STRING_LITERAL) and type() not_eq SCOPED);
-    return value();
+  constexpr explicit ASTNode(Type type, u16_t length_in_file, u32_t position_in_file, Operator opr) noexcept {
+    assert(type == UNARY or type == BINARY);
+    m.type = type;
+    m.length_in_file = length_in_file;
+    m.position_in_file = position_in_file;
+    m.opr = opr;
   }
+  constexpr explicit ASTNode(NodeData data) : m(data) {}
+  constexpr explicit ASTNode(InstantiatedType instantiated) noexcept
+  { declaration_inst_type = instantiated; }
 
   [[nodiscard]] constexpr u64_t
-  sub_statements() const noexcept {assert(type() == SCOPED); return value();}
+  sub_statements() const noexcept
+  { assert(m.type == SCOPED); return m.num_substatements; }
 
   [[nodiscard]] constexpr u64_t
-  parameter_count() const noexcept {assert(type() == CALLING); return value();}
+  parameter_count() const noexcept
+  { assert(m.type == CALLING); return m.num_substatements; }
 
   [[nodiscard]] constexpr InstantiatedType
-  instance_type() const noexcept {return *std::launder(reinterpret_cast<const InstantiatedType*>(data));}
+  instance_type() const noexcept
+  { return declaration_inst_type; }
 
   [[nodiscard]] constexpr const LOM::Type*
-  cast_type() const noexcept {assert(type() == CAST); return std::bit_cast<const LOM::Type*>(value());}
+  cast_type() const noexcept
+  { assert(m.type == CAST); return m.cast_type; }
 
-  static_assert(sizeof(u64_t) >= sizeof(Operator));
-  static_assert(std::unsigned_integral<std::underlying_type_t<Operator>>);
   [[nodiscard]] constexpr Operator
   operator_val() const noexcept {
-    assert(type() == UNARY or type() == BINARY);
-    return static_cast<Operator>(value());
+    assert(m.type == UNARY or m.type == BINARY);
+    return m.opr;
   }
 
-  eden_return_nonnull
-  [[nodiscard]] constexpr char*
-  identifier() const noexcept {
-    assert(type() == IDENTIFIER);
-    return std::bit_cast<char*>(value());
+  [[nodiscard]] constexpr std::string_view
+  identifier(File const& file) const noexcept {
+    assert(m.type == IDENTIFIER);
+    return file.view_at(m.position_in_file, m.length_in_file);
   }
 
   [[nodiscard]] constexpr i64_t
   signed_val() const noexcept
-  {assert(type() == SIGNED_LITERAL); return std::bit_cast<i64_t>(value()); }
+  { assert(m.type == SIGNED_LITERAL); return m.signed_value; }
 
   [[nodiscard]] constexpr u64_t
   unsigned_val() const noexcept
-  {assert(type() == UNSIGNED_LITERAL); return value();}
+  { assert(m.type == UNSIGNED_LITERAL); return m.unsigned_value; }
 
-  static_assert(sizeof(float) == sizeof(u32_t));
   [[nodiscard]] constexpr float
   float_val() const noexcept
-  {assert(type() == FLOAT_LITERAL); return std::bit_cast<float>(static_cast<u32_t>(value()));}
+  { assert(m.type == FLOAT_LITERAL); return m.float_value; }
 
-  static_assert(sizeof(double) == sizeof(u64_t));
   [[nodiscard]] constexpr double
   double_val() const noexcept
-  {assert(type() == DOUBLE_LITERAL); return std::bit_cast<double>(value());}
+  { assert(m.type == DOUBLE_LITERAL); return m.double_value; }
 
   [[nodiscard]] constexpr bool
   bool_val() const noexcept
-  {assert(type() == BOOL_LITERAL); return value();}
+  { assert(m.type == BOOL_LITERAL); return m.bool_value; }
 
   [[nodiscard]] constexpr char
   char_val() const noexcept
-  {assert(type() == CHAR_LITERAL); return static_cast<char>(value());}
+  { assert(m.type == CHAR_LITERAL); return m.char_value; }
 
-  static_assert(sizeof(u64_t) >= sizeof(void*));
-
-  eden_return_nonnull
-  [[nodiscard]] constexpr char*
-  string_val() const noexcept
-  {assert(type() == STRING_LITERAL); return std::bit_cast<char*>(value());}
+  [[nodiscard]] constexpr std::string_view
+  string_val(File const& file) const noexcept {
+    assert(m.type == STRING_LITERAL);
+    return file.view_at(m.position_in_file, m.length_in_file);
+  }
 
 };
 
-inline SyntaxTree::SyntaxTree(std::vector<ASTNode> nodes) : nodes(std::move(nodes)) {}
+inline constexpr ASTNode::NodeData EMPTY_NODE_DATA{
+    .type = ASTNode::EMPTY,
+    .length_in_file = 0,
+    .position_in_file = 0,
+    .bool_value = false
+  };
+
 }

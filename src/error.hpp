@@ -1,45 +1,20 @@
 #pragma once
+#include "file.hpp"
+
 #include <string>
+#include <filesystem>
 
 namespace LOM::Lexer {
-class Token;
+struct Token;
 }
 
 namespace LOM {
-struct LOMError {
-  enum class Stage {LexingError, ParsingError, ValidationError, BackendError} error_stage;
 
-  LOMError(Stage err_stage,
-           const std::string& what, const std::string& err_context,
-           unsigned line_num);
+void report_lexing_error(    File const& file, u32_t position, u16_t length, std::string error_message);
+void report_parsing_error(   File const& file, Lexer::Token token, std::string error_message);
+void report_validation_error(File const& file, std::string error_message);
+void report_backend_error(   File const& file, std::string error_message);
 
-  LOMError(const LOMError& other) noexcept = default;
-  LOMError(LOMError&& other) noexcept : error_stage(other.error_stage), error_message(std::move(other.error_message)) {}
+std::string get_file_errors(std::string_view file_path);
 
-  std::string error_message;
-};
-
-struct LexingError final : LOMError {
-  LexingError(const std::string& what, const std::string& err_context, const unsigned line_num) :
-  LOMError(Stage::LexingError, what, err_context, line_num) {}
-
-  LexingError(const std::string& what, const Lexer::Token& token);
-};
-
-struct ParsingError final : LOMError {
-  ParsingError(const std::string& what, const std::string& err_context, const unsigned line_num) :
-  LOMError(Stage::ParsingError, what, err_context, line_num) {}
-
-  ParsingError(const std::string& what, const Lexer::Token& token);
-};
-
-struct ValidationError final : LOMError {
-  ValidationError(const std::string& what, const std::string& err_context, const unsigned line_num) :
-  LOMError(Stage::ValidationError, what, err_context, line_num) {}
-};
-
-struct BackendError final : LOMError {
-  BackendError(const std::string& what, const std::string& err_context, const unsigned line_num) :
-  LOMError(Stage::BackendError, what, err_context, line_num) {}
-};
 }

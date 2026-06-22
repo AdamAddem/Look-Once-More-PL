@@ -12,10 +12,6 @@ using namespace LOM::AST;
 
 static void print(std::vector<ASTNode>::const_iterator &node,
                   u64_t &ln) noexcept {
-  //if (has_ln(node->type())) {
-    //while (ln <= node->line_number())
-      //std::print("\n{}:\t\t", ln++);
-  //}
 
   using enum ASTNode::Type;
   switch (node->type()) {

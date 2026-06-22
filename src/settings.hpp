@@ -1,21 +1,21 @@
 #pragma once
-#include <cstdint>
+#include "edenlib/typedefs.hpp"
 #include <string>
 
 namespace LOM::Settings {
 
-[[nodiscard]] bool doOutputLexer()      noexcept;
-[[nodiscard]] bool doOutputParser()     noexcept;
-[[nodiscard]] bool doOutputPeep()       noexcept;
-[[nodiscard]] bool doOutputValidation() noexcept;
-[[nodiscard]] bool doOutputIR()         noexcept;
-[[nodiscard]] bool doOutputASM()        noexcept;
-[[nodiscard]] bool doOutputOBJ()        noexcept;
-[[nodiscard]] bool doLinking()          noexcept;
-[[nodiscard]] bool doBuild()            noexcept;
+extern bool const& output_lexer;
+extern bool const& output_parser;
+extern bool const& output_peep;
+extern bool const& output_validation;
+extern bool const& output_llvmir;
+extern bool const& output_asm;
+extern bool const& output_obj;
+extern bool const& do_linking;
+extern bool const& do_build;
 
-const std::string& getExecutableName();
-uint8_t getOptimizationLevel();
+std::string const& getExecutableName() noexcept;
+u8_t getOptimizationLevel() noexcept;
 
 void setArgs(unsigned argc, const char* argv[]);
 

@@ -1,4 +1,5 @@
 #pragma once
+#include "file.hpp"
 #include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
 #include "tokentype.hpp"
@@ -12,16 +13,13 @@ namespace LOM::Lexer {
 struct Token {
   TokenType type;
   u16_t length;
-  u32_t pos;
-
-  [[nodiscard]] std::string toString() const;
-  [[nodiscard]] std::string toDebugString() const;
+  u32_t position;
 
   // expensive
   [[nodiscard]] constexpr i64_t
-  getSigned(std::string const& file_text) const noexcept {
+  getSigned(File const& file) const noexcept {
     assume_assert(type == TokenType::SIGNED_LITERAL);
-    auto const begin = file_text.data() + pos;
+    auto const begin = file.contents().data() + position;
     i64_t res;
     auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -30,9 +28,9 @@ struct Token {
 
   // expensive
   [[nodiscard]] constexpr u64_t
-  getUnsigned(std::string const& file_text) const noexcept {
+  getUnsigned(File const& file) const noexcept {
     assume_assert(type == TokenType::UNSIGNED_LITERAL);
-    auto const begin = file_text.data() + pos;
+    auto const begin = file.contents().data() + position;
     u64_t res;
     auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -41,9 +39,9 @@ struct Token {
 
   // expensive
   [[nodiscard]] constexpr float
-  getFloat(std::string const& file_text) const noexcept {
+  getFloat(File const& file) const noexcept {
     assume_assert(type == TokenType::FLOAT_LITERAL);
-    auto const begin = file_text.data() + pos;
+    auto const begin = file.contents().data() + position;
     float res;
     auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -52,9 +50,9 @@ struct Token {
 
   // expensive
   [[nodiscard]] constexpr double
-  getDouble(std::string const& file_text) const noexcept {
+  getDouble(File const& file) const noexcept {
     assume_assert(type == TokenType::DOUBLE_LITERAL);
-    auto const begin = file_text.data() + pos;
+    auto const begin = file.contents().data() + position;
     double res;
     auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -62,21 +60,21 @@ struct Token {
   }
 
   [[nodiscard]] constexpr bool
-  getBool(std::string const& file_text) const noexcept {
+  getBool(File const& file) const noexcept {
     assume_assert(type == TokenType::BOOL_LITERAL);
-    return file_text[pos] == 't';
+    return file.contents()[position] == 't';
   }
 
   [[nodiscard]] constexpr char
-  getChar(std::string const& file_text) const noexcept {
+  getChar(File const& file) const noexcept {
     assume_assert(type == TokenType::CHAR_LITERAL);
-    return file_text[pos];
+    return file.contents()[position]; //TODO: incorrect, doesn't account for escape sequences
   }
 
   [[nodiscard]] constexpr std::string_view
-  getString(std::string const& file_text) const noexcept {
+  getString(File const& file) const noexcept {
     assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
-    return {file_text.data() + pos, length};
+    return file.view_at(position, length);
   }
 
   void throw_if(TokenType unwanted_type, const char* err_msg) const;
@@ -92,12 +90,13 @@ struct Token {
 };
 
 class TokenView {
-  using TokenIter = std::vector<Token>::iterator;
+  using TokenIter = std::vector<Token>::const_iterator;
   TokenIter begin;
   TokenIter end;
 
 public:
-  TokenView(TokenIter begin, TokenIter end) : begin(begin), end(end) {}
+  explicit TokenView(std::vector<Token> const& tokens) noexcept
+  : begin(tokens.begin()), end(tokens.end()) {}
 
   [[nodiscard]] Token const& peek() const noexcept                       { return *begin; }
   [[nodiscard]] bool peek_is(TokenType type) const noexcept              { return begin->type == type; }
@@ -111,7 +110,16 @@ public:
   void expect(TokenType expected_type, const char* err_msg) const;
   void reject_then_pop(TokenType unwanted_type, const char* err_msg);
   void reject(TokenType unwanted_type, const char* err_msg) const;
-  void print(unsigned initial_indent = 0) const;
+  void print(File& file) const;
+
+  [[nodiscard]] Token viewAsStringToken() const noexcept {
+    if (empty()) return {TokenType::INVALID_TOKEN, 0, 0};
+
+    return {TokenType::STRING_LITERAL,
+      static_cast<u16_t>((end-1)->position - begin->position + static_cast<u32_t>(end->length)),
+      begin->position
+    };
+  }
 
 
   // expects that opening_token has already been popped
@@ -128,6 +136,6 @@ public:
 };
 
 // returns the text of the file and populates out_tokens
-[[nodiscard]] std::string
+[[nodiscard]] std::optional<File>
 tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& file_path);
 }

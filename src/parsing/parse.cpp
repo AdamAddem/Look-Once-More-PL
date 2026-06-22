@@ -21,7 +21,7 @@ namespace {
 
 
 [[nodiscard]] InstantiatedType
-parseType(TokenView& tokens, Module& table);
+parseType(TokenView& tokens, TU& tu);
 
 [[nodiscard]] InstantiatedType::Qualifiers
 parseTypeQualifiers(TokenView& tokens) {
@@ -41,6 +41,7 @@ parseTypeQualifiers(TokenView& tokens) {
 eden_return_nonnull
 [[nodiscard]] const Type*
 parseUnqualifiedType(TokenView& tokens, TU& tu) {
+  auto const& src_file = tu.source_files.back();
   auto const token = tokens.take();
   auto& module = *tu.module;
 
@@ -53,7 +54,7 @@ parseUnqualifiedType(TokenView& tokens, TU& tu) {
         return PointerType::vague(subtype_qualifiers.is_mutable);
       }
 
-      const InstantiatedType subtype_instance = parseType(tokens, module);
+      const InstantiatedType subtype_instance = parseType(tokens, tu);
       tokens.expect_then_pop(TokenType::GTR, "Expected closing < in pointer declaration.");
       switch (token.getType()) {
       case TokenType::KEYWORD_RAW:
@@ -101,41 +102,42 @@ parseUnqualifiedType(TokenView& tokens, TU& tu) {
   }
 
   if (token.is(TokenType::IDENTIFIER)) {
-    auto const type = module.getCustomType(token.getString(tu.file_text));
-    if (not type) throw ParsingError("Expected typename.", token);
+    auto const type = module.getCustomType(token.getString(src_file));
+    if (not type) report_parsing_error(src_file, token, "Expected typename.");
     return type;
   }
 
   if (token.is(TokenType::LESS)) {
     TokenView variant_types_tokens = tokens.getTokensBetweenAngleBrackets();
+    auto const variant_types_tokens_cpy = variant_types_tokens;
 
     bool nullable{false};
     std::vector<const Type*> subtypes;
     std::unordered_set<const Type*> typenames; //prevent duplicate types
 
     do {
+      auto const subtype_token = variant_types_tokens.peek();
       auto subtype = parseUnqualifiedType(variant_types_tokens, tu);
-      if (subtype->isVariant())
-        throw ParsingError("Nested variant types not allowed.", subtype->toString(), 0);
+      if (subtype->isVariant()) report_parsing_error(src_file, subtype_token, "Nested variant types not allowed.");
 
       if (subtype->isDevoid()) {
-        if (nullable) throw ParsingError("Devoid may not be specified more than once in variant declaration", "", 0);
+        if (nullable) report_parsing_error(src_file, subtype_token, "Devoid may not be specified more than once in variant declaration.");
         nullable = true;
       }
       else if (typenames.contains(subtype))
-        throw ParsingError("Duplicate types specified in variant declaration.", subtype->toString(), 0);
+        report_parsing_error(src_file, subtype_token, "Duplicate types specified in variant declaration.");
       else typenames.emplace(subtype);
 
       subtypes.push_back(subtype);
     } while (variant_types_tokens.pop_if(TokenType::COMMA));
 
-    if (subtypes.size() < 2)
-      throw ParsingError("Two or more types must be specified in variant type list.", "", 0);
+    if (subtypes.size() < 2) report_parsing_error(src_file, variant_types_tokens_cpy.viewAsStringToken(), "Two or more types must be specified in variant type list.");
 
     return module.getVariantType(subtypes, nullable);
   }
 
-  throw ParsingError("Expected typename.", token);
+  report_parsing_error(src_file, token, "Expected typename.");
+  return Type::devoid();
 }
 
 template<bool allow_qualifiers>
@@ -145,11 +147,9 @@ parseTypeList(TokenView& tokens, TU& tu) {
   std::vector<type> list;
   list.reserve(2);
 
-  auto& module = *tu.module;
-
   do {
     if constexpr(allow_qualifiers)
-      list.emplace_back(parseType(tokens, module));
+      list.emplace_back(parseType(tokens, tu));
     else
       list.emplace_back(parseUnqualifiedType(tokens, tu));
   }
@@ -169,32 +169,29 @@ std::string_view
 parseIdentifier(TokenView& tokens, TU& tu) {
   Token token = tokens.take();
   token.throw_if_not(TokenType::IDENTIFIER, "Expected identifier.");
-  return token.getString(tu.file_text);
+  return token.getString(tu.source_files.back());
 }
 
 struct Body {
   struct Expression {
-    ASTNode::Type type;
-    u16_t left_idx;
-    u16_t right_idx; // unary expressions do not contain right_idx
-    u64_t value;
+    u32_t left_idx;
+    u32_t right_idx; // unary expressions do not contain right_idx
+    ASTNode::NodeData data;
   };
 
   // Exists to allow expression parsing w/o allocation
   struct ExpressionTree {
-    static constexpr u64_t max_expressiontree_size{200};
-    static_assert(max_expressiontree_size < std::numeric_limits<u16_t>::max());
+    static constexpr u64_t max_expressiontree_size{256};
     std::array<Expression, max_expressiontree_size> data;
     u64_t begin{};
 
-    u16_t create(ASTNode::Type type, u64_t value, u16_t left_idx = 0, u16_t right_idx = 0) noexcept {
-      ++begin;
-      assume_assert(left_idx < max_expressiontree_size); assume_assert(right_idx < max_expressiontree_size); assume_assert(begin < max_expressiontree_size);
+    u16_t create(ASTNode::NodeData node_data, u32_t left_idx = 0, u32_t right_idx = 0) noexcept {
+      assume_assert(left_idx < max_expressiontree_size); assume_assert(right_idx < max_expressiontree_size);
+      ++begin; assume_assert(begin < max_expressiontree_size);
       auto& expr = data[begin];
-      expr.type = type;
-      expr.value = value;
       expr.left_idx = left_idx;
       expr.right_idx = right_idx;
+      expr.data = node_data;
       return begin;
     }
 
@@ -209,38 +206,28 @@ struct Body {
   Body(TokenView tokens, TU& tu, ExpressionTree& expression_tree)
   : tokens(tokens), tu(tu), expression_tree(expression_tree) {}
 
-
-
-
-  u16_t generateParameters() {
+  u32_t generateParameters() {
     const auto parameter = generateAssignmentExpression();
     if (tokens.pop_if(TokenType::RPAREN))
-      return expression_tree.create(ASTNode::EMPTY, 0, parameter, 0);
+      return expression_tree.create(EMPTY_NODE_DATA, 0, parameter, 0);
     tokens.expect_then_pop(TokenType::COMMA, "Expected comma in call expression.");
     return expression_tree.create(ASTNode::EMPTY, 0, parameter, generateParameters());
   }
 
-  u16_t generateSubscript() {
+  u32_t generateSubscript() {
     const auto res = generateAssignmentExpression();
     tokens.expect_then_pop(TokenType::RBRACKET, "Expected closing bracket in subscript expression.");
     return res;
   }
 
-  u16_t generateIdentifier() {
-    u64_t identifier_value;
-    if (tokens.pop_if(TokenType::DUNDER_CEXTERN)) {
-      releasing_string x("__C");
-      identifier_value = std::bit_cast<u64_t>(x.release().get());
-    }
-    else {
-      tokens.expect(TokenType::IDENTIFIER, "Expected identifier.");
-      identifier_value = std::bit_cast<u64_t>(tokens.take().getString(tu.file_text));
-    }
-
-    return expression_tree.create(ASTNode::IDENTIFIER, identifier_value);
+  u32_t generateIdentifier() {
+    if (tokens.pop_if(TokenType::DUNDER_CEXTERN))
+      return expression_tree.create(ASTNode::IDENTIFIER, std::string_view("__C"));
+    tokens.expect(TokenType::IDENTIFIER, "Expected identifier.");
+    return expression_tree.create(ASTNode::IDENTIFIER, tokens.take().getString(tu.source_files.back()));
   }
 
-  u16_t generatePrimaryExpression() {
+  u32_t generatePrimaryExpression() {
     if (tokens.empty())
       return 0;
 
@@ -248,27 +235,13 @@ struct Body {
       auto const token = tokens.take();
       ASTNode::Type literal_type;
       switch (token.getType()) {
-      case TokenType::SIGNED_LITERAL:
-        literal_type = ASTNode::SIGNED_LITERAL;
-        break;
-      case TokenType::UNSIGNED_LITERAL:
-        literal_type = ASTNode::UNSIGNED_LITERAL;
-        break;
-      case TokenType::FLOAT_LITERAL:
-        literal_type = ASTNode::FLOAT_LITERAL;
-        break;
-      case TokenType::DOUBLE_LITERAL:
-        literal_type = ASTNode::DOUBLE_LITERAL;
-        break;
-      case TokenType::BOOL_LITERAL:
-        literal_type = ASTNode::BOOL_LITERAL;
-        break;
-      case TokenType::CHAR_LITERAL:
-        literal_type = ASTNode::CHAR_LITERAL;
-        break;
-      case TokenType::STRING_LITERAL:
-        literal_type = ASTNode::STRING_LITERAL;
-        break;
+      case TokenType::SIGNED_LITERAL: literal_type = ASTNode::SIGNED_LITERAL; break;
+      case TokenType::UNSIGNED_LITERAL: literal_type = ASTNode::UNSIGNED_LITERAL; break;
+      case TokenType::FLOAT_LITERAL: literal_type = ASTNode::FLOAT_LITERAL; break;
+      case TokenType::DOUBLE_LITERAL:literal_type = ASTNode::DOUBLE_LITERAL; break;
+      case TokenType::BOOL_LITERAL: literal_type = ASTNode::BOOL_LITERAL; break;
+      case TokenType::CHAR_LITERAL: literal_type = ASTNode::CHAR_LITERAL; break;
+      case TokenType::STRING_LITERAL: literal_type = ASTNode::STRING_LITERAL; break;
       default:
         eden_unreachable("Invalid literal token type.");
       }
@@ -285,7 +258,7 @@ struct Body {
     return generateIdentifier();
   }
 
-  u16_t generatePostfixExpression() {
+  u32_t generatePostfixExpression() {
     auto left = generatePrimaryExpression();
     while (true) {
       u64_t value;
@@ -336,7 +309,7 @@ struct Body {
     }
   }
 
-  u16_t generatePrefixExpression() {
+  u32_t generatePrefixExpression() {
     u64_t value;
     switch (tokens.peek().getType()) {
     case TokenType::PLUSPLUS:
@@ -373,7 +346,7 @@ struct Body {
       generatePrefixExpression(), 0);
   }
 
-  u16_t generateFactorExpression() {
+  u32_t generateFactorExpression() {
     auto left = generatePrefixExpression();
     while (true) {
       u64_t value;
@@ -397,7 +370,7 @@ struct Body {
     }
   }
 
-  u16_t generateTermExpression() {
+  u32_t generateTermExpression() {
     auto left = generateFactorExpression();
     while (true) {
       u64_t value;
@@ -418,7 +391,7 @@ struct Body {
     }
   }
 
-  u16_t generateRelationalExpression() {
+  u32_t generateRelationalExpression() {
     auto left= generateTermExpression();
     while (true) {
       u64_t value;
@@ -452,7 +425,7 @@ struct Body {
 
   }
 
-  u16_t generateBitwiseExpression() {
+  u32_t generateBitwiseExpression() {
     auto left = generateRelationalExpression();
     while (true) {
       u64_t value;
@@ -476,7 +449,7 @@ struct Body {
     }
   }
 
-  u16_t generateLogicalExpression() {
+  u32_t generateLogicalExpression() {
     auto left = generateBitwiseExpression();
     while (true) {
       u64_t value;
@@ -501,7 +474,7 @@ struct Body {
     }
   }
 
-  u16_t generateAssignmentExpression() {
+  u32_t generateAssignmentExpression() {
     const auto left = generateLogicalExpression();
     if (tokens.pop_if(TokenType::ASSIGN)) {
       return expression_tree.create(
@@ -512,7 +485,7 @@ struct Body {
     return left;
   }
 
-  u16_t generateExpressionBetweenParenthesis() {
+  u32_t generateExpressionBetweenParenthesis() {
     const TokenView until_ending = tokens.getTokensBetweenParenthesis();
     const TokenView after_ending = tokens;
     tokens = until_ending;
@@ -523,7 +496,7 @@ struct Body {
     return res;
   }
 
-  u16_t generateExpressionUntil(TokenType ending_token) {
+  u32_t generateExpressionUntil(TokenType ending_token) {
     const TokenView until_ending = tokens.getAllTokensUntilFirstOf(ending_token); tokens.pop();
     const TokenView after_ending = tokens;
     tokens = until_ending;
@@ -534,13 +507,11 @@ struct Body {
     return res;
   }
 
-  void translateExpression(u16_t idx) {
-    if (idx == 0)
-      return;
+  void translateExpression(u32_t idx) {
+    if (idx == 0) return;
 
-    using enum ASTNode::Type;
     auto expression = expression_tree.data[idx];
-    switch (expression.type) {
+    switch (expression.data.type) { using enum ASTNode::Type;
     case EMPTY:
     case DECLARATION:
     case IF:
@@ -551,63 +522,48 @@ struct Body {
     case EXPR_STMT:
       eden_unreachable("Statements should not be contained in an expression.");
 
-    case MEMBER_ACCESS:
-      tree.emplace_back(MEMBER_ACCESS, expression.value);
-      translateExpression(expression.left_idx);
-      translateExpression(expression.right_idx);
-      return;
     case UNARY:
-      tree.emplace_back(UNARY, expression.value);
+    case CAST:
+      tree.emplace_back(expression.data);
       translateExpression(expression.left_idx);
       return;
     case BINARY:
-      tree.emplace_back(BINARY, expression.value);
+    case SUBSCRIPT:
+    case MEMBER_ACCESS:
+      tree.emplace_back(expression.data);
       translateExpression(expression.left_idx);
       translateExpression(expression.right_idx);
       return;
     case CALLING: { // i think this might be unnecessarily complicated
-      tree.emplace_back(CALLING, 0);
+      tree.emplace_back(expression.data);
       const auto calling_idx = tree.size() - 1;
       translateExpression(expression.left_idx);
-      if (expression.right_idx == 0)
-        return;
+      if (expression.right_idx == 0) return;
 
-      u16_t left_idx = expression_tree.data[expression.right_idx].left_idx;
-      u16_t right_idx = expression_tree.data[expression.right_idx].right_idx;
+      u32_t left_idx = expression_tree.data[expression.right_idx].left_idx;
+      u32_t right_idx = expression_tree.data[expression.right_idx].right_idx;
       u64_t num_parameters{1};
       while (true) {
         translateExpression(left_idx);
-        if (right_idx == 0)
-          break;
-
+        if (right_idx == 0) break;
         left_idx = expression_tree.data[right_idx].left_idx;
         right_idx = expression_tree.data[right_idx].right_idx;
         ++num_parameters;
       }
 
-      tree[calling_idx].value() = num_parameters;
+      tree[calling_idx].m.num_parameters = num_parameters;
       return;
     }
-    case SUBSCRIPT:
-      tree.emplace_back(SUBSCRIPT, expression.value);
-      translateExpression(expression.left_idx);
-      translateExpression(expression.right_idx);
-      return;
+
     case IDENTIFIER:
-      tree.emplace_back(IDENTIFIER, expression.value);
-      return;
-    case CAST:
-      tree.emplace_back(CAST, expression.value);
-      translateExpression(expression.left_idx);
-      return;
+    case STRING_LITERAL:
     case SIGNED_LITERAL:
     case UNSIGNED_LITERAL:
     case FLOAT_LITERAL:
     case DOUBLE_LITERAL:
     case BOOL_LITERAL:
     case CHAR_LITERAL:
-    case STRING_LITERAL:
-      tree.emplace_back(expression.type, expression.value);
+      tree.emplace_back(expression.data);
       return;
 
     default:
@@ -941,9 +897,9 @@ void Parser::printTU(TU& ptu) {
   }
 }
 
-void Parser::parseTokens(TU& tu, TokenIter begin, TokenIter end) {
+void Parser::parseTokens(TU& tu, std::vector<Token>& tokens) {
   Body::ExpressionTree expression_tree;
-  Body global_body(TokenView{begin, end}, *tu.module, expression_tree);
+  Body global_body(TokenView{tokens}, *tu.module, expression_tree);
 
   parseImports(tu, global_body);
 

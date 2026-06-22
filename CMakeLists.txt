@@ -38,6 +38,7 @@ add_executable(lom
         src/build_system/build.cpp
         src/build_system/build.hpp
         src/semantic_analysis/table_and_module_sync.hpp
+        src/file.hpp
 )
 
 

@@ -19,120 +19,117 @@ static Module main_module("", &types);
 [[nodiscard]] Module*
 LOM::getModule(std::string_view name) {
   if (not modules.contains(name))
-    throw ValidationError("Module name not found!", "", 0);
+    throw std::runtime_error("Module name not found!");
   return &modules.at(name);
 }
 
 namespace fs = std::filesystem;
-[[maybe_unused]] static Parser::TU
-lex_and_parse_module(const fs::path& directory) {
-  std::vector<Lexer::Token> tokens; tokens.reserve(64); // cuz why not
-  auto file_start = 0;
-  bool const output_lexer = Settings::doOutputLexer();
 
-  // set up module
-  assert(not modules.contains(directory.c_str()));
-  const sz_t n = directory.filename().string().size() + 1; // this is so stupid i hate this language
-  auto const module_name = new char[n]; // purposeful memory leak
-  std::strcpy(module_name, directory.filename().c_str());
-  const std::string_view key_view(module_name, n-1);
-  auto const module_ptr = &modules.emplace(std::pair(key_view, Module{key_view, &types})).first->second;
+// returns whether an error occured
+[[nodiscard]] bool
+lex_and_parse_file(
+  Parser::TU& tu,
+  std::vector<Lexer::Token>& tokens,
+  fs::path const& file_path) {
 
-  Parser::TU module_tu; module_tu.module = module_ptr;
+  auto file_opt = Lexer::tokenizeFile(tokens, file_path);
+  if (not file_opt.has_value()) {
+    std::println("{}", get_file_errors(file_path.native()) );
+    return false;
+  }
+
+  auto file = std::move(file_opt.value());
+  if (Settings::output_lexer) {
+    std::print("\n--- Lexer Output --- {}", file_path.string());
+    Lexer::TokenView(tokens.begin() + file_start, tokens.end()).print(file);
+    std::println("\n--- Lexer Output ---");
+    return true;
+  }
+
+  tu.source_files.emplace_back(std::move(file));
+  Parser::parseTokens(tu, tokens.begin(), tokens.end());
+  return true;
+}
+
+[[nodiscard]] static Parser::TU
+lex_and_parse_module(fs::path const& directory) {
+  std::vector<Lexer::Token> tokens; tokens.reserve(64);
+  auto file_start{0uz};
+
+  Parser::TU tu;
+  { // set up module
+    assert(not modules.contains(directory.c_str()));
+    const sz_t n = directory.filename().string().size() + 1; // this is so stupid i hate this language
+    auto const module_name = new char[n]; // TODO: fix purposeful memory leak
+    std::strcpy(module_name, directory.filename().c_str());
+    const std::string_view key_view(module_name, n-1);
+    auto const module_ptr = &modules.emplace(std::pair(key_view, Module{key_view, &types})).first->second;
+    tu.module = module_ptr;
+  }
+
+  bool success = true;
   for (auto const& entry : fs::directory_iterator{directory}) {
     if (not entry.is_regular_file())
       throw std::runtime_error("LookOnceMore: Sorry! Submodules not supported yet.");
 
-    module_tu.file_text = Lexer::tokenizeFile(tokens, entry);
-    if (output_lexer) {
-      std::print("\n--- Lexer Output --- {}", directory.string());
-      Lexer::TokenView(tokens.begin() + file_start, tokens.end()).print();
-      std::println("\n--- Lexer Output ---");
-      continue;
-    }
-
-    Parser::parseTokens(module_tu, tokens.begin() + file_start, tokens.end());
+    success = lex_and_parse_file(tu, tokens, file_start, entry.path()) and success;
     file_start = tokens.size();
   }
+  if (not success) std::quick_exit(1);
 
-  return module_tu;
+  return tu;
 }
 
-
-
-void LOM::build()
-try {
+void LOM::build() {
   if (not fs::exists("src"))
     throw std::runtime_error("LookOnceMore: src directory not found!");
 
   modules.emplace(std::pair(std::string_view("__C"), Module{"__C", &types}));
 
   std::vector<Parser::TU> parsed_tus;
-  std::vector<fs::path> module_names; bool has_main = false;
+  std::vector<fs::path> module_names;
   for (auto const& entry : fs::directory_iterator{"src"}) {
-    if (entry.is_regular_file()) {
-      if (has_main)
-        throw ValidationError("There may only be one top level .lom file, named main.lom", entry.path().filename(), 0);
-      if (entry.path().filename() != "main.lom")
-        throw ValidationError("Top level .lom file must be called main.lom", entry.path().filename(), 0);
-
-      has_main = true;
-      std::vector<Lexer::Token> main_tokens;
-      Lexer::tokenizeFile(main_tokens, entry);
-      if (Settings::doOutputLexer()) {
-        std::print("\n--- Lexer Output --- main.lom");
-        Lexer::TokenView(main_tokens.begin(), main_tokens.end()).print();
-        std::println("\n--- Lexer Output ---");
-      }
-
-      module_names.emplace_back(entry.path().filename());
-      parsed_tus.emplace_back(&main_module, "main");
-      Parser::parseTokens(parsed_tus.back(), main_tokens.begin(), main_tokens.end());
-    }
-    else if (entry.is_directory()) [[likely]] {
+    if (entry.is_directory()) [[likely]] {
       module_names.emplace_back(entry.path().filename());
       parsed_tus.emplace_back(lex_and_parse_module(entry));
+      continue;
     }
+
+    std::vector<Lexer::Token> main_tokens; main_tokens.reserve(64);
+    Parser::TU main_tu; main_tu.module = &main_module;
+    if (lex_and_parse_file(main_tu, main_tokens, 0, entry.path()) == false) std::quick_exit(1);
+
   }
 
-  if (not has_main)
-    throw std::runtime_error("Expected src/main.lom.");
-
-  const bool emit_parser = Settings::doOutputParser();
-  const bool emit_peep = Settings::doOutputPeep();
-  const bool output_asm = Settings::doOutputASM();
-  const bool output_ir = Settings::doOutputIR();
-  const bool output_obj = Settings::doOutputOBJ() or Settings::doLinking();
   std::vector<std::unique_ptr<Backend>> compiled_tus;
   for (auto i{0uz}; i<parsed_tus.size(); ++i) {
     auto& module_name = module_names[i];
-    if (emit_parser) {
+    if (Settings::output_parser) {
       std::println("\n--- Parser Output --- {}", module_name.string());
       Parser::printTU(parsed_tus[i]);
       std::println("\n--- Parser Output ---");
       continue;
     }
-    if (emit_peep) {
+    if (Settings::output_peep) {
       std::println("\n--- Peep Output --- {}", module_name.string());
       auto x = (PeepMIR::lowerToPeep(std::move(parsed_tus[i])));
       PeepMIR::printPeep(x);
       std::println("\n--- Peep Output ---");
       continue;
     }
-    auto& compiled = compiled_tus.emplace_back(
+    auto const& compiled = compiled_tus.emplace_back(
       Backend::codegen(
         PeepMIR::lowerToPeep(std::move(parsed_tus[i])),
         module_names[i]));
 
-    if (output_asm)
+    if (Settings::output_asm)
       compiled->createASMFile(module_name);
-    if (output_ir)
+    if (Settings::output_llvmir)
       compiled->createIRFile(module_name);
-    if (output_obj)
+    if (Settings::output_obj)
       module_name = compiled->createObjectFile(module_name);
   }
 
-  if (Settings::doLinking())
+  if (Settings::do_linking or Settings::output_obj)
     Backend::linkObjects(module_names);
 }
-catch (LOMError& e) { std::println("{}", e.error_message); std::quick_exit(1); }

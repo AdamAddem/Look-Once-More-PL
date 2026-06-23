@@ -17,10 +17,11 @@ public:
     // members are organized in this stupid way to shave 8 bytes
     [[no_unique_address]] InstantiatedType type;
     bool is_public;
-  private: u16_t id; public:
-
+  private:
+    u16_t id;
     u32_t name_len;
     const char* name;
+  public:
 
     Variable() noexcept = default;
     Variable(const Type* type, std::string_view name, bool is_public) noexcept

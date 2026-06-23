@@ -2,7 +2,6 @@
 #include "lexing/lex.hpp"
 
 #include <vector>
-using namespace LOM;
 
 namespace {
 struct Error {
@@ -13,15 +12,19 @@ struct Error {
   enum class Stage : u16_t { LEXING, PARSING, VALIDATION, BACKEND } stage;
 };
 }
-
+namespace LOM {
 // filepath -> vector of error's
 static std::unordered_map<std::string_view, std::vector<Error>> file_to_errors_map;
+
+
+bool does_file_have_errors(std::string_view file_path) {
+  return file_to_errors_map.contains(file_path);
+}
 
 std::string get_file_errors(std::string_view file_path) {
   std::string error_messages;
   auto const error_iter = file_to_errors_map.find(file_path);
   if (error_iter == file_to_errors_map.end()) return error_messages;
-
 
   auto const& error_vec = error_iter->second;
   error_messages.reserve(error_vec.size() * 32); // assume an arbitrary 32 chars per error message
@@ -35,6 +38,8 @@ std::string get_file_errors(std::string_view file_path) {
 
   return error_messages;
 }
+
+
 
 // TODO: make thread safe
 void report_lexing_error(File const& file, u32_t position, u16_t length, std::string error_message) {
@@ -73,4 +78,6 @@ void report_backend_error(File const& file, std::string error_message) {
       0, 0, // temporary pls fix
       Error::Stage::BACKEND
     );
+}
+
 }

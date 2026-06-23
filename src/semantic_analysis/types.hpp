@@ -32,20 +32,24 @@ class Type {
   static constexpr u8_t RESERVED_MASK6 = 1 << 5;
   static constexpr u8_t RESERVED_MASK7 = 1 << 6;
   static constexpr u8_t RESERVED_MASK8 = 1 << 7;
-  u8_t flags{}; //flags for quicker type checking
+  u8_t flags{}; // flags for quicker type checking
+
+  // should only be called for the error type
+  explicit consteval Type() : flags(u8_max), derived_type(ERROR) {}
+
 protected:
   constexpr void setArithmetic() noexcept {flags or_eq is_arithmetic_mask;}
   constexpr void setCallable()   noexcept {flags or_eq is_callable_mask;}
-  enum : u8_t {DEVOID, PRIMITIVE, POINTER, VARIANT, FUNCTION, CUSTOM}
+  enum : u8_t {DEVOID, ERROR, PRIMITIVE, POINTER, VARIANT, FUNCTION, CUSTOM}
   derived_type{};
 
   explicit constexpr Type(auto derived_type)
   : derived_type(derived_type) {}
+
 public:
 
-  eden_return_nonnull
-  [[nodiscard]] static consteval
-  const Type* devoid() {static constexpr Type devoid{DEVOID}; return &devoid;}
+  [[nodiscard]] static consteval const Type* devoid()     noexcept  {static constexpr Type devoid{DEVOID}; return &devoid;}
+  [[nodiscard]] static consteval const Type* error()      noexcept  {static constexpr Type error;  return &error;}
 
   [[nodiscard]] constexpr bool isDevoid()           const noexcept  {return derived_type == DEVOID;}
   [[nodiscard]] constexpr bool isPrimitive()        const noexcept  {return derived_type == PRIMITIVE;}
@@ -65,14 +69,14 @@ public:
   [[nodiscard]] constexpr sz_t bitwidth()           const noexcept;
 
 
-  eden_return_nonnull [[nodiscard]] constexpr const PrimitiveType*  castToPrimitive() const noexcept;
-  eden_return_nonnull [[nodiscard]] constexpr const PointerType*    castToPointer()   const noexcept;
-  eden_return_nonnull [[nodiscard]] constexpr const VariantType*    castToVariant()   const noexcept;
-  eden_return_nonnull [[nodiscard]] constexpr const FunctionType*   castToFunction()  const noexcept;
-  eden_return_nonnull [[nodiscard]] constexpr const CustomType*     castToCustom()    const noexcept;
+  [[nodiscard]] constexpr const PrimitiveType*  castToPrimitive() const noexcept;
+  [[nodiscard]] constexpr const PointerType*    castToPointer()   const noexcept;
+  [[nodiscard]] constexpr const VariantType*    castToVariant()   const noexcept;
+  [[nodiscard]] constexpr const FunctionType*   castToFunction()  const noexcept;
+  [[nodiscard]] constexpr const CustomType*     castToCustom()    const noexcept;
 
-  eden_nonull_args [[nodiscard]] bool coercibleTo(const Type* other) const noexcept;
-  eden_nonull_args [[nodiscard]] bool castableTo(const Type* other) const noexcept;
+  [[nodiscard]] bool coercibleTo(const Type* other) const noexcept;
+  [[nodiscard]] bool castableTo(const Type* other) const noexcept;
 
 
   [[nodiscard]] std::string toString() const noexcept;
@@ -402,6 +406,7 @@ Type::bitwidth() const noexcept {
   switch (derived_type) {
   case PRIMITIVE:
     return static_cast<const PrimitiveType*>(this)->bitwidth();
+  case ERROR:
   case POINTER:
     return sizeof(void*) * 8;
   case VARIANT:
@@ -419,6 +424,7 @@ Type::bitwidth() const noexcept {
 [[nodiscard]] constexpr const CustomType* Type::castToCustom()        const noexcept { assume_assert(derived_type == CUSTOM); return static_cast<const CustomType*>(this); }
 
 static constexpr InstantiatedType devoid_literal{Type::devoid(), {}};
+static constexpr InstantiatedType error_literal{Type::error(), true};
 static constexpr InstantiatedType i8_literal{PrimitiveType::i8(), {}};
 static constexpr InstantiatedType i16_literal{PrimitiveType::i16(), {}};
 static constexpr InstantiatedType i32_literal{PrimitiveType::i32(), {}};

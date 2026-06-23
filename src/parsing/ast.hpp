@@ -2,12 +2,10 @@
 #pragma once
 #include "file.hpp"
 #include "edenlib/vectors/releasing_vector.hpp"
-#include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
 #include <cassert>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -77,16 +75,6 @@ constexpr bool isCategoryPOSTFIX_OPS(const Operator e) { return std::to_underlyi
 constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 28; }
 
 
-struct ASTNode;
-struct SyntaxTree {
-  SyntaxTree() = default;
-  SyntaxTree(const SyntaxTree&) = delete;
-  SyntaxTree(SyntaxTree&&) noexcept = default;
-
-  std::vector<ASTNode> nodes;
-  void print(u64_t starting_line_number) const noexcept;
-};
-
 // Is this overengineered? Absolutely.
 struct ASTNode {
 
@@ -110,9 +98,10 @@ struct ASTNode {
     SUBSCRIPT,      //             | ARRAY_EXPRESSION, INSIDE_EXPRESSION
     CAST,           // const Type* | EXPRESSION
 
-    // value holds char*, len of string representation
-    IDENTIFIER,     // char*, len  |
-    SIGNED_LITERAL,
+    // no value, uses the length_in_file and position_in_file
+    IDENTIFIER, SIGNED_LITERAL,
+
+    // holds respective value in nodedata
     UNSIGNED_LITERAL,
     FLOAT_LITERAL,
     DOUBLE_LITERAL,
@@ -123,6 +112,7 @@ struct ASTNode {
 
   struct NodeData {
     Type type;
+    u8_t file_idx;
     u16_t length_in_file;
     u32_t position_in_file;
     union {
@@ -150,13 +140,6 @@ struct ASTNode {
   // data is purposefully uninitialized here to prevent the expression tree initializing every node when it doesn't need to
   constexpr ASTNode() noexcept = default;
 
-  constexpr explicit ASTNode(Type type, u16_t length_in_file, u32_t position_in_file, Operator opr) noexcept {
-    assert(type == UNARY or type == BINARY);
-    m.type = type;
-    m.length_in_file = length_in_file;
-    m.position_in_file = position_in_file;
-    m.opr = opr;
-  }
   constexpr explicit ASTNode(NodeData data) : m(data) {}
   constexpr explicit ASTNode(InstantiatedType instantiated) noexcept
   { declaration_inst_type = instantiated; }
@@ -178,16 +161,12 @@ struct ASTNode {
   { assert(m.type == CAST); return m.cast_type; }
 
   [[nodiscard]] constexpr Operator
-  operator_val() const noexcept {
-    assert(m.type == UNARY or m.type == BINARY);
-    return m.opr;
-  }
+  operator_val() const noexcept
+  { assert(m.type == UNARY or m.type == BINARY); return m.opr; }
 
   [[nodiscard]] constexpr std::string_view
-  identifier(File const& file) const noexcept {
-    assert(m.type == IDENTIFIER);
-    return file.view_at(m.position_in_file, m.length_in_file);
-  }
+  identifier(File const& file) const noexcept
+  { assert(m.type == IDENTIFIER); return file.view_at(m.position_in_file, m.length_in_file); }
 
   [[nodiscard]] constexpr i64_t
   signed_val() const noexcept
@@ -214,18 +193,19 @@ struct ASTNode {
   { assert(m.type == CHAR_LITERAL); return m.char_value; }
 
   [[nodiscard]] constexpr std::string_view
-  string_val(File const& file) const noexcept {
-    assert(m.type == STRING_LITERAL);
-    return file.view_at(m.position_in_file, m.length_in_file);
-  }
+  string_val(File const& file) const noexcept
+  { assert(m.type == STRING_LITERAL); return file.view_at(m.position_in_file, m.length_in_file); }
 
 };
 
 inline constexpr ASTNode::NodeData EMPTY_NODE_DATA{
     .type = ASTNode::EMPTY,
+    .file_idx = 0,
     .length_in_file = 0,
     .position_in_file = 0,
     .bool_value = false
   };
+
+void print_ast(std::vector<ASTNode> const& nodes, File const&) noexcept;
 
 }

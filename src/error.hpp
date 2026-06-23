@@ -15,6 +15,7 @@ void report_parsing_error(   File const& file, Lexer::Token token, std::string e
 void report_validation_error(File const& file, std::string error_message);
 void report_backend_error(   File const& file, std::string error_message);
 
-std::string get_file_errors(std::string_view file_path);
+[[nodiscard]] std::string get_file_errors(std::string_view file_path);
+[[nodiscard]] bool does_file_have_errors(std::string_view file_path);
 
 }

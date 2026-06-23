@@ -77,10 +77,6 @@ struct Token {
     return file.view_at(position, length);
   }
 
-  void throw_if(TokenType unwanted_type, const char* err_msg) const;
-  void throw_if_not(TokenType expected_type, const char* err_msg) const;
-
-  [[nodiscard]] constexpr TokenType getType() const noexcept           { return type; }
   [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept { return type == token_type; }
   [[nodiscard]] constexpr bool isPrimitive() const noexcept            { return isCategoryPRIMITIVES(type); }
   [[nodiscard]] constexpr bool isLiteral() const noexcept              { return isCategoryLITERALS(type); }
@@ -98,19 +94,25 @@ public:
   explicit TokenView(std::vector<Token> const& tokens) noexcept
   : begin(tokens.begin()), end(tokens.end()) {}
 
-  [[nodiscard]] Token const& peek() const noexcept                       { return *begin; }
-  [[nodiscard]] bool peek_is(TokenType type) const noexcept              { return begin->type == type; }
-  [[nodiscard]] Token const& peek_ahead(sz_t distance) const noexcept    { return *(begin + distance); }
-  [[nodiscard]] Token take() noexcept                                    { return *begin++; }
-  [[nodiscard]] bool empty() const noexcept                              { return begin == end; }
-  void pop() noexcept                                                    { assert(not empty()); ++begin; }
-  bool pop_if(const TokenType type) noexcept                             { if (empty() or begin->type not_eq type) return false; ++begin; return true; }
+  TokenView(TokenIter begin, TokenIter end) noexcept
+  : begin(begin), end(end) {}
 
+  [[nodiscard]] Token peek() const noexcept                     { return *begin; }
+  [[nodiscard]] bool peek_is(TokenType type) const noexcept     { return begin->type == type; }
+  [[nodiscard]] Token peek_ahead(sz_t distance) const noexcept  { return *(begin + distance); }
+  [[nodiscard]] Token take() noexcept                           { return *begin++; }
+  [[nodiscard]] bool empty() const noexcept                     { return begin == end; }
+  void pop() noexcept                                           { assert(not empty()); ++begin; }
+  bool pop_if(const TokenType type) noexcept                    { if (empty() or begin->type not_eq type) return false; ++begin; return true; }
+  void undo() noexcept                                          { --begin; }
+
+  /*
   void expect_then_pop(TokenType expected_type, const char* err_msg);
   void expect(TokenType expected_type, const char* err_msg) const;
   void reject_then_pop(TokenType unwanted_type, const char* err_msg);
   void reject(TokenType unwanted_type, const char* err_msg) const;
-  void print(File& file) const;
+  */
+  void print(File const& file) const;
 
   [[nodiscard]] Token viewAsStringToken() const noexcept {
     if (empty()) return {TokenType::INVALID_TOKEN, 0, 0};
@@ -136,6 +138,7 @@ public:
 };
 
 // returns the text of the file and populates out_tokens
-[[nodiscard]] std::optional<File>
+[[nodiscard]] File
 tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& file_path);
+
 }

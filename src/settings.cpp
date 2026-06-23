@@ -35,7 +35,7 @@ inline const std::unordered_map<std::string, Args> stringToArgs{
 
 namespace LOM::Settings {
 
-static bool output_lexer_flag{false};       bool const& do_output_lexer = output_lexer;
+static bool output_lexer_flag{false};       bool const& do_output_lexer = output_lexer_flag;
 static bool output_parser_flag{false};      bool const& do_output_parser = output_parser_flag;
 static bool output_peep_flag{false};        bool const& do_output_peep = output_peep_flag;
 static bool output_validation_flag{false};  bool const& do_output_validation = output_validation_flag;
@@ -122,7 +122,7 @@ void setArgs(unsigned argc, const char* argv[]) {
     output_name = "lom.out";
 #endif
 
-  do_linking_flag = not output_obj_flag and not output_asm_flag and not output_llvmir_flag and not output_lexer and not output_parser_flag and not output_peep_flag;
+  do_linking_flag = not output_obj_flag and not output_asm_flag and not output_llvmir_flag and not output_lexer_flag and not output_parser_flag and not output_peep_flag;
   output_obj_flag = output_obj_flag or do_linking_flag;
 }
 

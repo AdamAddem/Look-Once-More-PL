@@ -6,10 +6,9 @@
 #include "lexing/lex.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 
-#include <iostream>
+#include <print>
 #include <unordered_set>
 #include <utility>
-#include <print>
 
 using namespace LOM;
 using namespace LOM::Lexer;
@@ -18,10 +17,7 @@ using namespace LOM::AST;
 using eden::releasing_string;
 
 namespace {
-
-
-[[nodiscard]] InstantiatedType
-parseType(TokenView& tokens, TU& tu);
+[[nodiscard]] InstantiatedType parseType(TokenView& tokens, TU& tu);
 
 [[nodiscard]] InstantiatedType::Qualifiers
 parseTypeQualifiers(TokenView& tokens) {
@@ -38,72 +34,69 @@ parseTypeQualifiers(TokenView& tokens) {
   return qualifiers;
 }
 
-eden_return_nonnull
 [[nodiscard]] const Type*
 parseUnqualifiedType(TokenView& tokens, TU& tu) {
-  auto const& src_file = tu.source_files.back();
+  auto const& current_file = tu.source_files.back();
   auto const token = tokens.take();
-  auto& module = *tu.module;
+  auto const& module = *tu.module;
 
   if (token.isPrimitive()) {
     if (token.isPointer()) {
-      tokens.expect_then_pop(TokenType::LESS, "Expected opening < in pointer declaration.");
+
+      if (not tokens.pop_if(TokenType::LESS)) {
+        report_parsing_error(current_file, tokens.peek(), "Expected opening < in pointer declaration.");
+        return Type::error();
+      }
+
       if (token.is(TokenType::KEYWORD_VAGUE)) {
-        const auto subtype_qualifiers = parseTypeQualifiers(tokens);
-        tokens.expect_then_pop(TokenType::GTR, "Expected closing < in pointer declaration.");
+        auto const subtype_qualifiers = parseTypeQualifiers(tokens);
+        if (not tokens.pop_if(TokenType::GTR)) {
+          report_parsing_error(current_file, tokens.peek(), "Expected closing < in pointer declaration.");
+          return Type::error();
+        }
+
         return PointerType::vague(subtype_qualifiers.is_mutable);
       }
 
-      const InstantiatedType subtype_instance = parseType(tokens, tu);
-      tokens.expect_then_pop(TokenType::GTR, "Expected closing < in pointer declaration.");
-      switch (token.getType()) {
-      case TokenType::KEYWORD_RAW:
-        return module.getRawPointerType(subtype_instance);
-      case TokenType::KEYWORD_UNIQUE:
-        return module.getUniquePointerType(subtype_instance);
+      auto const subtype_instance = parseType(tokens, tu);
+
+      if (not tokens.pop_if(TokenType::GTR)) {
+        report_parsing_error(current_file, tokens.peek(), "Expected closing < in pointer declaration.");
+        return Type::error();
+      }
+
+      switch (token.type) {
+      case TokenType::KEYWORD_RAW:    return module.getRawPointerType(subtype_instance);
+      case TokenType::KEYWORD_UNIQUE: return module.getUniquePointerType(subtype_instance);
       default:
         eden_unreachable("Pointer type unsupported.");
       }
     }
 
-    switch (token.getType()) {
-    case TokenType::KEYWORD_i8:
-      return PrimitiveType::i8();
-    case TokenType::KEYWORD_i16:
-      return PrimitiveType::i16();
-    case TokenType::KEYWORD_i32:
-      return PrimitiveType::i32();
-    case TokenType::KEYWORD_i64:
-      return PrimitiveType::i64();
-    case TokenType::KEYWORD_u8:
-      return PrimitiveType::u8();
-    case TokenType::KEYWORD_u16:
-      return PrimitiveType::u16();
-    case TokenType::KEYWORD_u32:
-      return PrimitiveType::u32();
-    case TokenType::KEYWORD_u64:
-      return PrimitiveType::u64();
-    case TokenType::KEYWORD_f32:
-      return PrimitiveType::f32();
-    case TokenType::KEYWORD_f64:
-      return PrimitiveType::f64();
+    switch (token.type) {
+    case TokenType::KEYWORD_i8:     return PrimitiveType::i8();
+    case TokenType::KEYWORD_i16:    return PrimitiveType::i16();
+    case TokenType::KEYWORD_i32:    return PrimitiveType::i32();
+    case TokenType::KEYWORD_i64:    return PrimitiveType::i64();
+    case TokenType::KEYWORD_u8:     return PrimitiveType::u8();
+    case TokenType::KEYWORD_u16:    return PrimitiveType::u16();
+    case TokenType::KEYWORD_u32:    return PrimitiveType::u32();
+    case TokenType::KEYWORD_u64:    return PrimitiveType::u64();
+    case TokenType::KEYWORD_f32:    return PrimitiveType::f32();
+    case TokenType::KEYWORD_f64:    return PrimitiveType::f64();
 
-    case TokenType::KEYWORD_CHAR:
-      return PrimitiveType::char_();
-    case TokenType::KEYWORD_BOOL:
-      return PrimitiveType::bool_();
-    case TokenType::KEYWORD_STRING:
-      return PrimitiveType::string();
-    case TokenType::KEYWORD_DEVOID:
-      return Type::devoid();
+    case TokenType::KEYWORD_CHAR:   return PrimitiveType::char_();
+    case TokenType::KEYWORD_BOOL:   return PrimitiveType::bool_();
+    case TokenType::KEYWORD_STRING: return PrimitiveType::string();
+    case TokenType::KEYWORD_DEVOID: return Type::devoid();
     default:
       eden_unreachable("Pointer type not supported.");
     }
   }
 
   if (token.is(TokenType::IDENTIFIER)) {
-    auto const type = module.getCustomType(token.getString(src_file));
-    if (not type) report_parsing_error(src_file, token, "Expected typename.");
+    auto const type = module.getCustomType(token.getString(current_file));
+    if (not type) report_parsing_error(current_file, token, "Expected typename.");
     return type;
   }
 
@@ -112,50 +105,52 @@ parseUnqualifiedType(TokenView& tokens, TU& tu) {
     auto const variant_types_tokens_cpy = variant_types_tokens;
 
     bool nullable{false};
-    std::vector<const Type*> subtypes;
-    std::unordered_set<const Type*> typenames; //prevent duplicate types
+    std::vector<const Type *> subtypes;
+    std::unordered_set<const Type *> typenames; // prevent duplicate types
 
     do {
       auto const subtype_token = variant_types_tokens.peek();
       auto subtype = parseUnqualifiedType(variant_types_tokens, tu);
-      if (subtype->isVariant()) report_parsing_error(src_file, subtype_token, "Nested variant types not allowed.");
+      if (subtype->isVariant())
+        report_parsing_error(current_file, subtype_token, "Nested variant types not allowed.");
 
       if (subtype->isDevoid()) {
-        if (nullable) report_parsing_error(src_file, subtype_token, "Devoid may not be specified more than once in variant declaration.");
+        if (nullable) report_parsing_error(current_file, subtype_token, "Devoid may not be specified more than once in variant declaration.");
+
         nullable = true;
-      }
-      else if (typenames.contains(subtype))
-        report_parsing_error(src_file, subtype_token, "Duplicate types specified in variant declaration.");
-      else typenames.emplace(subtype);
+      } else if (typenames.contains(subtype))
+        report_parsing_error(current_file, subtype_token,"Duplicate types specified in variant declaration.");
+      else
+        typenames.emplace(subtype);
 
       subtypes.push_back(subtype);
     } while (variant_types_tokens.pop_if(TokenType::COMMA));
 
-    if (subtypes.size() < 2) report_parsing_error(src_file, variant_types_tokens_cpy.viewAsStringToken(), "Two or more types must be specified in variant type list.");
+    if (subtypes.size() < 2)
+      report_parsing_error(current_file, variant_types_tokens_cpy.viewAsStringToken(), "Two or more types must be specified in variant type list.");
 
     return module.getVariantType(subtypes, nullable);
   }
 
-  report_parsing_error(src_file, token, "Expected typename.");
-  return Type::devoid();
+  report_parsing_error(current_file, token, "Expected typename.");
+  return Type::error();
 }
 
-template<bool allow_qualifiers>
+template <bool allow_qualifiers>
 [[maybe_unused]] [[nodiscard]] auto
 parseTypeList(TokenView& tokens, TU& tu) {
-  using type = std::conditional_t<allow_qualifiers, InstantiatedType, const Type*>;
+  using type = std::conditional_t<allow_qualifiers, InstantiatedType, const Type *>;
   std::vector<type> list;
   list.reserve(2);
 
   do {
-    if constexpr(allow_qualifiers)
-      list.emplace_back(parseType(tokens, tu));
-    else
-      list.emplace_back(parseUnqualifiedType(tokens, tu));
-  }
-  while (tokens.pop_if(TokenType::COMMA));
+    if constexpr (allow_qualifiers) list.emplace_back(parseType(tokens, tu));
+    else                            list.emplace_back(parseUnqualifiedType(tokens, tu));
+  } while (tokens.pop_if(TokenType::COMMA));
 
-  tokens.expect_then_pop(TokenType::GTR, "Expected closing > in type list.");
+  if (not tokens.pop_if(TokenType::GTR))
+    report_parsing_error(tu.source_files.back(), tokens.peek(), "Expected closing > in type list.");
+
   return list;
 }
 
@@ -165,10 +160,14 @@ parseType(TokenView& tokens, TU& tu) {
   return {parseUnqualifiedType(tokens, tu), qualifiers};
 }
 
-std::string_view
-parseIdentifier(TokenView& tokens, TU& tu) {
-  Token token = tokens.take();
-  token.throw_if_not(TokenType::IDENTIFIER, "Expected identifier.");
+[[nodiscard]] std::string_view
+parseIdentifier(TokenView& tokens, TU const& tu) noexcept {
+  auto const token = tokens.take();
+  if (not token.is(TokenType::IDENTIFIER)) {
+    report_parsing_error(tu.source_files.back(), token, "Expected identifier.");
+    return "?";
+  }
+
   return token.getString(tu.source_files.back());
 }
 
@@ -185,69 +184,82 @@ struct Body {
     std::array<Expression, max_expressiontree_size> data;
     u64_t begin{};
 
-    u16_t create(ASTNode::NodeData node_data, u32_t left_idx = 0, u32_t right_idx = 0) noexcept {
+    u32_t create(ASTNode::NodeData node_data, u32_t left_idx = 0, u32_t right_idx = 0) noexcept {
       assume_assert(left_idx < max_expressiontree_size); assume_assert(right_idx < max_expressiontree_size);
       ++begin; assume_assert(begin < max_expressiontree_size);
-      auto& expr = data[begin];
+
+      auto &expr = data[begin];
       expr.left_idx = left_idx;
       expr.right_idx = right_idx;
       expr.data = node_data;
       return begin;
     }
 
-    void reset() noexcept {begin = 0;}
+    void reset() noexcept { begin = 0; }
   };
+
+  [[nodiscard]] ASTNode::NodeData
+  newNodeData(Token token, ASTNode::Type type = ASTNode::EMPTY) const noexcept {
+    assert((tu.source_files.size() - 1) <= u8_max);
+    return {.type = type,
+            .file_idx = static_cast<u8_t>(tu.source_files.size() - 1),
+            .length_in_file = token.length, .position_in_file = token.position,
+            .bool_value = false}; // silences warning
+  }
 
   std::vector<ASTNode> tree;
   TokenView tokens;
   TU& tu;
+  File const& current_file;
   ExpressionTree& expression_tree;
 
-  Body(TokenView tokens, TU& tu, ExpressionTree& expression_tree)
-  : tokens(tokens), tu(tu), expression_tree(expression_tree) {}
+  Body(TokenView tokens, TU &tu, ExpressionTree &expression_tree)
+  : tokens(tokens), tu(tu), current_file(tu.source_files.back()), expression_tree(expression_tree) {}
 
   u32_t generateParameters() {
     const auto parameter = generateAssignmentExpression();
-    if (tokens.pop_if(TokenType::RPAREN))
-      return expression_tree.create(EMPTY_NODE_DATA, 0, parameter, 0);
-    tokens.expect_then_pop(TokenType::COMMA, "Expected comma in call expression.");
-    return expression_tree.create(ASTNode::EMPTY, 0, parameter, generateParameters());
+    if (tokens.pop_if(TokenType::RPAREN)) return expression_tree.create(EMPTY_NODE_DATA, parameter, 0);
+
+    if (not tokens.pop_if(TokenType::COMMA))
+      report_parsing_error(current_file, tokens.peek(), "Expected comma in call expression.");
+    return expression_tree.create(EMPTY_NODE_DATA, parameter, generateParameters());
   }
 
   u32_t generateSubscript() {
-    const auto res = generateAssignmentExpression();
-    tokens.expect_then_pop(TokenType::RBRACKET, "Expected closing bracket in subscript expression.");
+    auto const res = generateAssignmentExpression();
+    if (not tokens.pop_if(TokenType::RBRACKET))
+      report_parsing_error(current_file, tokens.peek(), "const Expected closing bracked in subscript expression.");
     return res;
   }
 
   u32_t generateIdentifier() {
-    if (tokens.pop_if(TokenType::DUNDER_CEXTERN))
-      return expression_tree.create(ASTNode::IDENTIFIER, std::string_view("__C"));
-    tokens.expect(TokenType::IDENTIFIER, "Expected identifier.");
-    return expression_tree.create(ASTNode::IDENTIFIER, tokens.take().getString(tu.source_files.back()));
+    auto const token = tokens.take();
+    if (token.is(TokenType::IDENTIFIER) or token.is(TokenType::DUNDER_CEXTERN))
+      return expression_tree.create(newNodeData(token, ASTNode::IDENTIFIER));
+
+    report_parsing_error(current_file, token, "Expected identifier.");
+    return expression_tree.create(newNodeData({}, ASTNode::IDENTIFIER)); // dummy data
   }
 
   u32_t generatePrimaryExpression() {
-    if (tokens.empty())
-      return 0;
+    if (tokens.empty()) return 0;
 
     if (tokens.peek().isLiteral()) {
       auto const token = tokens.take();
-      ASTNode::Type literal_type;
-      switch (token.getType()) {
-      case TokenType::SIGNED_LITERAL: literal_type = ASTNode::SIGNED_LITERAL; break;
-      case TokenType::UNSIGNED_LITERAL: literal_type = ASTNode::UNSIGNED_LITERAL; break;
-      case TokenType::FLOAT_LITERAL: literal_type = ASTNode::FLOAT_LITERAL; break;
-      case TokenType::DOUBLE_LITERAL:literal_type = ASTNode::DOUBLE_LITERAL; break;
-      case TokenType::BOOL_LITERAL: literal_type = ASTNode::BOOL_LITERAL; break;
-      case TokenType::CHAR_LITERAL: literal_type = ASTNode::CHAR_LITERAL; break;
-      case TokenType::STRING_LITERAL: literal_type = ASTNode::STRING_LITERAL; break;
-      default:
-        eden_unreachable("Invalid literal token type.");
+      ASTNode::NodeData data = newNodeData(token);
+
+      switch (token.type) {
+      case TokenType::SIGNED_LITERAL:   data.type = ASTNode::SIGNED_LITERAL; data.signed_value = token.getSigned(current_file); break;
+      case TokenType::UNSIGNED_LITERAL: data.type = ASTNode::UNSIGNED_LITERAL; data.unsigned_value = token.getUnsigned(current_file); break;
+      case TokenType::FLOAT_LITERAL:    data.type = ASTNode::FLOAT_LITERAL; data.float_value = token.getFloat(current_file); break;
+      case TokenType::DOUBLE_LITERAL:   data.type = ASTNode::DOUBLE_LITERAL; data.double_value = token.getDouble(current_file); break;
+      case TokenType::BOOL_LITERAL:     data.type = ASTNode::BOOL_LITERAL; data.bool_value = token.getBool(current_file); break;
+      case TokenType::CHAR_LITERAL:     data.type = ASTNode::CHAR_LITERAL; data.char_value = token.getChar(current_file); break;
+      case TokenType::STRING_LITERAL:   data.type = ASTNode::STRING_LITERAL; break;
+      default: eden_unreachable("Invalid literal token type.");
       }
 
-      const u64_t literal_value = token.getRawValue();
-      return expression_tree.create(literal_type, literal_value);
+      return expression_tree.create(data);
     }
 
     if (tokens.pop_if(TokenType::LPAREN)) {
@@ -261,248 +273,213 @@ struct Body {
   u32_t generatePostfixExpression() {
     auto left = generatePrimaryExpression();
     while (true) {
-      u64_t value;
-      switch (tokens.peek().getType()) {
-      case TokenType::PLUSPLUS:
-        value = static_cast<u64_t>(Operator::POST_INCREMENT);
-        break;
-      case TokenType::MINUSMINUS:
-        value = static_cast<u64_t>(Operator::POST_DECREMENT);
-        break;
+      auto const token = tokens.take();
+      auto data = newNodeData(token);
+      switch (token.type) {
+      case TokenType::PLUSPLUS: data.opr = Operator::POST_INCREMENT; break;
+      case TokenType::MINUSMINUS: data.opr = Operator::POST_DECREMENT; break;
       case TokenType::ARROW:
-        if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER)) { // should only occur when accessing a member.
-          tokens.pop();
-          left = expression_tree.create(
-            ASTNode::UNARY, static_cast<u64_t>(Operator::ARROW),
-            left, 0);
-          left = expression_tree.create(
-            ASTNode::MEMBER_ACCESS, 0,
-            left, generatePostfixExpression());
-
+        if (tokens.peek_is(TokenType::IDENTIFIER)) { // should only occur when accessing a member.
+          left = expression_tree.create(data, left, 0);
+          data.type = ASTNode::MEMBER_ACCESS;
+          left = expression_tree.create(data, left, generatePostfixExpression());
           continue;
         }
-        value = static_cast<u64_t>(Operator::ARROW);
+        data.opr = Operator::ARROW;
         break;
       case TokenType::LPAREN: {
-        tokens.pop();
-        const u16_t parameters = tokens.pop_if(TokenType::RPAREN) ? 0 : generateParameters();
-        left = expression_tree.create(ASTNode::CALLING, 0, left, parameters); // pretty sure the 0 is supposed to be a placeholder but I don't remember
+        u32_t const num_parameters = tokens.pop_if(TokenType::RPAREN) ? 0 : generateParameters();
+        data.type = ASTNode::CALLING;
+        left = expression_tree.create( data, left, num_parameters );
         continue;
       }
       case TokenType::LBRACKET:
-        tokens.pop();
-        tokens.reject(TokenType::RBRACKET, "Expected expression within brackets.");
-        left = expression_tree.create(ASTNode::SUBSCRIPT, 0, left, generateSubscript());
+        data.type = ASTNode::SUBSCRIPT;
+        if (tokens.pop_if(TokenType::RBRACKET)) {
+          report_parsing_error(current_file, tokens.peek(), "Expected expression within brackets.");
+          auto fake = newNodeData({}, ASTNode::UNSIGNED_LITERAL);
+          fake.unsigned_value = 1;
+          left = expression_tree.create(data, left, expression_tree.create(fake));
+          continue;
+        }
+        left = expression_tree.create(data,left, generateSubscript());
         continue;
       case TokenType::DOT:
-        tokens.pop();
-        left = expression_tree.create(ASTNode::MEMBER_ACCESS, 0, left, generatePostfixExpression());
+        data.type = ASTNode::MEMBER_ACCESS;
+        left = expression_tree.create(data, left, generatePostfixExpression());
         continue;
-      default:
-        return left;
+      default: tokens.undo(); return left;
       }
 
-      tokens.pop();
-      left = expression_tree.create(
-        ASTNode::UNARY, value,
-        left, 0);
+      data.type = ASTNode::UNARY;
+      left = expression_tree.create(data, left);
     }
   }
 
   u32_t generatePrefixExpression() {
-    u64_t value;
-    switch (tokens.peek().getType()) {
-    case TokenType::PLUSPLUS:
-      value = static_cast<u64_t>(Operator::PRE_INCREMENT);
-      break;
-    case TokenType::MINUSMINUS:
-      value = static_cast<u64_t>(Operator::PRE_DECREMENT);
-      break;
-    case TokenType::MINUS:
-      value = static_cast<u64_t>(Operator::UNARY_MINUS);
-      break;
-    case TokenType::ADDR:
-      value = static_cast<u64_t>(Operator::ADDRESS_OF);
-      break;
+    auto const token = tokens.take();
+    auto data = newNodeData(token);
+    switch (token.type) {
+    case TokenType::PLUSPLUS:           data.opr = Operator::PRE_INCREMENT; break;
+    case TokenType::MINUSMINUS:         data.opr = Operator::PRE_DECREMENT; break;
+    case TokenType::MINUS:              data.opr = Operator::UNARY_MINUS; break;
+    case TokenType::ADDR:               data.opr = Operator::ADDRESS_OF; break;
     case TokenType::KEYWORD_CAST: {
-      tokens.pop();
-      tokens.expect_then_pop(TokenType::LESS, "Expected opening < in cast.");
-      const auto type = std::bit_cast<u64_t>(parseUnqualifiedType(tokens, table));
-      tokens.expect_then_pop(TokenType::GTR, "Expected closing > in cast.");
-      return expression_tree.create(ASTNode::CAST, type, generatePrefixExpression(), 0);
+      data.type = ASTNode::CAST;
+      if (not tokens.pop_if(TokenType::LESS))
+        report_parsing_error(current_file, tokens.peek(), "Expected opening < in cast.");
+      data.cast_type = parseUnqualifiedType(tokens, tu);
+      if (not tokens.pop_if(TokenType::GTR))
+        report_parsing_error(current_file, tokens.peek(), "Expected opening > in cast.");
+
+      return expression_tree.create(data, generatePrefixExpression(), 0);
     }
-    case TokenType::KEYWORD_NOT:
-      value = static_cast<u64_t>(Operator::NOT);
-      break;
-    case TokenType::KEYWORD_BITNOT:
-      value = static_cast<u64_t>(Operator::BITNOT);
-      break;
+    case TokenType::KEYWORD_NOT:        data.opr = Operator::NOT; break;
+    case TokenType::KEYWORD_BITNOT:     data.opr = Operator::BITNOT; break;
     default:
-      return generatePostfixExpression();
+      tokens.undo(); return generatePostfixExpression();
     }
-    tokens.pop();
-    return expression_tree.create(
-      ASTNode::UNARY, value,
-      generatePrefixExpression(), 0);
+
+    data.type = ASTNode::UNARY;
+    return expression_tree.create(data, generatePrefixExpression());
   }
 
   u32_t generateFactorExpression() {
     auto left = generatePrefixExpression();
     while (true) {
-      u64_t value;
-      switch (tokens.peek().getType()) {
-      case TokenType::STAR:
-        value = static_cast<u64_t>(Operator::MULTIPLY);
-        break;
-      case TokenType::SLASH:
-        value = static_cast<u64_t>(Operator::DIVIDE);
-        break;
-      case TokenType::MOD:
-        value = static_cast<u64_t>(Operator::MODULUS);
-        break;
+      auto const token = tokens.take();
+      auto data = newNodeData(token);
+      switch (token.type) {
+      case TokenType::STAR: data.opr = Operator::MULTIPLY; break;
+      case TokenType::SLASH: data.opr = Operator::DIVIDE; break;
+      case TokenType::MOD: data.opr = Operator::MODULUS; break;
       default:
-        return left;
+        tokens.undo(); return left;
       }
-      tokens.pop();
-      left = expression_tree.create(
-        ASTNode::BINARY, value,
-        left, generatePrefixExpression());
+      data.type = ASTNode::BINARY;
+      left = expression_tree.create(data, left, generatePrefixExpression());
     }
   }
 
   u32_t generateTermExpression() {
     auto left = generateFactorExpression();
     while (true) {
-      u64_t value;
-      switch (tokens.peek().getType()) {
-      case TokenType::PLUS:
-        value = static_cast<u64_t>(Operator::ADD);
-        break;
-      case TokenType::MINUS:
-        value = static_cast<u64_t>(Operator::SUBTRACT);
-        break;
+      auto const token = tokens.take();
+      auto data = newNodeData(token);
+      switch (token.type) {
+      case TokenType::PLUS: data.opr = Operator::ADD; break;
+      case TokenType::MINUS: data.opr = Operator::SUBTRACT; break;
       default:
-        return left;
+        tokens.undo(); return left;
       }
-      tokens.pop();
-      left = expression_tree.create(
-    ASTNode::BINARY, value,
-         left, generateFactorExpression());
+
+      data.type = ASTNode::BINARY;
+      left = expression_tree.create(data, left, generateFactorExpression());
     }
   }
 
   u32_t generateRelationalExpression() {
-    auto left= generateTermExpression();
+    auto left = generateTermExpression();
     while (true) {
-      u64_t value;
-      switch (tokens.peek().getType()) {
-      case TokenType::KEYWORD_EQUALS:
-        value = static_cast<u64_t>(Operator::EQUAL);
-        break;
-      case TokenType::KEYWORD_NOT_EQUAL:
-        value = static_cast<u64_t>(Operator::NOT_EQUAL);
-        break;
-      case TokenType::LESS:
-        value = static_cast<u64_t>(Operator::LESS);
-        break;
-      case TokenType::GTR:
-        value = static_cast<u64_t>(Operator::GREATER);
-        break;
-      case TokenType::LESSEQ:
-        value = static_cast<u64_t>(Operator::LESS_EQUAL);
-        break;
-      case TokenType::GTREQ:
-        value = static_cast<u64_t>(Operator::GREATER_EQUAL);
-        break;
-      default:
-        return left;
-      }
-      tokens.pop();
-      left = expression_tree.create(
-        ASTNode::BINARY, value,
-        left, generateTermExpression());
-    }
+      auto const token = tokens.take();
+      auto data = newNodeData(token);
 
+      switch (token.type) {
+      case TokenType::KEYWORD_EQUALS: data.opr = Operator::EQUAL; break;
+      case TokenType::KEYWORD_NOT_EQUAL: data.opr = Operator::NOT_EQUAL; break;
+      case TokenType::LESS: data.opr = Operator::LESS; break;
+      case TokenType::GTR: data.opr = Operator::GREATER; break;
+      case TokenType::LESSEQ: data.opr = Operator::LESS_EQUAL; break;
+      case TokenType::GTREQ: data.opr = Operator::GREATER_EQUAL; break;
+      default:
+        tokens.undo(); return left;
+      }
+
+      data.type = ASTNode::BINARY;
+      left = expression_tree.create(data, left, generateTermExpression());
+    }
   }
 
   u32_t generateBitwiseExpression() {
     auto left = generateRelationalExpression();
     while (true) {
-      u64_t value;
-      switch (tokens.peek().getType()) {
-      case TokenType::KEYWORD_BITAND:
-        value = static_cast<u64_t>(Operator::BITAND);
-        break;
-      case TokenType::KEYWORD_BITOR:
-        value = static_cast<u64_t>(Operator::BITOR);
-        break;
-      case TokenType::KEYWORD_BITXOR:
-        value = static_cast<u64_t>(Operator::BITXOR);
-        break;
+      auto const token = tokens.take();
+      auto data = newNodeData(token);
+
+      switch (token.type) {
+      case TokenType::KEYWORD_BITAND: data.opr = Operator::BITAND; break;
+      case TokenType::KEYWORD_BITOR: data.opr = Operator::BITOR; break;
+      case TokenType::KEYWORD_BITXOR: data.opr = Operator::BITXOR; break;
       default:
-        return left;
+        tokens.undo(); return left;
       }
-      tokens.pop();
-      left = expression_tree.create(
-        ASTNode::BINARY, value,
-        left, generateRelationalExpression());
+
+      data.type = ASTNode::BINARY;
+      left = expression_tree.create(data, left, generateRelationalExpression());
     }
   }
 
   u32_t generateLogicalExpression() {
     auto left = generateBitwiseExpression();
     while (true) {
-      u64_t value;
-      switch (tokens.peek().getType()) {
-      case TokenType::KEYWORD_AND:
-        value = static_cast<u64_t>(Operator::AND);
-        break;
-      case TokenType::KEYWORD_OR:
-        value = static_cast<u64_t>(Operator::OR);
-        break;
-      case TokenType::KEYWORD_XOR:
-        value = static_cast<u64_t>(Operator::XOR);
-        break;
+      auto const token = tokens.take();
+      auto data = newNodeData(token);
+
+      switch (token.type) {
+      case TokenType::KEYWORD_AND: data.opr = Operator::AND; break;
+      case TokenType::KEYWORD_OR: data.opr = Operator::OR; break;
+      case TokenType::KEYWORD_XOR: data.opr = Operator::XOR; break;
       default:
+        tokens.undo();
         return left;
       }
 
-      tokens.pop();
-      left = expression_tree.create(
-        ASTNode::BINARY, value,
-        left, generateBitwiseExpression());
+      data.type = ASTNode::BINARY;
+      left = expression_tree.create(data, left, generateBitwiseExpression());
     }
   }
 
   u32_t generateAssignmentExpression() {
     const auto left = generateLogicalExpression();
-    if (tokens.pop_if(TokenType::ASSIGN)) {
-      return expression_tree.create(
-        ASTNode::BINARY, static_cast<u64_t>(Operator::ASSIGN),
-        left, generateAssignmentExpression());
+    if (tokens.peek_is(TokenType::ASSIGN)) {
+      auto const token = tokens.take();
+      auto data = newNodeData(token, ASTNode::BINARY);
+      data.opr = Operator::ASSIGN;
+      return expression_tree.create(data, left, generateAssignmentExpression());
     }
 
     return left;
   }
 
+  // assumes ( is popped, returns with no )
   u32_t generateExpressionBetweenParenthesis() {
     const TokenView until_ending = tokens.getTokensBetweenParenthesis();
     const TokenView after_ending = tokens;
     tokens = until_ending;
     const auto res = generateAssignmentExpression();
-    if (not tokens.empty())
-      throw ParsingError(std::format("Expected {}", ")"), tokens.peek());
+    if (not tokens.empty()) report_parsing_error(current_file, tokens.peek(), "Expected ending parenthesis.");
+    tokens = after_ending;
+    return res;
+  }
+
+  // assumes { is popped, returns with no }
+  u32_t generateExpressionBetweenBraces() {
+    auto const until_ending = tokens.getTokensBetweenBraces();
+    auto const after_ending = tokens;
+    tokens = until_ending;
+    auto const res = generateAssignmentExpression();
+    if (not tokens.empty()) report_parsing_error(current_file, tokens.peek(), "Expected ending brace.");
     tokens = after_ending;
     return res;
   }
 
   u32_t generateExpressionUntil(TokenType ending_token) {
-    const TokenView until_ending = tokens.getAllTokensUntilFirstOf(ending_token); tokens.pop();
-    const TokenView after_ending = tokens;
+    auto const until_ending = tokens.getAllTokensUntilFirstOf(ending_token);
+    tokens.pop();
+    auto const after_ending = tokens;
     tokens = until_ending;
-    const auto res = generateAssignmentExpression();
-    if (not tokens.empty())
-     throw ParsingError(std::format("Expected {}", tokenTypeToString(ending_token)), tokens.peek());
+    auto const res = generateAssignmentExpression();
+    if (not tokens.empty()) report_parsing_error(current_file, tokens.peek(), std::format("Expected {}.", tokenTypeToString(ending_token)));
     tokens = after_ending;
     return res;
   }
@@ -511,7 +488,8 @@ struct Body {
     if (idx == 0) return;
 
     auto expression = expression_tree.data[idx];
-    switch (expression.data.type) { using enum ASTNode::Type;
+    switch (expression.data.type) {
+      using enum ASTNode::Type;
     case EMPTY:
     case DECLARATION:
     case IF:
@@ -538,14 +516,16 @@ struct Body {
       tree.emplace_back(expression.data);
       const auto calling_idx = tree.size() - 1;
       translateExpression(expression.left_idx);
-      if (expression.right_idx == 0) return;
+      if (expression.right_idx == 0)
+        return;
 
       u32_t left_idx = expression_tree.data[expression.right_idx].left_idx;
       u32_t right_idx = expression_tree.data[expression.right_idx].right_idx;
       u64_t num_parameters{1};
       while (true) {
         translateExpression(left_idx);
-        if (right_idx == 0) break;
+        if (right_idx == 0)
+          break;
         left_idx = expression_tree.data[right_idx].left_idx;
         right_idx = expression_tree.data[right_idx].right_idx;
         ++num_parameters;
@@ -571,126 +551,143 @@ struct Body {
     }
   }
 
-  void parseExpressionBetweenParenthesis() {
+  // assumes { is popped, returns with no }
+  void parseExpressionBetweenBraces() {
     expression_tree.reset();
-    if (tokens.pop_if(TokenType::RPAREN)) {
-      tree.emplace_back(ASTNode::Type::EMPTY);
-      return;
-    }
-    const auto idx = generateExpressionBetweenParenthesis();
+    auto const idx = generateExpressionBetweenBraces();
     translateExpression(idx);
   }
+
+  // returns with no ending token
   void parseExpressionUntil(TokenType ending_token) {
     expression_tree.reset();
-    if (tokens.pop_if(ending_token)) {
-      tree.emplace_back(ASTNode::EMPTY, 0);
-      return;
-    }
     const auto idx = generateExpressionUntil(ending_token);
     translateExpression(idx);
   }
 
   void parseExpressionStatement() {
-    tree.emplace_back(ASTNode::EXPR_STMT, 0);
+    auto data = newNodeData(tokens.peek(), ASTNode::EXPR_STMT);
+    auto const expr_stmt_idx = tree.size();
+    tree.emplace_back(EMPTY_NODE_DATA);
+
     parseExpressionUntil(TokenType::SEMI_COLON);
+    auto const expr_end = tree.back().m;
+    data.length_in_file = static_cast<u16_t>(expr_end.position_in_file - data.position_in_file) + expr_end.length_in_file;
+    tree[expr_stmt_idx].m = data;
   }
 
   void parseVarDecl() {
-    tree.emplace_back(ASTNode::DECLARATION, 0);
-    tree.emplace_back(parseType(tokens, table));
+    auto data = newNodeData(tokens.peek(), ASTNode::DECLARATION);
+    auto const decl_idx = tree.size();
+    tree.emplace_back(EMPTY_NODE_DATA);
 
-    tree.emplace_back(ASTNode::IDENTIFIER,std::bit_cast<u64_t>(parseIdentifier(tokens)));
-    tokens.expect_then_pop(TokenType::ASSIGN, "Expected assignment in variable declaration.");
+    tree.emplace_back(parseType(tokens, tu));
+    {
+      auto const identifier_token = tokens.take();
+      if (not identifier_token.is(TokenType::IDENTIFIER))
+        report_parsing_error(current_file, identifier_token, "Expected identifier in variable declaration.");
 
-    if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
-      tree.emplace_back(ASTNode::EMPTY);
-      tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon ending junk variable declaration.");
+      tree.emplace_back(newNodeData(identifier_token, ASTNode::IDENTIFIER));
     }
-    else {
-      tokens.reject(TokenType::SEMI_COLON, "Expected initializing expression in variable declaration.");
+
+    if (not tokens.pop_if(TokenType::ASSIGN))
+      report_parsing_error(current_file, tokens.peek(), "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
+
+    if (tokens.peek_is(TokenType::KEYWORD_JUNK)) {
+      tree.emplace_back(newNodeData(tokens.take()));
+      if (not tokens.pop_if(TokenType::SEMI_COLON))
+        report_parsing_error(current_file, tokens.peek(), "Expected semicolon ending junk variable declaration.");
+
+    } else {
+      if (tokens.pop_if(TokenType::SEMI_COLON))
+        report_parsing_error(current_file, tokens.peek(), "Expected initializing expression in variable declaration.");
       parseExpressionUntil(TokenType::SEMI_COLON);
     }
+
+    auto const decl_end = tree.back().m;
+    data.length_in_file = static_cast<u16_t>(decl_end.position_in_file - data.position_in_file) + decl_end.length_in_file;
+    tree[decl_idx].m = data;
   }
 
   void parseIf() {
-    tree.emplace_back(ASTNode::IF, 0);
-    tokens.expect_then_pop(TokenType::LPAREN, "Expected opening parenthesis in if statement condition.");
-    tokens.reject(TokenType::RPAREN, "Expected condition in if statement.");
-    parseExpressionBetweenParenthesis();
+    if (tokens.pop_if(TokenType::LBRACE))
+      report_parsing_error(current_file, tokens.peek(), "Expected expression in if statement condition.");
+    else
+      parseExpressionUntil(TokenType::LBRACE);
+
     parseScoped();
     if (tokens.pop_if(TokenType::KEYWORD_ELSE))
       parseStatement();
     else
-      tree.emplace_back(ASTNode::EMPTY);
+      tree.emplace_back(EMPTY_NODE_DATA);
   }
 
   void parseFor() { assert(false and "Sorry, unimplemented."); }
 
   void parseWhile() {
-    tree.emplace_back(ASTNode::WHILE, 0);
-    tokens.expect_then_pop(TokenType::LPAREN,"Expected open parenthesis in while loop condition.");
-    tokens.reject(TokenType::RPAREN, "Expected while loop condition.");
-
-    parseExpressionBetweenParenthesis();
+    parseExpressionUntil(TokenType::LBRACE);
     parseScoped();
   }
 
+  // call after { is popped
   void parseScoped() {
-    if (tokens.pop_if(TokenType::SEMI_COLON))
-      return (void)tree.emplace_back(ASTNode::SCOPED, 0);
+    auto const token = tokens.peek();
+    auto data = newNodeData(token, ASTNode::SCOPED); data.num_substatements = 0;
 
-    tree.emplace_back(ASTNode::SCOPED, 1);
-    if (tokens.pop_if(TokenType::LBRACE)) {
-      u64_t num_statements = 0;
-      const auto scoped_idx = tree.size() - 1;
-      while (not tokens.pop_if(TokenType::RBRACE)) {
-        parseStatement();
-        ++num_statements;
-        if (tokens.empty())
-          throw ParsingError("Expected ending rbrace to scoped statement.", {});
-      }
-      tree[scoped_idx].value() = num_statements;
-    }
-    else
+    auto const scoped_idx = tree.size();
+    tree.emplace_back(EMPTY_NODE_DATA);
+
+    while (not tokens.pop_if(TokenType::RBRACE)) {
       parseStatement();
+      ++data.num_substatements;
+      if (tokens.empty()) {
+        tokens.undo();
+        report_parsing_error(current_file, tokens.take(), "Expected closing } in scoped statement.");
+        break;
+      }
+    }
+
+    auto const scoped_end = tree.back().m;
+    data.length_in_file = static_cast<u16_t>(scoped_end.position_in_file - data.position_in_file) + scoped_end.length_in_file;
+    tree[scoped_idx].m = data;
   }
 
   void parseReturn() {
-    tree.emplace_back(ASTNode::RETURN, 0);
+    auto const return_idx = tree.size() - 1;
     parseExpressionUntil(TokenType::SEMI_COLON);
+
+    auto const return_end = tree.back().m;
+    auto const return_start = tree[return_idx].m;
+    auto const length_in_file = static_cast<u16_t>(return_end.position_in_file - return_start.position_in_file) + return_end.length_in_file;
+    tree[return_idx].m.length_in_file = length_in_file;
   }
 
   void parseStatement() {
-    const Token &first = tokens.peek();
+    Token const first = tokens.peek();
     if (first.isPrimitive() or first.isTypeModifier())
       return parseVarDecl();
 
-    switch (first.getType()) {
+    switch (first.type) {
     case TokenType::KEYWORD_IF:
-      tokens.pop();
+      tree.emplace_back( newNodeData(tokens.take(), ASTNode::IF) );
       return parseIf();
     case TokenType::KEYWORD_FOR:
-      tokens.pop();
+      tree.emplace_back( newNodeData(tokens.take(), ASTNode::FOR) );
       return parseFor();
     case TokenType::KEYWORD_WHILE:
-      tokens.pop();
+      tree.emplace_back( newNodeData(tokens.take(), ASTNode::WHILE) );
       return parseWhile();
     case TokenType::KEYWORD_RETURN:
-      tokens.pop();
+      tree.emplace_back( newNodeData(tokens.take(), ASTNode::RETURN) );
       return parseReturn();
-    case TokenType::KEYWORD_SWITCH:
-      eden_unreachable("Switch keyword not supported.");
-    case TokenType::LBRACE:
-      return parseScoped();
-    case TokenType::LESS:
-      return parseVarDecl();
-
+    case TokenType::KEYWORD_SWITCH: eden_unreachable("Switch keyword not yet supported.");
+    case TokenType::LBRACE: return parseScoped();
+    case TokenType::LESS:   return parseVarDecl(); // variant declaration
     case TokenType::IDENTIFIER:
-      // There should exist no other scenario where there exist two identifiers in a row (hopefully)
-      // If that ever changes, could be disambiguated by the fact that there should exist an '=' in a declaration
+      // There should exist no other scenario where there exist two identifier in a row (hopefully) .
+      // If that ever changes, could be disambiguated by the '=' in a declaration.
       // Also, this needs to change if array types can be declared via typename[] varname;
-      if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER))
-        return parseVarDecl();
+      if (tokens.peek_ahead(1).is(TokenType::IDENTIFIER)) return parseVarDecl();
       [[fallthrough]];
     default:
       return parseExpressionStatement();
@@ -704,51 +701,60 @@ struct Body {
 };
 
 void parseCExtern(TU& tu, Body& global_body) {
-  auto& tokens = global_body.tokens;
-  auto& table = *tu.module;
-  auto name = parseIdentifier(tokens);
-  tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
+  auto const& current_file = tu.source_files.back();
+  auto &tokens = global_body.tokens;
+  auto const name = parseIdentifier(tokens, tu);
+  if (not tokens.pop_if(TokenType::LPAREN))
+    report_parsing_error(current_file, tokens.peek(), "Expected opening ( for parameter list.");
 
-  std::vector<Module::Variable> parameters; parameters.reserve(4);
-  bool is_variadic = false;
-  if (not tokens.pop_if(TokenType::RPAREN))
-    while (true) {
-      if (tokens.pop_if(TokenType::DUNDER_VA)) {
-        is_variadic = true;
-        tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
-        break;
-      }
 
-      auto type = parseType(tokens, table);
-      parameters.emplace_back(type, parseIdentifier(tokens), false);
+  Module::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
+  bool is_variadic = false; auto num_parameters{0uz};
+  if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
 
-      if (not tokens.pop_if(TokenType::COMMA)) {
-        tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
-        break;
-      }
+  while (true) {
+    if (tokens.pop_if(TokenType::DUNDER_VA)) {
+      is_variadic = true;
+      break;
     }
 
-  const Type* return_type = Type::devoid();
-  if (tokens.pop_if(TokenType::ARROW)) {
-    const auto instance = parseType(tokens, table);
-    if (not instance.isUnqualified())
-      throw ParsingError("Return type may not have type qualifiers.", instance.toString(), 0);
-    return_type = instance.type;
+    auto type = parseType(tokens, tu);
+    parameters[num_parameters] = {type, parseIdentifier(tokens, tu), false};
+    ++num_parameters;
+
+    if (not tokens.pop_if(TokenType::COMMA)) break;
+    if (num_parameters >= Settings::MAX_FUNCTION_PARAMETERS) {
+      report_parsing_error(tu.source_files.back(), tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
+      break;
+    }
   }
 
-  tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semi-colon.");
+  end_params:
+  if (not tokens.pop_if(TokenType::RPAREN))
+    report_parsing_error(current_file, tokens.peek(), "Expected closing parenthesis in parameter list.");
+
+  const Type *return_type = Type::devoid();
+  if (not tokens.peek_is(TokenType::SEMI_COLON))
+    return_type = parseUnqualifiedType(tokens, tu);
+
+  if (not tokens.pop_if(TokenType::SEMI_COLON))
+    report_parsing_error(current_file, tokens.peek(), "Expected semi-colon.");
 
   auto const c_module = getModule("__C");
-  auto const parameter_span = std::span(parameters);
+  auto const parameter_span = std::span(parameters, num_parameters);
   c_module->addFunction(name, parameter_span, return_type, true, is_variadic);
 }
 
 void parseStructDecl(TU& tu, Body& global_body) {
-  auto& tokens = global_body.tokens;
-  auto const name = parseIdentifier(tokens);
+  auto const& current_file = tu.source_files.back();
+  auto &tokens = global_body.tokens;
+  auto const name = parseIdentifier(tokens, tu);
 
   SymbolTable::Variable members[Settings::MAX_STRUCT_MEMBER_VARIABLES];
-  tokens.expect_then_pop(TokenType::LBRACE, "Expected opening curly brace in struct definition.");
+
+  if (not tokens.pop_if(TokenType::LBRACE))
+    report_parsing_error(current_file, tokens.peek(), "Expected opening curly brace in struct definition.");
+
   auto i{0uz};
   if (tokens.pop_if(TokenType::RBRACE))
     return (void)tu.module->addCustomType(name, {});
@@ -757,47 +763,55 @@ void parseStructDecl(TU& tu, Body& global_body) {
   do {
     if (in_pub_block) {
       if (tokens.pop_if(TokenType::COLON)) {
-        tokens.expect_then_pop(TokenType::KEYWORD_PUB, "Expected closing 'pub' in 'pub:   :pub' block.");
+        if (not tokens.pop_if(TokenType::KEYWORD_PUB))
+          report_parsing_error(current_file, tokens.peek(), "Expected closing 'pub' in 'pub:  :pub' block.");
+
         if (tokens.peek_is(TokenType::RBRACE)) break;
         in_pub_block = false;
       }
-    }
-    else {
+    } else {
       if (tokens.pop_if(TokenType::KEYWORD_PUB)) {
-        tokens.expect_then_pop(TokenType::COLON, "Expected opening colon in 'pub:   :pub' block.");
+        if (not tokens.pop_if(TokenType::COLON))
+          report_parsing_error(current_file, tokens.peek(), "Expected opening colon in 'pub:  :pub' block.");
+
         in_pub_block = true;
       }
     }
 
-    auto member_type = parseUnqualifiedType(tokens, *tu.module);
-    auto member_name = parseIdentifier(tokens);
+    auto member_type = parseUnqualifiedType(tokens, tu);
+    auto member_name = parseIdentifier(tokens, tu);
     members[i] = {member_type, member_name, in_pub_block};
     ++i;
-  }while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
-  tokens.expect_then_pop(TokenType::RBRACE, "Expected closing curly brace after struct definition.");
+  } while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
+
+  if (not tokens.pop_if(TokenType::RBRACE))
+    report_parsing_error(current_file, tokens.peek(), "Expected closing curly brace after struct definition.");
 
   tu.module->addCustomType(name, std::span(members, i));
 }
 
-void parseImports(TU& tu, Body& global_body) {
-  TokenView& tokens = global_body.tokens;
+void parseImports(TU& tu, TokenView& tokens) {
+  auto const& current_file = tu.source_files.back();
   while (tokens.pop_if(TokenType::KEYWORD_IMPORT)) {
-    tokens.expect(TokenType::IDENTIFIER, "Expected module name.");
-    auto name = tokens.take().getString(tu.file_text);
-    if (tu.module->nameof() == name)
-      throw ValidationError("Cannot import from current module!", std::string(name), 0);
 
-    tu.imports.emplace_back(name);
-    tokens.expect_then_pop(TokenType::SEMI_COLON, "Expected semicolon.");
+    if (not tokens.peek_is(TokenType::IDENTIFIER))
+      report_parsing_error(current_file, tokens.peek(), "Expected module name.");
+
+    auto name = tokens.take().getString(current_file);
+    if (tu.module->nameof() == name)
+      report_validation_error(current_file, "Cannot import from current module!");
+    else
+      tu.imports.emplace_back(name);
+
+    if (not tokens.pop_if(TokenType::SEMI_COLON))
+      report_parsing_error(current_file, tokens.peek(), "Expected semicolon.");
   }
 }
 
 void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& functions) {
+  auto const& current_file = tu.source_files.back();
   TokenView& tokens = global_body.tokens;
-  Module& table = global_body.table;
-  std::vector<TokenView> function_tokens;
 
-  // parse the declarations to load into symbol table
   while (not tokens.empty()) {
     if (tokens.pop_if(TokenType::DUNDER_CEXTERN)) {
       parseCExtern(tu, global_body);
@@ -808,103 +822,106 @@ void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& 
       continue;
     }
 
-    Function& function = functions.emplace_back();
-    const bool is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
-    function.is_public = is_public;
+    Function& current_function = functions.emplace_back();
+    current_function.file_idx = static_cast<u8_t>(tu.source_files.size() - 1);
+    bool const is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
 
-    tokens.expect_then_pop(TokenType::KEYWORD_FN, "Expected function declaration.");
-    function.name = parseIdentifier(tokens);
-    tokens.expect_then_pop(TokenType::LPAREN, "Expected parameter list.");
+    if (not tokens.pop_if(TokenType::KEYWORD_FN))
+      report_parsing_error(current_file, tokens.peek(), "Expected function declaration.");
 
-    std::vector<SymbolTable::Variable> parameters; parameters.reserve(4);
-    if (not tokens.pop_if(TokenType::RPAREN))
+    {
+    auto const function_name = parseIdentifier(tokens, tu);
+    current_function.name_ptr = function_name.data();
+    current_function.name_len = function_name.length();
+    }
+
+    if (not tokens.pop_if(TokenType::LPAREN))
+      report_parsing_error(current_file, tokens.peek(), "Expected parameter list.");
+
+    {
+      SymbolTable::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
+      auto i{0uz};
+      if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
+
       while (true) {
-        auto type = parseType(tokens, table);
-        auto name = parseIdentifier(tokens);
-        parameters.emplace_back(type, name, false);
-
-        if (not tokens.pop_if(TokenType::COMMA)) {
-          tokens.expect_then_pop(TokenType::RPAREN, "Expected closing parenthesis in parameter list.");
+        auto type = parseType(tokens, tu);
+        auto name = parseIdentifier(tokens, tu);
+        parameters[i] = {type, name, false};
+        ++i;
+        if (not tokens.pop_if(TokenType::COMMA)) break;
+        if (i >= Settings::MAX_FUNCTION_PARAMETERS) {
+          report_parsing_error(tu.source_files.back(), tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
           break;
         }
       }
 
-    const Type* return_type = Type::devoid();
-    if (not tokens.peek_is(TokenType::LBRACE)) {
-      InstantiatedType return_instance = parseType(tokens, table);
-      if (not return_instance.isUnqualified())
-        throw ParsingError("Return type may not have type qualifiers.", return_instance.toString(), 0);
-      return_type = return_instance.type;
+      end_params:
+      if(not tokens.pop_if(TokenType::RPAREN))
+        report_parsing_error(current_file, tokens.peek(), "Expected closing parenthesis in parameter list.");
+
+      const Type *return_type = Type::devoid();
+      if (not tokens.peek_is(TokenType::LBRACE))
+        return_type = parseUnqualifiedType(tokens, tu);
+
+      tu.module->addFunction(current_function.nameof(), std::span(parameters, i), return_type, is_public);
+      tu.module->enterFunctionScope(current_function.nameof());
     }
 
-    tokens.expect_then_pop(TokenType::LBRACE, "Expected function definition.");
-    function_tokens.emplace_back(tokens.getTokensBetweenBraces());
+    if (not tokens.pop_if(TokenType::LBRACE))
+      report_parsing_error(current_file, tokens.peek(), "Expected function definition.");
 
-    table.addFunction(function.name, std::span(parameters), return_type, is_public);
-  }
-
-  // actually parse the function bodies
-  const auto sz = functions.size();
-  assert(sz == function_tokens.size());
-  for (auto i{0uz}; i < sz; ++i) {
-    Body function_body
-    (function_tokens[i], table, global_body.expression_tree);
-
-    table.enterFunctionScope(functions[i].name);
-    function_body.parseStatementsUntilEmpty();
-    functions[i].body.nodes = std::move(function_body.tree);
+    {
+      Body function_body(tokens.getTokensBetweenBraces(), tu, global_body.expression_tree);
+      function_body.parseStatementsUntilEmpty();
+      current_function.body = std::move(function_body.tree);
+    }
   }
 }
 
-void printFunction(Function const& func, Module const& table, u64_t ln) {
-  auto const function = table.getFunction(func.name);
+void printFunction(Function const& func, TU const& tu) {
+  auto const function = tu.module->getFunction(func.nameof());
   auto const parameters = function->parameters();
   auto const return_type = function->returnType();
 
-  std::print("id: {}\nfn {} (", function->get_id(), func.name);
+  std::print("id: {}\nfn {} (", function->get_id(), func.nameof());
 
-  for (auto &parameter : parameters) {
-    std::cout << parameter.type.toString();
-    std::cout << " " << parameter.name << ", ";
+  for (auto& parameter : parameters) {
+    std::print("{}", parameter.type.toString());
+    std::print(" {}, ", parameter.nameof());
   }
 
-  if (not parameters.empty())
-    std::cout << "\b\b";
+  if (not parameters.empty()) std::print("\b\b");
 
-  std::cout << ")";
-  if (not return_type->isDevoid()) {
-    std::cout << " -> ";
-    std::cout << return_type->toString();
-  }
-  std::cout << " { ";
-  func.body.print(ln);
-  std::cout << "\n}";
-}
+  std::print(") ");
+  if (not return_type->isDevoid())
+    std::print("{}", return_type->toString());
+
+  std::print(" {{ ");
+  print_ast(func.body, tu.source_files.back());
+  std::print(" \n}} ");
 
 }
 
-void Parser::printTU(TU& ptu) {
-  for (auto& import : ptu.imports) {
-    std::println("import {};", std::string_view(import));
-  }
-  if (not ptu.global_tree.nodes.empty()) {
-    ptu.global_tree.print(1);
-    std::println();
-  }
-  for (const auto &f : ptu.functions) {
-    printFunction(f, *ptu.module, 1);
+} // namespace
+
+void Parser::printTU(TU const& tu) {
+
+  for (auto const& import : tu.imports)
+    std::println("import {};", import);
+
+  for (auto const& f : tu.functions) {
+    printFunction(f, tu);
     std::println();
   }
 }
 
-void Parser::parseTokens(TU& tu, std::vector<Token>& tokens) {
-  Body::ExpressionTree expression_tree;
-  Body global_body(TokenView{tokens}, *tu.module, expression_tree);
+void Parser::parseTokens(TU& tu, std::vector<Token> const& tokens) {
+  Body::ExpressionTree expression_tree; // the stack can have 6kb as a treat :)
 
-  parseImports(tu, global_body);
+  TokenView global_view{tokens};
+  parseImports(tu, global_view);
 
-  // parse globals here
-
-  tu.global_tree.nodes = std::move(global_body.tree);
+  Body global_body(global_view, tu, expression_tree);
   parseFunctionsAndStructs(tu, global_body, tu.functions);
 }
+

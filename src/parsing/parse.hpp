@@ -10,21 +10,26 @@ struct Token;
 namespace LOM::Parser {
 
 struct Function {
-  std::string_view name;
-  AST::SyntaxTree body;
+  u8_t  file_idx;
+  u32_t name_len;
+  const char* name_ptr;
+  std::vector<AST::ASTNode> body;
+
+  [[nodiscard]] std::string_view
+  nameof() const noexcept
+  { return {name_ptr, name_len}; }
 };
 
 struct TU {
-  std::vector<File> source_files; // within parseTokens, the current source file should always be source_files.back();
+  std::vector<File> source_files;
   Module* module;
-  AST::SyntaxTree global_tree;
   std::vector<std::string_view> imports;
   std::vector<Function> functions;
 };
 
-void printTU(TU&);
+void printTU(TU const&);
 
-void parseTokens(TU& tu, std::vector<Lexer::Token>& tokens);
+void parseTokens(TU& tu, std::vector<Lexer::Token> const& tokens);
 
 inline constexpr bool STRUCT_MEMBERS_START_PUBLIC = true;
 

@@ -1,6 +1,7 @@
 #pragma once
 #include "../edenlib/vectors/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
+#include "file.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 #include <unordered_map>
 
@@ -10,27 +11,26 @@ struct TU;
 
 namespace LOM::PeepMIR {
 
+
 struct Instruction {
   enum Type : u8_t {
     NOOP,
 
-    GLOBAL,             // value is char* to global name
-    FUNCTION,           // value is char* to function name
+    GLOBAL, FUNCTION,   // value is char* to name, aux_value is name length
 
     MODULE_GLOBAL,      // value is StabilizedModule, aux_value is order of global in module
     MODULE_FUNCTION,    // value is StabilizedModule, aux_value is order of function in module
     TYPE_VARIABLE,      // value is const CustomType*, aux_value is order of variable in type
 
-    LOCAL,              //value is local idx
+    LOCAL,              // value is local idx
 
-    // same as AST
+    // value contains bitwise representation of value
     I8_LITERAL, I16_LITERAL, I32_LITERAL, I64_LITERAL,
     U8_LITERAL, U16_LITERAL, U32_LITERAL, U64_LITERAL,
-    FLOAT_LITERAL,
-    DOUBLE_LITERAL,
-    BOOL_LITERAL,
-    CHAR_LITERAL,
-    STRING_LITERAL,
+    FLOAT_LITERAL, DOUBLE_LITERAL,
+    BOOL_LITERAL, CHAR_LITERAL,
+
+    STRING_LITERAL,      // value is char* to string, aux_value is string length
 
     // value indeterminate
     ADD, FADD,
@@ -39,7 +39,7 @@ struct Instruction {
     UDIV, SDIV, FDIV,
     UMOD, SMOD, FMOD,
     ASSIGN,
-    UCAST_ASSIGN, SCAST_ASSIGN, // contains the bitwidth to cast right side to
+    UCAST_ASSIGN, SCAST_ASSIGN, // value contains the bitwidth to cast right side to
     ULESS, SLESS, FLESS,
     UGTR, SGTR, FGTR,
     ULEQ, SLEQ, FLEQ,
@@ -55,19 +55,25 @@ struct Instruction {
     BITNOT,
     POST_INC, FPOST_INC,
     POST_DEC, FPOST_DEC,
-    DEREFERENCE, // contains pointed type
+    DEREFERENCE, // value contains pointed type
 
     // value contains destination type
     UCAST, SCAST, FCAST, PCAST,
 
     CALL // value equals number of parameters
   }type;
+
+  u8_t file_idx;
   u32_t aux_value;
   u64_t value;
 
   constexpr Instruction(Type type, u64_t value) noexcept
   : type(type), value(value)
   { assert( not eden::enumBetween(type, MODULE_GLOBAL, TYPE_VARIABLE) ); }
+
+  constexpr Instruction(Type type, std::string_view str) noexcept
+  : type(type), aux_value(static_cast<u32_t>(str.length())), value(std::bit_cast<u64_t>(str.data()))
+  { assert(type == GLOBAL or type == FUNCTION or type == STRING_LITERAL); }
 
   constexpr Instruction(Type type, const Module* module, u32_t order) noexcept
   : type(type), aux_value(order), value(std::bit_cast<u64_t>(module))
@@ -251,12 +257,9 @@ struct Function {
 };
 
 struct TU {
-  explicit TU(const Parser::TU&) noexcept;
-
-  std::string_view name;
-  Module* table;
-
-  std::unordered_map<std::string_view, Module*> imports;
+  std::vector<File> source_files;
+  Module* module;
+  eden::swap_vector<Module*> imports;
   std::vector<Function> functions;
 };
 

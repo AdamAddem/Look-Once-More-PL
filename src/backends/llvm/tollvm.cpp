@@ -687,7 +687,7 @@ class TU final : public Backend {
 
       if (verifyFunction(*llvmfunc, &llvm::errs())) {
         tu->module.print(llvm::outs(), nullptr);
-        throw BackendError("Failed to verify Function!", llvmfunc->getName().str(), 0);
+        std::quick_exit(1);
       }
     }
   };
@@ -703,7 +703,7 @@ public:
   void lowerToLLVM(PeepMIR::TU& tu) {
     // All of this is so stupid
     char buff[256];
-    auto const module_name = tu.name;
+    auto const module_name = tu.module->nameof();
     auto i{0uz};
     if (not module_name.empty()) {
       for (auto const c : module_name) {
@@ -762,7 +762,7 @@ public:
 }
 
 std::unique_ptr<Backend> ToLLVM::codegen(PeepMIR::TU&& peeped_tu, const std::filesystem::path &file) {
-  auto ptr = std::make_unique<TU>(file.string(), peeped_tu.table->getTypeContext());
+  auto ptr = std::make_unique<TU>(file.string(), peeped_tu.module->getTypeContext());
   ptr->lowerToLLVM(peeped_tu);
   return ptr;
 }

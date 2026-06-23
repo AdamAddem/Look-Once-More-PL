@@ -12,6 +12,7 @@ LookOnceMore uses a folder-based module system. <br>
 A module contains one or more .lom files, which are all compiled together into one translation unit. <br>
 To create a module, simply create a directory within 'src'. The module's name is the directory's name. <br>
 All files within that directory will be compiled as part of the module. <br>
+No module may exceed 255 files. <br>
 
 In the top level source directory, it is required that there be one file named 'main.lom'. <br>
 Only main.lom may exist in the top level src directory. <br>
@@ -33,11 +34,10 @@ Ex: `__C printf(raw -> char fmt, __va) i32;` <br>
 Calling these functions can be done as if through the '__C' module, which is implicitly imported in every module by default. <br>
 The C standard library is linked to by default. Linking to anything else requires outputting object files and doing so manually. <br>
 
-### Current Limitations, Missing Features, and Bugs
-- Functions may not have greater than 8 parameters, structs may not have greater than 256 members, and no token may exceed the u16 integer limit.
-  - Violating any of these rules will cause a crash or assertion failure rather than a standard error message.
-  - The parameter limit is to avoid allocating memory when parsing, validating, and compiling functions.
-  - The token limit is to allow for a more efficient lexer.
+### Current Limitations, Missing Features, and Known Bugs
+- Functions may not have greater than 8 parameters, structs may not have greater than 256 members, modules may have no more than 255 files, and no token may exceed the u16 integer limit in length.
+  - Violating any of these rules will cause a crash, assertion failure, or logical error rather than a standard error message.
+  - These limits exist to increase compilation speed.
 - Globals are unsupported until a constant evaluator is made to enforce constant initialization.
 - Private functions (and public functions within main.lom) with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
 - _= operators are currently bugged to only work with single tokens prefixing them (x += 2 works, x-> += 2 does not)

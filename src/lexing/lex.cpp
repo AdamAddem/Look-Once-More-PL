@@ -25,7 +25,6 @@ struct Tokenizer {
   std::vector<Token>& token_list;
   File file;
   u32_t current_position{};
-  bool error_found{};
 
   static constexpr char FILE_EOF = '\0';
   explicit Tokenizer(std::vector<Token>& token_list, std::filesystem::path const& path)
@@ -42,10 +41,9 @@ struct Tokenizer {
 
   void report_error_at_currentpos(const char* msg) {
     report_lexing_error(file, current_position, 1, msg);
-    error_found = true;
   }
 
-  [[nodiscard]] char
+  [[maybe_unused]] [[nodiscard]] char
   charToEscapeSequenceEquivalent(char c) {
     switch (c) {
     case 'n':   return '\n';
@@ -61,7 +59,6 @@ struct Tokenizer {
 
     default:
       report_lexing_error(file, current_position - 1, 2, "Unknown escape sequence.");
-      error_found = true;
       return '?';
     }
   }
@@ -168,7 +165,7 @@ struct Tokenizer {
     bool const is_negative = c == '-';
     TokenType newtoken_type = is_negative ? TokenType::SIGNED_LITERAL : TokenType::UNSIGNED_LITERAL;
     u16_t newtoken_length = 0;
-    auto const newtoken_pos = static_cast<u32_t>(current_position);
+    auto const newtoken_pos = current_position;
 
     while ((c = pop()) not_eq '\0') {
       if (c == 'f') {
@@ -190,9 +187,8 @@ struct Tokenizer {
     token_list.emplace_back(newtoken_type, newtoken_length, newtoken_pos);
   }
 
-  // first letter in front of file
   void grabIdentOrKeyword() {
-    Token new_token{TokenType::INVALID_TOKEN, 0, static_cast<u32_t>(current_position)};
+    Token new_token{TokenType::INVALID_TOKEN, 0, current_position};
     auto c = pop();
 
     while (c not_eq '\0') {
@@ -201,10 +197,9 @@ struct Tokenizer {
       c = pop();
       ++new_token.length;
     }
-
     undo();
-    const std::string_view word_view{file.contents().data() + new_token.length, new_token.length};
 
+    const std::string_view word_view{file.contents().data() + new_token.position, new_token.length};
     if (stringToTokenType.contains(word_view))
       new_token.type = stringToTokenType.at(word_view);
 
@@ -245,9 +240,8 @@ struct Tokenizer {
 
 }
 
-std::optional<File>
-Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& path) {
-  Tokenizer tokenizer{out_tokens, path};
+File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& file_path) {
+  Tokenizer tokenizer{out_tokens, file_path};
 
   while (true) {
     tokenizer.skipWS();
@@ -263,7 +257,5 @@ Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const&
       tokenizer.grabSymbol();
   }
 
-  if (tokenizer.error_found)
-    return std::nullopt;
   return std::move(tokenizer.file);
 }

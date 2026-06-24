@@ -105,6 +105,7 @@ public:
   void pop() noexcept                                           { assert(not empty()); ++begin; }
   bool pop_if(const TokenType type) noexcept                    { if (empty() or begin->type not_eq type) return false; ++begin; return true; }
   void undo() noexcept                                          { --begin; }
+  Token previous() const noexcept   /* ub if first token */     { return *(begin - 1); }
 
   /*
   void expect_then_pop(TokenType expected_type, const char* err_msg);

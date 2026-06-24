@@ -39,8 +39,8 @@ struct Tokenizer {
   void skip() noexcept { ++current_position; }
   void undo() noexcept { --current_position; }
 
-  void report_error_at_currentpos(const char* msg) {
-    report_lexing_error(file, current_position, 1, msg);
+  void report_error_at_currentpos(const char* msg) const {
+    report_error(file, current_position, 1, msg);
   }
 
   [[maybe_unused]] [[nodiscard]] char
@@ -58,7 +58,7 @@ struct Tokenizer {
     case 'v':   return '\v';
 
     default:
-      report_lexing_error(file, current_position - 1, 2, "Unknown escape sequence.");
+      report_error(file, current_position - 1, 2, "Unknown escape sequence.");
       return '?';
     }
   }
@@ -128,7 +128,7 @@ struct Tokenizer {
       break;
     case '!':
       if (peeked == '=') { skip(); type = KEYWORD_NOT_EQUAL; length = 2;  }
-      else report_error_at_currentpos("! token only supported in !=, use keyword 'not' instead.");
+      else type = KEYWORD_NOT;
       break;
     case '=':
       if (peeked == '=') { skip(); type = KEYWORD_EQUALS; length = 2;  }
@@ -142,8 +142,8 @@ struct Tokenizer {
     case ')': type = RPAREN; break;
     case '{': type = LBRACE; break;
     case '}': type = RBRACE; break;
-    case '[': type = LBRACKET; break;
-    case ']': type = RBRACKET; break;
+    //case '[': type = LBRACKET; break;
+    //case ']': type = RBRACKET; break; // re-implement when adding arrays
     case '@': type = ADDR; break;
     case ',': type = COMMA; break;
     case '.': type = DOT; break;

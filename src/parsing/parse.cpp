@@ -441,7 +441,7 @@ struct Body {
     u32_t idx;
     try { idx = generateAssignmentExpression(); }
     catch (...) {
-      report_error(current_file, tokens.peek(), "Expected expression.");
+      report_error(current_file, tokens.peek_ahead(1), "Expected expression.");
       return;
     }
 

@@ -74,8 +74,8 @@ bool Type::castableTo(const Type* other) const noexcept {
 
 std::string Type::toString() const noexcept {
   switch (derived_type) {
-  case DEVOID:
-    return "devoid";
+  case DEVOID: return "devoid";
+  case ERROR: return "!ERROR!";
   case PRIMITIVE:
     return static_cast<const PrimitiveType*>(this)->toString();
   case POINTER:

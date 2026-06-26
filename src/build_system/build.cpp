@@ -104,7 +104,7 @@ void LOM::build() {
     Parser::TU main_tu; main_tu.module = &main_module;
     if (lex_and_parse_file(main_tu, main_tokens, entry.path()) == false) std::quick_exit(1);
 
-    module_paths.emplace_back("");
+    module_paths.emplace_back("src/main.lom");
     parsed_tus.emplace_back(std::move(main_tu));
   }
 

@@ -239,7 +239,8 @@ class Peeper {
       return {function->type, {}};
     }
 
-    report_error(*current_file, std::format("Undeclared identifier: {}.", identifier));
+    report_error(*current_file, identifier, std::format("Undeclared identifier: {}.", identifier));
+    instructions.emplace_back(Instruction::NOOP, 0);
     return error_literal;
   }
 

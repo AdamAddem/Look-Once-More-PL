@@ -15,9 +15,10 @@ struct Error {
 std::unordered_map<std::string_view, std::vector<Error>> file_to_errors_map;
 
 }
-namespace LOM {
 
 // TODO: make all of this thread safe
+namespace LOM {
+
 bool does_file_have_errors(std::string_view file_path) {
   return file_to_errors_map.contains(file_path);
 }
@@ -32,15 +33,25 @@ std::string get_file_errors(std::string_view file_path) {
   error_messages.append("Errors within file: "); error_messages.append(file_path); error_messages.append("\n\n");
   for (auto& error : error_vec) {
     error_messages.append(error.message);
+    auto const beginning_line_idx = error.file_text.substr(0, error.position - 1).find_last_of('\n');
+    auto const ending_line_idx = error.file_text.substr(error.position).find_first_of('\n');
+    auto const ln = std::count(error.file_text.begin(), error.file_text.begin() + error.position, '\n') + 1;
+    auto const entire_line = error.file_text.substr(beginning_line_idx + 1, (error.position + ending_line_idx) - beginning_line_idx);
+
     error_messages.append(
-      std::format("\n{}: {}\n\n",
-        std::count(error.file_text.begin(), error.file_text.begin() + error.position, '\n') + 1,
-        error.file_text.substr(error.position, error.length)));
+      std::format("\n{}:{}", ln, entire_line)
+      );
+
+
+    error_messages.append(
+      std::format("{}{}\n",
+        std::string(error.position - beginning_line_idx, ' '),
+        std::string(error.length, '^'))
+      );
   }
 
   return error_messages;
 }
-
 
 
 void report_error(File const& file, u32_t position, u16_t length, std::string error_message) {
@@ -61,11 +72,12 @@ void report_error(File const& file, Lexer::Token token, std::string error_messag
     );
 }
 
-void report_error(File const& file, std::string error_message) {
+void report_error(File const& file, std::string_view file_substr, std::string error_message) {
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
       file.contents(),
-      0, 0 // temporary pls fix
+      file.contents().data() - file_substr.data(),
+      file_substr.length()
     );
 }
 

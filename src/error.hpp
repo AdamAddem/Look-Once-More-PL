@@ -12,7 +12,7 @@ namespace LOM {
 
 void report_error(File const& file, u32_t position, u16_t length, std::string error_message);
 void report_error(File const& file, Lexer::Token token, std::string error_message);
-void report_error(File const& file, std::string error_message);
+void report_error(File const& file, std::string_view file_substr, std::string error_message);
 
 [[nodiscard]] std::string get_file_errors(std::string_view file_path);
 [[nodiscard]] bool does_file_have_errors(std::string_view file_path);

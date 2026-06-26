@@ -128,24 +128,21 @@ struct Instruction {
   char_value() const noexcept
   { assume_assert(type == CHAR_LITERAL); return static_cast<char>(value); }
 
-  eden_return_nonnull
-  [[nodiscard]] constexpr char*
+  [[nodiscard]] constexpr std::string_view
   string_value() const noexcept
-  { assume_assert(type == STRING_LITERAL); return std::bit_cast<char*>(value); }
+  { assume_assert(type == STRING_LITERAL); return {std::bit_cast<const char*>(value), aux_value}; }
 
-  eden_return_nonnull
-  [[nodiscard]] constexpr char*
+  [[nodiscard]] constexpr std::string_view
   global_name() const noexcept
-  { assume_assert(type == GLOBAL); return std::bit_cast<char*>(value); }
+  { assume_assert(type == GLOBAL); return {std::bit_cast<const char*>(value), aux_value}; }
 
   [[nodiscard]] constexpr u64_t
   local_idx() const noexcept
   { assume_assert(type == LOCAL); return value; }
 
-  eden_return_nonnull
-  [[nodiscard]] constexpr char*
+  [[nodiscard]] constexpr std::string_view
   function_name() const noexcept
-  { assume_assert(type == FUNCTION); return std::bit_cast<char*>(value); }
+  { assume_assert(type == FUNCTION); return {std::bit_cast<const char*>(value), aux_value}; }
 
   [[nodiscard]] constexpr const CustomType*
   custom_type() const noexcept

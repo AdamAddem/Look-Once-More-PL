@@ -371,8 +371,7 @@ class TU final : public Backend {
       auto const left = genValueExpression();
       auto const right = genValueExpression();
 
-      switch (type) {
-        using enum PeepMIR::Instruction::Type;
+      switch (type) { using enum PeepMIR::Instruction::Type;
       case ADD: return builder.CreateAdd(left, right);
       case FADD: return builder.CreateFAdd(left, right);
       case SUB: return builder.CreateSub(left, right);

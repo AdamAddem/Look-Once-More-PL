@@ -33,7 +33,7 @@ std::string get_file_errors(std::string_view file_path) {
   for (auto& error : error_vec) {
     error_messages.append(error.message);
     error_messages.append(
-      std::format("\n{}| {}\n\n",
+      std::format("\n{}: {}\n\n",
         std::count(error.file_text.begin(), error.file_text.begin() + error.position, '\n') + 1,
         error.file_text.substr(error.position, error.length)));
   }
@@ -43,41 +43,29 @@ std::string get_file_errors(std::string_view file_path) {
 
 
 
-void report_lexing_error(File const& file, u32_t position, u16_t length, std::string error_message) {
+void report_error(File const& file, u32_t position, u16_t length, std::string error_message) {
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
       file.contents(),
       position,
-      length,
-      Error::Stage::LEXING
+      length
     );
 }
 
-void report_parsing_error(File const& file, Lexer::Token token, std::string error_message) {
+void report_error(File const& file, Lexer::Token token, std::string error_message) {
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
       file.contents(),
       token.position,
-      token.length,
-      Error::Stage::PARSING
+      token.length
     );
 }
 
-void report_validation_error(File const& file, std::string error_message) {
+void report_error(File const& file, std::string error_message) {
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
       file.contents(),
-      0, 0, // temporary pls fix
-      Error::Stage::VALIDATION
-    );
-}
-
-void report_backend_error(File const& file, std::string error_message) {
-  file_to_errors_map[file.path()].emplace_back(
-      std::move(error_message),
-      file.contents(),
-      0, 0, // temporary pls fix
-      Error::Stage::BACKEND
+      0, 0 // temporary pls fix
     );
 }
 

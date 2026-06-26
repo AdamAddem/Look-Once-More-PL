@@ -59,7 +59,7 @@ lex_and_parse_module(fs::path const& directory) {
   std::vector<Lexer::Token> tokens; tokens.reserve(64);
 
   Parser::TU tu;
-  { // set up module
+  { // set up module, this is horrible please change
     assert(not modules.contains(directory.c_str()));
     const sz_t n = directory.filename().string().size() + 1; // this is so stupid i hate this language
     auto const module_name = new char[n]; // TODO: fix purposeful memory leak
@@ -72,7 +72,9 @@ lex_and_parse_module(fs::path const& directory) {
   bool success = true;
   for (auto const& entry : fs::directory_iterator{directory}) {
     if (not entry.is_regular_file())
-      throw std::runtime_error("LookOnceMore: Sorry! Submodules not supported yet.");
+      throw std::runtime_error( std::format("LookOnceMore: Sorry! Submodules not supported yet.\nModule Path: {}", entry.path().string() ));
+    if (is_empty(entry))
+      throw std::runtime_error( std::format("LookOnceMore: Sorry! Empty files not supported.\nFile Path: {}", entry.path().string() ));
 
     success = lex_and_parse_file(tu, tokens, entry.path()) and success;
     tokens.clear();
@@ -90,10 +92,10 @@ void LOM::build() {
   modules.emplace(std::pair(std::string_view("__C"), Module{"__C", &types}));
 
   std::vector<Parser::TU> parsed_tus;
-  std::vector<fs::path> module_names;
+  std::vector<fs::path> module_paths;
   for (auto const& entry : fs::directory_iterator{"src"}) {
     if (entry.is_directory()) {
-      module_names.emplace_back(entry.path().filename());
+      module_paths.emplace_back(entry.path().filename());
       parsed_tus.emplace_back(lex_and_parse_module(entry));
       continue;
     }
@@ -102,13 +104,14 @@ void LOM::build() {
     Parser::TU main_tu; main_tu.module = &main_module;
     if (lex_and_parse_file(main_tu, main_tokens, entry.path()) == false) std::quick_exit(1);
 
-    module_names.emplace_back("");
+    module_paths.emplace_back("");
     parsed_tus.emplace_back(std::move(main_tu));
   }
 
+  bool success = true;
   std::vector<std::unique_ptr<Backend>> compiled_tus;
   for (auto i{0uz}; i<parsed_tus.size(); ++i) {
-    auto& module_name = module_names[i];
+    auto& module_name = module_paths[i];
     if (Settings::do_output_parser) {
       std::println("\n--- Parser Output --- {}", module_name.string());
       Parser::printTU(parsed_tus[i]);
@@ -117,6 +120,12 @@ void LOM::build() {
     }
 
     auto peeped = PeepMIR::lowerToPeep(std::move(parsed_tus[i]));
+    if (does_file_have_errors(module_name.native())) {
+      std::println("{}", get_file_errors(module_name.native()));
+      success = false;
+      continue;
+    }
+
     if (Settings::do_output_peep) {
       std::println("\n--- Peep Output --- {}", module_name.string());
       PeepMIR::printPeep(peeped);
@@ -125,7 +134,7 @@ void LOM::build() {
     }
 
     auto const& compiled = compiled_tus.emplace_back(
-      Backend::codegen( std::move(peeped), module_names[i] )
+      Backend::codegen( std::move(peeped), module_paths[i] )
       );
 
     if (Settings::do_output_asm)
@@ -135,7 +144,8 @@ void LOM::build() {
     if (Settings::do_output_obj)
       module_name = compiled->createObjectFile(module_name);
   }
+  if (not success) return;
 
   if (Settings::do_linking or Settings::do_output_obj)
-    Backend::linkObjects(module_names);
+    Backend::linkObjects(module_paths);
 }

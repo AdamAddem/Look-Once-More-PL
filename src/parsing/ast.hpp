@@ -84,7 +84,7 @@ struct ASTNode {
     // Statements:
     DECLARATION,    //             | INSTANTIATED_TYPE, IDENTIFIER, INIT_EXPR or EMPTY
     IF,             //             | CONDITION_EXPR, SCOPED, EMPTY or ELSE_STMT
-    FOR,            //             | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
+    // FOR,            //             | DECLARATION, CONDITION_EXPR, INCREMENT_EXPR, SCOPED
     WHILE,          //             | CONDITION_EXPR, SCOPED
     SCOPED,         // NUM         | SUB_STATEMENTS... * NUM
     RETURN,         //             | EMPTY or EXPRESSION

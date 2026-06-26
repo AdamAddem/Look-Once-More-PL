@@ -162,7 +162,7 @@ constexpr bool isCategoryPOINTERS(const TokenType e) { return std::to_underlying
 
 constexpr bool isCategoryPRIMITIVES(const TokenType e) { return std::to_underlying(e) >= 43 && std::to_underlying(e) < 60; }
 
-constexpr bool isCategoryTYPE_MODIFIERS(const TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 61; }
+constexpr bool isCategoryTYPE_QUALIFIER(const TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 61; }
 
 constexpr bool isCategoryCONTROL_FLOW(const TokenType e) { return std::to_underlying(e) >= 61 && std::to_underlying(e) < 69; }
 

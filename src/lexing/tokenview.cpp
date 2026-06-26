@@ -25,7 +25,7 @@ void TokenView::reject_then_pop(TokenType unwanted_type, const char *err_msg) {
 void TokenView::reject(TokenType unwanted_type, const char *err_msg) const {
   begin->throw_if(unwanted_type, err_msg);
 }
-*/
+
 
 TokenView TokenView::getTokensBetween(TokenType opening_token, TokenType closing_token) {
   const auto new_begin = begin;
@@ -54,7 +54,6 @@ TokenView TokenView::getAllTokensUntilFirstOf(TokenType type) {
 
   return {new_begin, begin};
 }
+*/
 
-void TokenView::print([[maybe_unused]] File const& file) const {
-
-}
+void TokenView::print([[maybe_unused]] File const& file) const {}

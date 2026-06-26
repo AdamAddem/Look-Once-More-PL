@@ -16,10 +16,18 @@ extern bool const& do_build;
 
 std::string const& getExecutableName() noexcept;
 u8_t getOptimizationLevel() noexcept;
-
 void setArgs(unsigned argc, const char* argv[]);
 
-static constexpr auto MAX_FUNCTION_PARAMETERS = 8;
-static constexpr auto MAX_TYPELIST_MEMBERS = 8;
-static constexpr auto MAX_STRUCT_MEMBER_VARIABLES = 255;
+inline constexpr auto MAX_FUNCTION_PARAMETERS = 8;
+inline constexpr auto MAX_TYPELIST_MEMBERS = 8;
+inline constexpr auto MAX_STRUCT_MEMBER_VARIABLES = 255;
+
+#ifdef __clang__
+inline constexpr std::string_view external_compiler{"clang"};
+#elif defined(__GNUC__)
+inline constexpr std::string_view external_compiler{"gcc"};
+#else
+inline constexpr std::string_view external_compiler;
+#endif
+
 }

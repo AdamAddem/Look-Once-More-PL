@@ -257,16 +257,12 @@ File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path c
       tokenizer.grabSymbol();
   }
 
-  if (out_tokens.empty()) {
-    report_error(tokenizer.file, "File empty.");
-  }
-  else {
-    auto const INVALID_TOKEN = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
-    out_tokens.reserve(out_tokens.size() + INVALID_TOKEN_PADDING);
-    for (auto i{0uz}; i<INVALID_TOKEN_PADDING; ++i)
-      out_tokens.push_back(INVALID_TOKEN);
-  }
+  assert(not out_tokens.empty());
 
+  auto const INVALID_TOKEN = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
+  out_tokens.reserve(out_tokens.size() + INVALID_TOKEN_PADDING);
+  for (auto i{0uz}; i < INVALID_TOKEN_PADDING; ++i)
+    out_tokens.push_back(INVALID_TOKEN);
 
   return std::move(tokenizer.file);
 }

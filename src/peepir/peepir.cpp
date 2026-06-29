@@ -17,15 +17,12 @@ using namespace LOM;
 using namespace LOM::PeepMIR;
 using namespace LOM::AST;
 
-/*
-    For now, globals will be parsed but not added to the symbol table or validated, and can't be used in anyway.
-*/
+/* For now, globals will be parsed but not added to the symbol table or validated, and can't be used in anyway. */
 
 namespace {
 
-eden_nonull_args
 [[nodiscard]] constexpr Instruction::Type
-castForType(const Type* type) noexcept {
+castForType(Type const* type) noexcept {
   if (type->isPointer())
     return Instruction::PCAST;
 
@@ -50,7 +47,7 @@ struct TreeView {
   std::vector<ASTNode>::const_iterator begin;
   std::vector<ASTNode>::const_iterator end;
 
-  [[nodiscard]] constexpr ASTNode const&
+  [[nodiscard]] constexpr ASTNode
   peek() const noexcept
   { return *begin; }
 
@@ -58,9 +55,13 @@ struct TreeView {
   peek_is_empty() const noexcept
   { return begin->m.type == ASTNode::EMPTY; }
 
-  constexpr ASTNode const&
-  pop() noexcept
+  constexpr ASTNode
+  take() noexcept
   { return *(begin++); }
+
+  constexpr void
+  pop() noexcept
+  { ++begin; }
 
   [[nodiscard]] constexpr bool
   pop_if_empty() noexcept {
@@ -72,21 +73,36 @@ struct TreeView {
   }
 
   [[nodiscard]] constexpr u64_t
-  pop_scoped() noexcept
-  {assert(begin->m.type == ASTNode::SCOPED); return (begin++)->sub_statements();}
+  take_scoped() noexcept
+  { assert(begin->m.type == ASTNode::SCOPED); return (begin++)->sub_statements(); }
 
   constexpr void
-  put_back() noexcept
-  {--begin;}
+  undo() noexcept
+  { --begin; }
 
   [[nodiscard]] constexpr bool
   empty() const noexcept
   {return begin == end;}
 };
 
+struct ExpressionResult {
+  Type const* type;
+  InstantiatedType::Qualifiers qualifiers;
+  u16_t length_in_file;
+  u32_t position_in_file;
+
+  ExpressionResult() = default;
+  ExpressionResult(InstantiatedType t, ASTNode node)
+  : type(t.type), qualifiers(t.qualifiers), length_in_file(node.m.length_in_file), position_in_file(node.m.position_in_file) {}
+
+  ExpressionResult(InstantiatedType t, u16_t length_in_file, u32_t position_in_file)
+ : type(t.type), qualifiers(t.qualifiers), length_in_file(length_in_file), position_in_file(position_in_file) {}
+
+};
+
 class Peeper {
   Module* module;
-  const File* current_file;
+  File const* current_file;
 
   eden::swap_vector<Module*> imports;
 
@@ -129,7 +145,7 @@ class Peeper {
   force_new_block() noexcept
   { blocks.emplace_back(instructions.size(), Block::Terminator::NONE); }
 
-  eden_nonull_args constexpr bool //returns whether coersion was successful
+  constexpr bool // returns whether coersion was successful
   coerce_if_integerliteral(Instruction& possible_literal, const Type* expected_type) const noexcept {
     if (not possible_literal.is_literal() or not expected_type->isIntegral()) return false;
     auto const expected_type_primitive = expected_type->castToPrimitive();
@@ -138,36 +154,35 @@ class Peeper {
     return true;
   }
 
-  InstantiatedType peepLiteral() {
-    auto& node = nodes.pop();
+  ExpressionResult peepLiteral() {
+    auto node = nodes.take();
     switch (node.m.type) { using enum ASTNode::Type;
     case SIGNED_LITERAL:
       instructions.emplace_back(Instruction::I8_LITERAL, std::bit_cast<u64_t>(node.signed_val())); // signed and unsigned sizes will be adjusted later
-      return signedToLiteralInstance(node.signed_val());
+      return {signedToLiteralInstance(node.signed_val()), node};
     case UNSIGNED_LITERAL:
       instructions.emplace_back(Instruction::U8_LITERAL, node.unsigned_val());
-      return unsignedToLiteralInstance(node.unsigned_val());
+      return {unsignedToLiteralInstance(node.unsigned_val()), node};
     case FLOAT_LITERAL:
       instructions.emplace_back(Instruction::FLOAT_LITERAL, static_cast<u64_t>(std::bit_cast<u32_t>(node.float_val())));
-      return f32_literal;
+      return {f32_literal, node};
     case DOUBLE_LITERAL:
       instructions.emplace_back(Instruction::DOUBLE_LITERAL, std::bit_cast<u64_t>(node.double_val()));
-      return f64_literal;
+      return {f64_literal, node};
     case BOOL_LITERAL:
       instructions.emplace_back(Instruction::BOOL_LITERAL, static_cast<u64_t>(node.bool_val()));
-      return bool_literal;
+      return {bool_literal, node};
     case CHAR_LITERAL:
       instructions.emplace_back(Instruction::CHAR_LITERAL, static_cast<u64_t>(node.char_val()));
-      return char_literal;
+      return {char_literal, node};
     case STRING_LITERAL:
       instructions.emplace_back(Instruction::STRING_LITERAL, node.string_val(*current_file));
-      return string_literal;
-    default:
-      eden_unreachable("Invalid literal type.");
+      return {string_literal, node};
+    default: eden_unreachable("Invalid literal type.");
     }
   }
 
-  InstantiatedType peepMemberAccess() {
+  ExpressionResult peepMemberAccess() {
     auto const member_access_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP, 0).~Instruction(); // doing this to reuse the constructor
 
@@ -176,93 +191,99 @@ class Peeper {
 
       auto const possible_module = imports.search(module_search_predicate, nodes.peek().identifier(*current_file));
       if (possible_module == nullptr) goto not_module;
+      nodes.pop();
 
       auto const member_access_instruction = &instructions[member_access_idx];
-      nodes.pop();
       auto const other_module = *possible_module;
 
-      auto const identifier = std::string_view(nodes.pop().identifier(*current_file));
+      auto const identifier_node = nodes.take();
+      auto const identifier = std::string_view(identifier_node.identifier(*current_file));
       if (auto const member_variable = other_module->getPublicVariable(identifier)) {
-        assert(member_variable->get_id() not_eq u16_max);
+        eden_unreachable("Globals unimplemented.");
+        assert(member_variable->get_id() not_eq SymbolTable::INVALID_ID);
         new (member_access_instruction) Instruction(Instruction::MODULE_GLOBAL, other_module, member_variable->get_id());
-        return member_variable->type;
+        return {member_variable->type, identifier_node};
       }
 
       if (auto const member_function = other_module->getPublicFunction(identifier)) {
-        assert(member_function->get_id() not_eq u16_max);
+        assert(member_function->get_id() not_eq SymbolTable::INVALID_ID);
         new (member_access_instruction) Instruction(Instruction::MODULE_FUNCTION, other_module, member_function->get_id());
-        return {member_function->type, {}};
+        return {{member_function->type, {}}, identifier_node};
       }
 
-      report_error(*current_file, "Identifier is not a public member of module.");
-      return error_literal;
+      report_error(*current_file, identifier_node.m.position_in_file, identifier_node.m.length_in_file, "Identifier is not a public member of module.");
+      return {error_literal, identifier_node};
     }
 
     not_module:
     auto const object_expression = peepExpression();
     if (not object_expression.type->isCustom()) {
-      report_error(*current_file, "Attempt to access member of non-custom type.");
-      return error_literal;
+      report_error(*current_file, object_expression.position_in_file, object_expression.length_in_file, "Attempt to access member of non-custom type.");
+      return {error_literal, object_expression.length_in_file, object_expression.position_in_file};
     }
 
     auto const member_access_instruction = &instructions[member_access_idx];
     auto const custom_type = object_expression.type->castToCustom();
     auto const member_table = custom_type->member_table();
-    auto const identifier = std::string_view(nodes.pop().identifier(*current_file));
+    auto const identifier_node = nodes.take();
+    auto const identifier = std::string_view(identifier_node.identifier(*current_file));
 
     if (auto const member_variable = member_table->getPublicVariable(identifier)) {
-      assert(member_variable->get_id() not_eq u16_max);
+      assert(member_variable->get_id() not_eq SymbolTable::INVALID_ID);
 
       new (member_access_instruction) Instruction(Instruction::TYPE_VARIABLE, custom_type, member_variable->get_id());
-      return {member_variable->type.type, object_expression.qualifiers};
+      return{
+        {member_variable->type.type, object_expression.qualifiers}, // use the member's type and the object's qualifiers, member shouldn't have qualifiers regardless
+        identifier_node};
     }
 
     if (auto const member_function = member_table->getPublicFunction(identifier)) {
-      assert(false and "Unimplemented"); assert(member_function->get_id() not_eq u16_max); return {member_function->type, {}};
+      eden_unreachable("Member functions unimplemented."); assert(member_function->get_id() not_eq SymbolTable::INVALID_ID);
+      return { {member_function->type, {}}, identifier_node};
     }
 
-    new (member_access_instruction) Instruction(Instruction::UCAST, 0); // this is only here to avoid the UB from double destruction once this throws
+    new (member_access_instruction) Instruction(Instruction::UCAST, 0); // this is only here to avoid the UB from double destruction once this returns
 
-    report_error(*current_file, "Identifier is not a public member of type.");
-    return error_literal;
+    report_error(*current_file, identifier_node.m.position_in_file, identifier_node.m.length_in_file, "Identifier is not a public member of type.");
+    return {error_literal, identifier_node};
   }
 
-  InstantiatedType
+  ExpressionResult
   peepIdentifier(std::string_view identifier) {
+    auto const [pos, len] = current_file->pos_and_length_from_view(identifier);
+
     if (auto const variable = module->getLocal(identifier)) {
       instructions.emplace_back(Instruction::LOCAL, variable->second + 1); // adjust by 1 accounting for return type
-      return variable->first;
+      return {variable->first, len, pos};
     }
 
     if (auto const function = module->getFunction(identifier)) {
       instructions.emplace_back(Instruction::FUNCTION, identifier);
-      return {function->type, {}};
+      return {{function->type, {}}, len, pos};
     }
 
     report_error(*current_file, identifier, std::format("Undeclared identifier: {}.", identifier));
     instructions.emplace_back(Instruction::NOOP, 0);
-    return error_literal;
+    return {error_literal, len, pos};
   }
 
-  [[maybe_unused]] InstantiatedType peepSubscriptExpression() const { assert(false); return {};}
-
-  eden_nonull_args InstantiatedType
-  peepCastExpression(const Type* cast_type) {
+  ExpressionResult
+  peepCastExpression(Type const* cast_type) {
     auto const cast_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP, std::bit_cast<u64_t>(cast_type));
 
     auto const casted_expr = peepExpression();
     if (not casted_expr.type->castableTo(cast_type)) {
-      report_error(*current_file, std::format("Invalid cast from {} to {}", casted_expr.type->toString(), cast_type->toString()));
-      return error_literal;
+      report_error(*current_file, casted_expr.position_in_file, casted_expr.length_in_file, std::format("Invalid cast from {} to {}", casted_expr.type->toString(), cast_type->toString()));
+      return {error_literal, casted_expr.length_in_file, casted_expr.position_in_file};
     }
 
     auto& cast_instruction = instructions[cast_idx];
     cast_instruction.type = castForType(casted_expr.type);
-    return {cast_type, {}};
+    return {{cast_type, {}}, casted_expr.length_in_file, casted_expr.position_in_file};
   }
 
-  InstantiatedType peepCallingExpression(u64_t call_parameter_count) {
+  ExpressionResult peepCallingExpression(u64_t call_parameter_count) {
     instructions.emplace_back(Instruction::CALL, call_parameter_count);
     auto const called = peepExpression();
     if (not called.type->isCallable()) {
@@ -319,7 +340,7 @@ class Peeper {
   }
 
   //TODO: Add Short Circuiting
-  InstantiatedType peepBinaryExpression(Operator opr) {
+  ExpressionResult peepBinaryExpression(Operator opr) {
     auto const opr_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
 
     auto const left_idx = instructions.size();
@@ -488,7 +509,7 @@ class Peeper {
 
   }
 
-  InstantiatedType peepUnaryExpression(const Operator opr) {
+  ExpressionResult peepUnaryExpression(const Operator opr) {
     if (opr == Operator::ADDRESS_OF) {
       instructions.emplace_back(Instruction::ADDRESS_OF, 0);
       return {module->getRawPointerType(peepExpression()), {}};
@@ -585,9 +606,9 @@ class Peeper {
   }
 
 
-  [[nodiscard]] InstantiatedType
+  [[nodiscard]] ExpressionResult
   peepExpression() {
-    auto const& node = nodes.pop();
+    auto const& node = nodes.take();
 
     switch (node.m.type) {
     using enum ASTNode::Type;
@@ -599,19 +620,19 @@ class Peeper {
     case CAST:             return peepCastExpression(node.cast_type());
 
     case SIGNED_LITERAL:
-    case UNSIGNED_LITERAL: nodes.put_back(); return peepLiteral();
+    case UNSIGNED_LITERAL: nodes.undo(); return peepLiteral();
 
     case FLOAT_LITERAL:
     case DOUBLE_LITERAL:
     case BOOL_LITERAL:
     case CHAR_LITERAL:
-    case STRING_LITERAL:   nodes.put_back(); return peepLiteral();
+    case STRING_LITERAL:   nodes.undo(); return peepLiteral();
 
     default: eden_unreachable("Invalid ASTNode while peeping expression.");
     }
   }
 
-  void adjustAssignExpression(Instruction& assign, InstantiatedType left, InstantiatedType right) const noexcept {
+  void adjustAssignExpression(Instruction& assign, ExpressionResult left, ExpressionResult right) const noexcept {
     if (left.type not_eq right.type and not left.type->isPointer()) {
       assign.type = right.type->isSignedIntegral() ? Instruction::SCAST_ASSIGN : Instruction::UCAST_ASSIGN;
       assign.value = left.type->bitwidth();
@@ -672,7 +693,7 @@ class Peeper {
 
     auto const loop_body_idx = current_block_index() + 1;
     force_new_block();
-    peepScopedStatement(nodes.pop_scoped());
+    peepScopedStatement(nodes.take_scoped());
     if (is_current_block_empty())
       instructions.emplace_back(Instruction::NOOP, 0);
     current_block().set_br(condition_idx);
@@ -693,7 +714,7 @@ class Peeper {
     const u32_t true_block_idx = condition_block_idx + 1;
 
     new_block(); //true block
-    auto const num_true_statements = nodes.pop_scoped();
+    auto const num_true_statements = nodes.take_scoped();
     peepScopedStatement(num_true_statements); //true statement(s)
 
     new_block(); //false block
@@ -710,9 +731,9 @@ class Peeper {
   }
 
   void peepVarDeclaration() {
-    auto const declaration_type = nodes.pop().instance_type();
+    auto const declaration_type = nodes.take().instance_type();
     locals.emplace_back(declaration_type.type);
-    auto const name = nodes.pop().identifier(*current_file);
+    auto const name = nodes.take().identifier(*current_file);
 
     if (module->containsLocal(name)) {
       report_error(*current_file, "Redefinition of symbol name in variable declaration.");
@@ -741,7 +762,7 @@ class Peeper {
   }
 
   void peepStatement() {
-    auto const& node = nodes.pop();
+    auto const& node = nodes.take();
     switch (node.m.type) {
     case ASTNode::EMPTY:
       assert(false);
@@ -761,7 +782,7 @@ class Peeper {
     case ASTNode::BINARY:
     case ASTNode::CALLING:
     case ASTNode::IDENTIFIER:
-      nodes.put_back();
+      nodes.undo();
       return (void)peepExpression();
 
     case ASTNode::SIGNED_LITERAL:
@@ -771,7 +792,7 @@ class Peeper {
     case ASTNode::BOOL_LITERAL:
     case ASTNode::CHAR_LITERAL:
     case ASTNode::STRING_LITERAL:
-      nodes.put_back();
+      nodes.undo();
       return (void)peepLiteral();
 
     default: eden_unreachable("Invalid ASTNode while peeping statement.");

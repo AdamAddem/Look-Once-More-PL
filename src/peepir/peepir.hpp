@@ -64,6 +64,7 @@ struct Instruction {
   }type;
 
   u8_t file_idx;
+  u16_t pad;
   u32_t aux_value;
   u64_t value;
 
@@ -245,12 +246,15 @@ public:
 };
 
 struct Function {
-  std::string_view name;
   const FunctionType* type;
   std::vector<const Type*> locals;
   std::vector<Instruction> instructions;
   std::vector<Block> blocks;
+
   bool is_public;
+  u8_t file_idx;
+  u32_t name_len;
+  const char* name_ptr;
 };
 
 struct TU {

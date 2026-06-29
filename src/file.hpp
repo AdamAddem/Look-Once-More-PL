@@ -54,6 +54,10 @@ public:
   view_at(u32_t position, u16_t length) const noexcept
   { return {text.get() + position, static_cast<u64_t>(length)}; }
 
+  [[nodiscard]] std::pair<u32_t, u16_t>
+  pos_and_length_from_view(std::string_view view_from_file) const noexcept
+  { return {view_from_file.data() - text.get(), view_from_file.length() };}
+
 };
 
 }

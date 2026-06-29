@@ -42,8 +42,8 @@ The C standard library is linked to by default. Linking to anything else require
 - Private functions (and public functions within main.lom) with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
 - _= operators are currently bugged to only work with single tokens prefixing them (x += 2 works, x-> += 2 does not)
 - String literals accessable only through raw pointer to immutable char.
-- Cyclical module imports are untested.
 - No support for creating or importing precompiled LOM libraries directly.
+- Import names currently shadow local variabels when accessing members. (local variable named foo cannot access any members if a module named foo has been imported).
 - No pointer arithmetic.
 - No arrays.
 - No working variants or tuples.

@@ -98,6 +98,7 @@ struct ExpressionResult {
   ExpressionResult(InstantiatedType t, u16_t length_in_file, u32_t position_in_file)
  : type(t.type), qualifiers(t.qualifiers), length_in_file(length_in_file), position_in_file(position_in_file) {}
 
+  InstantiatedType instantiated_type() const noexcept { return {type, qualifiers}; }
 };
 
 class Peeper {
@@ -211,14 +212,14 @@ class Peeper {
         return {{member_function->type, {}}, identifier_node};
       }
 
-      report_error(*current_file, identifier_node.m.position_in_file, identifier_node.m.length_in_file, "Identifier is not a public member of module.");
+      report_error(*current_file, identifier_node.m.length_in_file, identifier_node.m.position_in_file, "Identifier is not a public member of module.");
       return {error_literal, identifier_node};
     }
 
     not_module:
     auto const object_expression = peepExpression();
     if (not object_expression.type->isCustom()) {
-      report_error(*current_file, object_expression.position_in_file, object_expression.length_in_file, "Attempt to access member of non-custom type.");
+      report_error(*current_file, object_expression.length_in_file, object_expression.position_in_file, "Attempt to access member of non-custom type.");
       return {error_literal, object_expression.length_in_file, object_expression.position_in_file};
     }
 
@@ -244,7 +245,7 @@ class Peeper {
 
     new (member_access_instruction) Instruction(Instruction::UCAST, 0); // this is only here to avoid the UB from double destruction once this returns
 
-    report_error(*current_file, identifier_node.m.position_in_file, identifier_node.m.length_in_file, "Identifier is not a public member of type.");
+    report_error(*current_file, identifier_node.m.length_in_file, identifier_node.m.position_in_file, "Identifier is not a public member of type.");
     return {error_literal, identifier_node};
   }
 
@@ -274,7 +275,7 @@ class Peeper {
 
     auto const casted_expr = peepExpression();
     if (not casted_expr.type->castableTo(cast_type)) {
-      report_error(*current_file, casted_expr.position_in_file, casted_expr.length_in_file, std::format("Invalid cast from {} to {}", casted_expr.type->toString(), cast_type->toString()));
+      report_error(*current_file, casted_expr.length_in_file, casted_expr.position_in_file, std::format("Invalid cast from {} to {}", casted_expr.type->toString(), cast_type->toString()));
       return {error_literal, casted_expr.length_in_file, casted_expr.position_in_file};
     }
 
@@ -287,41 +288,42 @@ class Peeper {
     instructions.emplace_back(Instruction::CALL, call_parameter_count);
     auto const called = peepExpression();
     if (not called.type->isCallable()) {
-      report_error(*current_file, "Call operator used on non-callable.");
-      return error_literal;
+      report_error(*current_file, called.length_in_file, called.position_in_file, "Call operator used on non-callable.");
+      return {error_literal, called.length_in_file, called.position_in_file};
     }
 
     if (not called.type->isFunction()) {
       if (called.type not_eq Type::error())
-        report_error(*current_file, "Internal error: Callable non-functions unimplemented.");
-      return error_literal;
+        report_error(*current_file, called.length_in_file, called.position_in_file, "Internal error: Callable non-functions unimplemented.");
+      return {error_literal, called.length_in_file, called.position_in_file};
     }
 
-    const FunctionType* function_type = called.type->castToFunction();
+    FunctionType const* function_type = called.type->castToFunction();
     auto const function_parameter_types = function_type->parameterTypes();
     auto const function_parameter_count = function_parameter_types.size();
-    bool const is_variadic = function_type->isVariadic();
+    bool const variadic = function_type->isVariadic();
 
     if (call_parameter_count < function_parameter_count) {
-      report_error(*current_file, "Too few parameters for function call.");
-      return error_literal;
+      report_error(*current_file, called.length_in_file, called.position_in_file, "Too few parameters for function call.");
+      return {error_literal, called.length_in_file, called.position_in_file};
     }
 
-    if (call_parameter_count > function_parameter_count and not is_variadic) {
-      report_error(*current_file, "Too many parameters for function call.");
-      return error_literal;
+    if (call_parameter_count > function_parameter_count and not variadic) {
+      report_error(*current_file, called.length_in_file, called.position_in_file, "Too many parameters for function call.");
+      return {error_literal, called.length_in_file, called.position_in_file};
     }
 
     auto i{0uz};
+    ExpressionResult given_parameter{called}; // placed outside of the loop's scope so I can calculate the combined size of the call
     for (; i<function_parameter_count; ++i) {
       auto const given_parameter_idx = instructions.size();
-      auto const given_parameter = peepExpression();
+      given_parameter = peepExpression();
       auto const function_parameter_type = function_parameter_types[i];
 
       if (given_parameter.type not_eq function_parameter_type) {
         if (not given_parameter.type->coercibleTo(function_parameter_type)) {
-          report_error(*current_file, std::format("Cannot convert parameter of type {} to type {}.", given_parameter.toString(), function_parameter_type->toString()));
-          return error_literal;
+          report_error(*current_file, given_parameter.length_in_file, given_parameter.position_in_file, std::format("Cannot convert parameter of type {} to type {}.", given_parameter.type->toString(), function_parameter_type->toString()));
+          return {error_literal, given_parameter.length_in_file, given_parameter.position_in_file};
         }
 
         if (not coerce_if_integerliteral(instructions[given_parameter_idx], function_parameter_type)) {
@@ -331,12 +333,13 @@ class Peeper {
       }
     }
 
-    if (is_variadic) {
+    if (variadic) {
       for (; i<call_parameter_count; ++i)
-        (void)peepExpression();
+        given_parameter = peepExpression();
     }
 
-    return {function_type->returnType(), {}};
+    auto const combined_with_last = combineTokens({called.length_in_file, called.position_in_file}, {given_parameter.length_in_file, given_parameter.position_in_file});
+    return {{function_type->returnType(), {}}, combined_with_last.first, combined_with_last.second};
   }
 
   //TODO: Add Short Circuiting
@@ -352,6 +355,7 @@ class Peeper {
 
     auto const right_idx = instructions.size();
     auto right = peepExpression();
+    auto const combined_token = combineTokens( {left.length_in_file, left.position_in_file}, {right.length_in_file, right.position_in_file} );
 
     if (left.type not_eq right.type) { // if left or right is an integer literal, coerce its type to the other
       if (coerce_if_integerliteral(instructions[left_idx], right.type))
@@ -359,9 +363,8 @@ class Peeper {
       else if (coerce_if_integerliteral(instructions[right_idx], left.type))
         right.type = left.type;
       else {
-        report_error(*current_file,
-          std::format("Right type {} in binary expression incompatable with left type {}.", left.type->toString(), operatorToString(opr), right.type->toString()));
-        left = error_literal;
+        report_error(*current_file, combined_token.first, combined_token.second, std::format("Right type {} in binary expression incompatable with left type {}.", left.type->toString(), operatorToString(opr), right.type->toString()));
+        left = {error_literal, combined_token.first, combined_token.second};
       }
     }
 
@@ -372,8 +375,8 @@ class Peeper {
     case Operator::DIVIDE:
     case Operator::MODULUS:
       if (not arithmetic) {
-        report_error(*current_file, "Non-arithmetic expression(s) in arithmetic binary operation.");
-        left = error_literal;
+        report_error(*current_file, combined_token.first, combined_token.second, "Non-arithmetic expressions in arithmetic binary operation.");
+        left = {error_literal, combined_token.first, combined_token.second};
         break;
       }
 
@@ -385,32 +388,32 @@ class Peeper {
     case Operator::LESS_EQUAL:
     case Operator::GREATER_EQUAL:
       if (not arithmetic) {
-        report_error(*current_file, "Non-arithmetic expression(s) in arithmetic binary operation.");
-        left = error_literal;
+        report_error(*current_file, combined_token.first, combined_token.second, "Non-arithmetic expressions in arithmetic binary operation.");
+        left = {error_literal, combined_token.first, combined_token.second};
         break;
       }
 
-      left = bool_literal;
+      left = {bool_literal, combined_token.first, combined_token.second};
       break;
 
     case Operator::AND:
     case Operator::OR:
     case Operator::XOR:
       if (not left.type->isBool()) {
-        report_error(*current_file, "Non-boolean expression(s) in boolean binary operation.");
-        left = error_literal;
+        report_error(*current_file, combined_token.first, combined_token.second, "Non-boolean expressions in boolean binary operation.");
+        left = {error_literal, combined_token.first, combined_token.second};
         break;
       }
 
-      left = bool_literal;
+      left = {bool_literal, combined_token.first, combined_token.second};
       break;
 
     case Operator::BITAND:
     case Operator::BITOR:
     case Operator::BITXOR:
       if (not arithmetic) {
-        report_error(*current_file, "Non-arithmetic expression(s) in bitwise operation.");
-        left = error_literal;
+        report_error(*current_file, combined_token.first, combined_token.second, "Non-arithmetic expressions in bitwise operation.");
+        left = {error_literal, combined_token.first, combined_token.second};
         break;
       }
 
@@ -419,14 +422,14 @@ class Peeper {
 
     case Operator::ASSIGN:
       if (not left.qualifiers.is_mutable) {
-        report_error(*current_file, "Left expression in assignment non-mutable.");
-        left = error_literal;
+        report_error(*current_file, combined_token.first, combined_token.second, "Left expression in assignment non-mutable.");
+        left = {error_literal, combined_token.first, combined_token.second};
       }
       break;
 
     case Operator::EQUAL:
     case Operator::NOT_EQUAL:
-      left = bool_literal;
+      left = {bool_literal, combined_token.first, combined_token.second};
       break;
 
     default:
@@ -434,7 +437,7 @@ class Peeper {
     }
 
     auto& opr_instruction = instructions[opr_idx];
-    switch (opr) { //second sets the right instruction
+    switch (opr) { // second sets the right instruction
     case Operator::ADD:
       opr_instruction.type = left_float ? Instruction::FADD : Instruction::ADD;
       return left;
@@ -512,7 +515,8 @@ class Peeper {
   ExpressionResult peepUnaryExpression(const Operator opr) {
     if (opr == Operator::ADDRESS_OF) {
       instructions.emplace_back(Instruction::ADDRESS_OF, 0);
-      return {module->getRawPointerType(peepExpression()), {}};
+      auto const addressed = peepExpression();
+      return {{module->getRawPointerType(addressed.instantiated_type()), {}}, addressed.length_in_file, addressed.position_in_file };
     }
 
     auto const instruction_idx = instructions.size();
@@ -525,30 +529,30 @@ class Peeper {
     case Operator::PRE_INCREMENT:
     case Operator::PRE_DECREMENT:
       if (not expression.qualifiers.is_mutable) {
-        report_error(*current_file, "Prefix operator used on non-mutable expression.");
-        expression = error_literal;
+        report_error(*current_file, expression.length_in_file, expression.position_in_file, "Prefix operator used on non-mutable expression.");
+        expression = {error_literal, expression.length_in_file, expression.position_in_file};
       }
       break;
     case Operator::UNARY_MINUS:
       if (not arithmetic) {
-        report_error(*current_file, "Unary minus used on non-arithmetic expression.");
-        expression = error_literal;
+        report_error(*current_file, expression.length_in_file, expression.position_in_file, "Unary minus used on non-arithmetic expression.");
+        expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
       expression.qualifiers.is_mutable = false;
       break;
     case Operator::BITNOT:
       if (not arithmetic) {
-        report_error(*current_file, "bitnot operator used non-arithmetic expression.");
-        expression = error_literal;
+        report_error(*current_file, expression.length_in_file, expression.position_in_file, "bitnot operator used non-arithmetic expression.");
+        expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
       expression.qualifiers.is_mutable = false;
       break;
     case Operator::NOT:
       if (not expression.type->isBool()) {
-        report_error(*current_file, "not operator used on non-boolean expression.");
-        expression = error_literal;
+        report_error(*current_file, expression.length_in_file, expression.position_in_file, "not operator used on non-boolean expression.");
+        expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
       expression.qualifiers.is_mutable = false;
@@ -556,19 +560,20 @@ class Peeper {
     case Operator::POST_INCREMENT:
     case Operator::POST_DECREMENT:
       if (not expression.qualifiers.is_mutable) {
-        report_error(*current_file, "Postfix decrement operator used on non-mutable expression.");
-        expression = error_literal;
+        report_error(*current_file, expression.length_in_file, expression.position_in_file, "Postfix decrement operator used on non-mutable expression.");
+        expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
       expression.qualifiers.is_mutable = false;
       break;
     case Operator::ARROW:
       if (not expression.type->isPointer()) {
-        report_error(*current_file, "Arrow operator used on non-pointer type.");
-        expression = error_literal;
+        report_error(*current_file, expression.length_in_file, expression.position_in_file, "Arrow operator used on non-pointer type.");
+        expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
-      expression = expression.type->castToPointer()->getSubtype();
+
+      expression = {expression.type->castToPointer()->getSubtype(), expression.length_in_file, expression.position_in_file};
       break;
     default:
       eden_unreachable("Invalid unary operator.");
@@ -609,7 +614,6 @@ class Peeper {
   [[nodiscard]] ExpressionResult
   peepExpression() {
     auto const& node = nodes.take();
-
     switch (node.m.type) {
     using enum ASTNode::Type;
     case MEMBER_ACCESS:    return peepMemberAccess();
@@ -620,8 +624,7 @@ class Peeper {
     case CAST:             return peepCastExpression(node.cast_type());
 
     case SIGNED_LITERAL:
-    case UNSIGNED_LITERAL: nodes.undo(); return peepLiteral();
-
+    case UNSIGNED_LITERAL:
     case FLOAT_LITERAL:
     case DOUBLE_LITERAL:
     case BOOL_LITERAL:
@@ -641,10 +644,10 @@ class Peeper {
 
   void peepReturnStatement() {
     auto const return_type = current_function_type->returnType();
-    if (nodes.pop_if_empty()) {
+    if (nodes.peek_is_empty()) {
       if (not return_type->isDevoid()) {
-        report_error(*current_file, "Non-devoid function expects return value.");
-        return;
+        auto const empty_return = nodes.take();
+        return report_error(*current_file, empty_return.m.length_in_file, empty_return.m.position_in_file, "Non-devoid function expects return value.");
       }
 
       current_block().set_ret();
@@ -658,7 +661,7 @@ class Peeper {
 
     auto const return_expression = peepExpression();
     if (return_type->isDevoid()) {
-      report_error(*current_file, "Cannot return value from devoid function");
+      report_error(*current_file,  "Cannot return value from devoid function");
       return;
     }
 

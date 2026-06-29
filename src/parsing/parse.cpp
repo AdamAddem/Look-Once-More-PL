@@ -460,7 +460,7 @@ struct Body {
 
     tokens.pop();
 
-    data.length_in_file = static_cast<u16_t>(ending_semicolon.position - data.position_in_file) + ending_semicolon.length;
+    data.length_in_file = combineTokens({data.length_in_file, data.position_in_file}, {ending_semicolon.length, ending_semicolon.position}).first;
     tree[expr_stmt_idx].m = data;
   }
 
@@ -530,21 +530,27 @@ struct Body {
     }
 
     auto const scoped_end = tree.back().m;
-    data.length_in_file = static_cast<u16_t>(scoped_end.position_in_file - data.position_in_file) + scoped_end.length_in_file;
+    data.length_in_file = combineTokens({data.length_in_file, data.position_in_file}, {scoped_end.length_in_file, scoped_end.position_in_file}).first;
     tree[scoped_idx].m = data;
   }
 
   // call after return is popped
   void parseReturn() {
     auto const return_idx = tree.size() - 1;
+    if (tokens.peek_is(TokenType::SEMI_COLON)) {
+      tree.emplace_back(newNodeData(tokens.take()));
+      return;
+    }
+
     parseExpression();
     if (not tokens.pop_if(TokenType::SEMI_COLON))
       return report_error(current_file, tokens.peek(), "Expected semi-colon.");
 
     auto const return_end = tree.back().m;
-    auto const return_start = tree[return_idx].m;
-    auto const length_in_file = static_cast<u16_t>(return_end.position_in_file - return_start.position_in_file) + return_end.length_in_file;
-    tree[return_idx].m.length_in_file = length_in_file;
+    auto return_start = tree[return_idx].m;
+
+    return_start.length_in_file = combineTokens({return_start.length_in_file, return_start.position_in_file}, {return_end.length_in_file, return_end.position_in_file}).first;
+    tree[return_idx].m = return_start;
   }
 
   void parseStatement() {

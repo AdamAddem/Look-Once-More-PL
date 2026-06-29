@@ -40,7 +40,7 @@ struct Tokenizer {
   void undo() noexcept { --current_position; }
 
   void report_error_at_currentpos(const char* msg) const {
-    report_error(file, current_position, 1, msg);
+    report_error(file, 1, current_position, msg);
   }
 
   [[maybe_unused]] [[nodiscard]] char
@@ -58,7 +58,7 @@ struct Tokenizer {
     case 'v':   return '\v';
 
     default:
-      report_error(file, current_position - 1, 2, "Unknown escape sequence.");
+      report_error(file, 2, current_position - 1, "Unknown escape sequence.");
       return '?';
     }
   }

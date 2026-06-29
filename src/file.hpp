@@ -36,18 +36,13 @@ public:
   // somewhat expensive, only use in error reporting
   [[nodiscard]] std::string_view
   path() const noexcept {
-
     auto const file_path_start = contents().find_last_of('\0', text.size() - 2) + 1;
-
     assert(file_path_start not_eq std::string::npos);
 
-    std::string_view v =
-    {
-        text.get() + file_path_start,
-        text.size() - file_path_start - 1
-        };
-
-    return v;
+    return {
+      text.get() + file_path_start,
+      text.size() - file_path_start - 1
+      };
   }
 
   [[nodiscard]] std::string_view
@@ -59,5 +54,16 @@ public:
   { return {view_from_file.data() - text.get(), view_from_file.length() };}
 
 };
+
+
+// provided two pairs of {length, position}, returns a pair of {length, position} that includes both tokens and everything between
+[[nodiscard]] constexpr std::pair<u16_t, u32_t>
+combineTokens(std::pair<u16_t, u32_t> leftmost, std::pair<u16_t, u32_t> rightmost) {
+  return {
+    u16_t(rightmost.second - leftmost.second) + rightmost.first
+    ,
+    leftmost.second
+  };
+}
 
 }

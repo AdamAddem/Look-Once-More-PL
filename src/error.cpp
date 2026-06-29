@@ -54,7 +54,7 @@ std::string get_file_errors(std::string_view file_path) {
 }
 
 
-void report_error(File const& file, u32_t position, u16_t length, std::string error_message) {
+void report_error(File const& file, u16_t length, u32_t position, std::string error_message) {
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
       file.contents(),

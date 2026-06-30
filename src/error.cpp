@@ -7,8 +7,8 @@ namespace {
 struct Error {
   std::string message;
   std::string_view file_text;
-  u32_t position;
   u16_t length;
+  u32_t position;
 };
 
 // filepath -> vector of error's
@@ -45,7 +45,7 @@ std::string get_file_errors(std::string_view file_path) {
 
     error_messages.append(
       std::format("{}{}\n",
-        std::string(error.position - beginning_line_idx, ' '),
+        std::string(error.position - beginning_line_idx + 1, ' '),
         std::string(error.length, '^'))
       );
   }
@@ -58,8 +58,7 @@ void report_error(File const& file, u16_t length, u32_t position, std::string er
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
       file.contents(),
-      position,
-      length
+      length, position
     );
 }
 
@@ -67,17 +66,16 @@ void report_error(File const& file, Lexer::Token token, std::string error_messag
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
       file.contents(),
-      token.position,
-      token.length
+      token.length, token.position
     );
 }
 
 void report_error(File const& file, std::string_view file_substr, std::string error_message) {
+  auto const [len, pos] = file.len_and_pos_from_view(file_substr);
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
       file.contents(),
-      file.contents().data() - file_substr.data(),
-      file_substr.length()
+      len, pos
     );
 }
 

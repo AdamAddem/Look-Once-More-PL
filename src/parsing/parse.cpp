@@ -164,6 +164,15 @@ struct Body {
             .bool_value = false}; // silences warning
   }
 
+  [[nodiscard]] ASTNode::NodeData
+  newNodeData(u16_t length_in_file, u32_t position_in_file, ASTNode::Type type = ASTNode::EMPTY) const noexcept {
+    assert((tu.source_files.size() - 1) <= u8_max);
+    return {.type = type,
+            .file_idx = static_cast<u8_t>(tu.source_files.size() - 1),
+            .length_in_file = length_in_file, .position_in_file = position_in_file,
+            .bool_value = false}; // silences warning
+  }
+
   std::vector<ASTNode> tree;
   TokenView tokens;
   TU& tu;
@@ -213,8 +222,25 @@ struct Body {
       return res;
     }
 
-    if (tokens.peek_is(TokenType::IDENTIFIER) or tokens.peek_is(TokenType::DUNDER_CEXTERN))
-      return expression_tree.create(newNodeData(tokens.take(), ASTNode::IDENTIFIER));
+    if (tokens.peek_is(TokenType::IDENTIFIER) or tokens.peek_is(TokenType::DUNDER_CEXTERN)) {
+      auto const identifier_idx = expression_tree.create(newNodeData(tokens.take(), ASTNode::IDENTIFIER));
+
+      if (not tokens.peek_is(TokenType::DOT) and not tokens.peek_is(TokenType::ARROW))
+        return identifier_idx;
+
+      tokens.pop();
+      auto const member_idx = generatePrimaryExpression();
+
+      auto const member_data = expression_tree.data[member_idx].data;
+      auto const identifier_data = expression_tree.data[identifier_idx].data;
+      auto const [len, pos] = combineTokens(
+         {member_data.length_in_file, member_data.position_in_file},
+         {identifier_data.length_in_file, identifier_data.position_in_file}
+        );
+
+      auto const total_data = newNodeData(len, pos, ASTNode::MEMBER_ACCESS);
+      return expression_tree.create(total_data, identifier_idx, member_idx);
+    }
 
     throw_notfound();
   }
@@ -234,6 +260,7 @@ struct Body {
         continue;
 
       case TokenType::LPAREN:
+        tokens.pop();
         left = expression_tree.create(
           newNodeData(token, ASTNode::CALLING),
           left,
@@ -243,9 +270,10 @@ struct Body {
 
       case TokenType::LBRACKET: throw std::runtime_error("Subscript unsupported.");
 
-      case TokenType::DOT:
+      /* case TokenType::DOT:
+        tokens.pop();
         left = expression_tree.create(newNodeData(token, ASTNode::MEMBER_ACCESS), left, generatePostfixExpression());
-        continue;
+        continue; */
       default: return left;
       }
 
@@ -387,8 +415,7 @@ struct Body {
     assert(idx not_eq 0);
 
     auto expression = expression_tree.data[idx];
-    switch (expression.data.type) {
-      using enum ASTNode::Type;
+    switch (expression.data.type) { using enum ASTNode::Type;
     case EMPTY: case DECLARATION: case IF:
     case WHILE: case SCOPED: case RETURN: case EXPR_STMT:
       eden_unreachable("Statements should not be contained in an expression.");
@@ -435,17 +462,12 @@ struct Body {
     }
   }
 
+  // don't access anything above this method directly through anything below this method
   void parseExpression() noexcept {
     expression_tree.reset();
 
-    u32_t idx;
-    try { idx = generateAssignmentExpression(); }
-    catch (...) {
-      report_error(current_file, tokens.peek_ahead(1), "Expected expression.");
-      return;
-    }
-
-    translateExpression(idx);
+    try { translateExpression( generateAssignmentExpression() ); }
+    catch (...) { report_error(current_file, tokens.peek_ahead(1), "Expected expression."); }
   }
 
   void parseExpressionStatement() {
@@ -543,6 +565,7 @@ struct Body {
     }
 
     parseExpression();
+
     if (not tokens.pop_if(TokenType::SEMI_COLON))
       return report_error(current_file, tokens.peek(), "Expected semi-colon.");
 
@@ -699,7 +722,7 @@ Function parseFunction(TU& tu, Body& global_body) {
 
   Function current_function;
   current_function.file_idx = static_cast<u8_t>(tu.source_files.size() - 1);
-  bool const is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
+  current_function.is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
 
   if (not tokens.pop_if(TokenType::KEYWORD_FN))
     report_error(current_file, tokens.peek(), "Expected function declaration.");
@@ -707,8 +730,8 @@ Function parseFunction(TU& tu, Body& global_body) {
   // name
   {
     auto const function_name = parseIdentifier(tokens, tu);
-    current_function.name_ptr = function_name.data();
     current_function.name_len = function_name.length();
+    current_function.name_ptr = function_name.data();
   }
 
   if (not tokens.pop_if(TokenType::LPAREN))
@@ -740,7 +763,12 @@ Function parseFunction(TU& tu, Body& global_body) {
     if (not tokens.peek_is(TokenType::LBRACE))
       return_type = parseUnqualifiedType(tokens, tu);
 
-    tu.module->addFunction(current_function.nameof(), std::span(parameters, i), return_type, is_public);
+    tu.module->addFunction(
+      current_function.nameof(),
+      std::span(parameters, i),
+      return_type,
+      current_function.is_public);
+
     tu.module->enterFunctionScope(current_function.nameof());
   }
 
@@ -774,10 +802,13 @@ void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& 
 
 void printFunction(Function const& func, TU const& tu) {
   auto const function = tu.module->getFunction(func.nameof());
+
   auto const parameters = function->parameters();
   auto const return_type = function->returnType();
 
-  std::print("fn {} (", func.nameof());
+  std::print("{}fn {} (",
+    func.is_public ? "pub " : "",
+    func.nameof());
 
   for (auto& parameter : parameters) {
     std::print("{}", parameter.type.toString());

@@ -85,7 +85,7 @@ public:
     getVariable(std::string_view variable_name) const noexcept {
       sz_t n = locals.size();
       while (n-- not_eq 0)
-        if (variable_name == locals[n].name)
+        if (variable_name == locals[n].nameof())
           return std::optional(std::pair(locals[n].type, n));
       return std::nullopt;
     }

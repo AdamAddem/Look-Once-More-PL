@@ -27,12 +27,13 @@ Access the members of a module by appending the module name with a dot. <br>
 Calling C functions can be done using the '__C' keyword. <br>
 You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration (note, the 'fn' keyword is not needed). <br>
 Ensure that the type of the C function has been appropriately translated to LOM. <br>
-Ex: `__C puts(raw -> char str) i32;` <br>
+Ex: `__C puts(raw char str) i32;` <br>
 This will place the function as part of the internal '__C' module, and as such only one declaration can be present throughout the entire program. <br>
 If variadic arguments are needed, use the '__va' keyword as the last parameter. <br>
-Ex: `__C printf(raw -> char fmt, __va) i32;` <br>
+Ex: `__C printf(raw char fmt, __va) i32;` <br>
 Calling these functions can be done as if through the '__C' module, which is implicitly imported in every module by default. <br>
-The C standard library is linked to by default. Linking to anything else requires outputting object files and doing so manually. <br>
+C Interop using structs is untested and probably won't function as expected. I'm working on it. <br>
+The C standard library (+ math) is linked to by default. Linking to anything else requires outputting object files and doing so manually. <br>
 
 ### Current Limitations, Missing Features, and Known Bugs
 - Functions may not have greater than 8 parameters, structs may not have greater than 256 members, modules may have no more than 255 files, and no token may exceed the u16 integer limit in length.

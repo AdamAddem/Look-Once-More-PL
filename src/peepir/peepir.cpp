@@ -32,14 +32,18 @@ castForType(Type const* type) noexcept {
       return Instruction::PCAST;
     if (primitive->isFloating())
       return Instruction::FCAST;
-    if (primitive->isIntegral()) {
+    if (primitive->isIntegral())
      return
         primitive->isSignedIntegral()
-        ? Instruction::SCAST : Instruction::UCAST;
-    }
+        ? Instruction::SCAST
+        : Instruction::UCAST;
     if (primitive->isChar())
       return Instruction::UCAST;
   }
+
+  if (type == Type::error())
+    return Instruction::UCAST;
+
   eden_unreachable("This shouldn't happen!");
 }
 
@@ -126,16 +130,16 @@ class Peeper {
   is_current_block_empty() const noexcept
   { return blocks.back().first_instruction_idx == instructions.size(); }
 
-  //creates a br that goes to the next block, as if it had fallen through (does not create next block)
-  //does nothing if current block is empty
+  // creates a br that goes to the next block, as if it had fallen through (does not create next block)
+  // does nothing if current block is empty
   constexpr void
   br_fallthrough() noexcept {
     if (not is_current_block_empty())
       blocks.back().set_br(blocks.size());
   }
 
-  //call before any instructions are made
-  //does nothing if current block is empty
+  // call before any instructions are made
+  // does nothing if current block is empty
   constexpr void
   new_block() noexcept {
     if (not is_current_block_empty())
@@ -147,7 +151,7 @@ class Peeper {
   { blocks.emplace_back(instructions.size(), Block::Terminator::NONE); }
 
   constexpr bool // returns whether coersion was successful
-  coerce_if_integerliteral(Instruction& possible_literal, const Type* expected_type) const noexcept {
+  coerce_if_integerliteral(Instruction& possible_literal, Type const* expected_type) const noexcept {
     if (not possible_literal.is_literal() or not expected_type->isIntegral()) return false;
     auto const expected_type_primitive = expected_type->castToPrimitive();
     auto const is_signed = expected_type_primitive->isSignedIntegral();
@@ -155,7 +159,8 @@ class Peeper {
     return true;
   }
 
-  ExpressionResult peepLiteral() {
+  ExpressionResult
+  peepLiteral() {
     auto node = nodes.take();
     switch (node.m.type) { using enum ASTNode::Type;
     case SIGNED_LITERAL:
@@ -183,7 +188,8 @@ class Peeper {
     }
   }
 
-  ExpressionResult peepMemberAccess() {
+  ExpressionResult
+  peepMemberAccess() {
     auto const member_access_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP, 0).~Instruction(); // doing this to reuse the constructor
 
@@ -197,23 +203,23 @@ class Peeper {
       auto const member_access_instruction = &instructions[member_access_idx];
       auto const other_module = *possible_module;
 
-      auto const identifier_node = nodes.take();
-      auto const identifier = std::string_view(identifier_node.identifier(*current_file));
-      if (auto const member_variable = other_module->getPublicVariable(identifier)) {
+      auto const member_node = nodes.take();
+      auto const member_name = std::string_view(member_node.identifier(*current_file));
+      if (auto const member_variable = other_module->getPublicVariable(member_name)) {
         eden_unreachable("Globals unimplemented.");
         assert(member_variable->get_id() not_eq SymbolTable::INVALID_ID);
         new (member_access_instruction) Instruction(Instruction::MODULE_GLOBAL, other_module, member_variable->get_id());
-        return {member_variable->type, identifier_node};
+        return {member_variable->type, member_node};
       }
 
-      if (auto const member_function = other_module->getPublicFunction(identifier)) {
+      if (auto const member_function = other_module->getPublicFunction(member_name)) {
         assert(member_function->get_id() not_eq SymbolTable::INVALID_ID);
         new (member_access_instruction) Instruction(Instruction::MODULE_FUNCTION, other_module, member_function->get_id());
-        return {{member_function->type, {}}, identifier_node};
+        return {{member_function->type, {}}, member_node};
       }
 
-      report_error(*current_file, identifier_node.m.length_in_file, identifier_node.m.position_in_file, "Identifier is not a public member of module.");
-      return {error_literal, identifier_node};
+      report_error(*current_file, member_node.m.length_in_file, member_node.m.position_in_file, "Identifier is not a public member of module.");
+      return {error_literal, member_node};
     }
 
     not_module:
@@ -251,7 +257,7 @@ class Peeper {
 
   ExpressionResult
   peepIdentifier(std::string_view identifier) {
-    auto const [pos, len] = current_file->pos_and_length_from_view(identifier);
+    auto const [len, pos] = current_file->len_and_pos_from_view(identifier);
 
     if (auto const variable = module->getLocal(identifier)) {
       instructions.emplace_back(Instruction::LOCAL, variable->second + 1); // adjust by 1 accounting for return type
@@ -263,7 +269,7 @@ class Peeper {
       return {{function->type, {}}, len, pos};
     }
 
-    report_error(*current_file, identifier, std::format("Undeclared identifier: {}.", identifier));
+    report_error(*current_file, len, pos, std::format("Undeclared identifier: {}.", identifier));
     instructions.emplace_back(Instruction::NOOP, 0);
     return {error_literal, len, pos};
   }
@@ -284,7 +290,8 @@ class Peeper {
     return {{cast_type, {}}, casted_expr.length_in_file, casted_expr.position_in_file};
   }
 
-  ExpressionResult peepCallingExpression(u64_t call_parameter_count) {
+  ExpressionResult
+  peepCallingExpression(u64_t call_parameter_count) {
     instructions.emplace_back(Instruction::CALL, call_parameter_count);
     auto const called = peepExpression();
     if (not called.type->isCallable()) {
@@ -343,7 +350,8 @@ class Peeper {
   }
 
   //TODO: Add Short Circuiting
-  ExpressionResult peepBinaryExpression(Operator opr) {
+  ExpressionResult
+  peepBinaryExpression(Operator opr) {
     auto const opr_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
 
     auto const left_idx = instructions.size();
@@ -497,7 +505,7 @@ class Peeper {
       return left;
     case Operator::ASSIGN: {
       opr_instruction.type = Instruction::ASSIGN;
-      adjustAssignExpression(opr_instruction, left, right);
+      adjustAssignExpression(opr_instruction, left.instantiated_type(), right.instantiated_type());
       return left;
     }
     case Operator::EQUAL:
@@ -512,7 +520,8 @@ class Peeper {
 
   }
 
-  ExpressionResult peepUnaryExpression(const Operator opr) {
+  ExpressionResult
+  peepUnaryExpression(Operator opr) {
     if (opr == Operator::ADDRESS_OF) {
       instructions.emplace_back(Instruction::ADDRESS_OF, 0);
       auto const addressed = peepExpression();
@@ -635,7 +644,7 @@ class Peeper {
     }
   }
 
-  void adjustAssignExpression(Instruction& assign, ExpressionResult left, ExpressionResult right) const noexcept {
+  void adjustAssignExpression(Instruction& assign, InstantiatedType left, InstantiatedType right) const noexcept {
     if (left.type not_eq right.type and not left.type->isPointer()) {
       assign.type = right.type->isSignedIntegral() ? Instruction::SCAST_ASSIGN : Instruction::UCAST_ASSIGN;
       assign.value = left.type->bitwidth();
@@ -661,18 +670,17 @@ class Peeper {
 
     auto const return_expression = peepExpression();
     if (return_type->isDevoid()) {
-      report_error(*current_file,  "Cannot return value from devoid function");
+      report_error(*current_file, return_expression.length_in_file, return_expression.position_in_file,  "Cannot return value from devoid function");
       return;
     }
 
-
     if (not return_expression.type->coercibleTo(return_type)) {
-      report_error(*current_file, "Return statement's type is not compatible with function return type.");
+      report_error(*current_file, return_expression.length_in_file, return_expression.position_in_file, "Return statement's type is not compatible with function return type.");
       return;
     }
 
     coerce_if_integerliteral(instructions.back(), return_type);
-    adjustAssignExpression(instructions[assign_idx], {return_type, {}}, return_expression);
+    adjustAssignExpression(instructions[assign_idx], {return_type, {}}, return_expression.instantiated_type());
     current_block().set_ret();
   }
 
@@ -687,10 +695,10 @@ class Peeper {
   void peepWhileLoop() {
     br_fallthrough();
     new_block();
-    const u32_t condition_idx = current_block_index();
+    auto const condition_idx = current_block_index();
     auto const condition = peepExpression();
     if (not condition.type->isBool()) {
-      report_error(*current_file, "While Loop condition not boolean.");
+      report_error(*current_file, condition.length_in_file, condition.position_in_file, "While Loop condition not boolean.");
       return;
     }
 
@@ -709,7 +717,7 @@ class Peeper {
   void peepIfStatement() {
     auto const condition = peepExpression();
     if (not condition.type->isBool()) {
-      report_error(*current_file, "If statement condition not boolean.");
+      report_error(*current_file, condition.length_in_file, condition.position_in_file, "If statement condition not boolean.");
       return;
     }
 
@@ -739,7 +747,7 @@ class Peeper {
     auto const name = nodes.take().identifier(*current_file);
 
     if (module->containsLocal(name)) {
-      report_error(*current_file, "Redefinition of symbol name in variable declaration.");
+      report_error(*current_file, name, "Redefinition of symbol name in variable declaration.");
       return;
     }
 
@@ -756,12 +764,12 @@ class Peeper {
     auto const init_expr_idx = instructions.size();
     auto const init_expr = peepExpression();
     if (not init_expr.type->coercibleTo(declaration_type.type)) {
-      report_error(*current_file, "Variable initialization's type is not compatible with variable type.");
+      report_error(*current_file, init_expr.length_in_file, init_expr.position_in_file, "Variable initialization's type is not compatible with variable type.");
       return;
     }
 
     coerce_if_integerliteral(instructions[init_expr_idx], declaration_type.type);
-    adjustAssignExpression(instructions[assign_idx], declaration_type, init_expr);
+    adjustAssignExpression(instructions[assign_idx], declaration_type, init_expr.instantiated_type());
   }
 
   void peepStatement() {
@@ -848,41 +856,46 @@ class Peeper {
 
 public:
 
-  // parses functions and fills tu.functions
-  static void peepFunctions(TU& tu, std::vector<Parser::Function> const& functions) {
+  // peeps parsed_functions and fills peeped_tu.functions
+  static void peepFunctions(TU& peep_tu, std::vector<Parser::Function> const& parsed_functions) {
     Peeper peeper;
-    peeper.module = tu.module;
-    peeper.imports = std::move(tu.imports);
+    peeper.module = peep_tu.module;
+    peeper.imports = std::move(peep_tu.imports);
 
-    for (auto const& func : functions) {
-      auto const function_name = func.nameof();
-      auto const function_type = tu.module->enterFunctionScope(function_name);
-      peeper.current_file = &(tu.source_files[func.file_idx]);
+    for (auto const& func : parsed_functions) {
+      auto const function_type = peep_tu.module->enterFunctionScope(func.nameof());
+      peeper.current_file = &peep_tu.source_files[func.file_idx];
       peeper.nodes.begin = func.body.cbegin();
       peeper.nodes.end = func.body.cend();
       peeper.current_function_type = function_type;
+
+      auto const parameter_types = function_type->parameterTypes();
+      peeper.locals.reserve(parameter_types.size() + 1); // + return type
       peeper.locals.emplace_back(function_type->returnType());
-      for (auto const parameter_type : function_type->parameterTypes())
+      for (auto const parameter_type : parameter_types)
         peeper.locals.emplace_back(parameter_type);
 
       peeper.peepUntilEmpty();
-      tu.functions.emplace_back(
-        function_name, function_type,
-        std::move(peeper.locals),
-        std::move(peeper.instructions),
-        std::move(peeper.blocks));
+      peep_tu.functions.emplace_back(
+        Function {
+        .is_public = func.is_public, .file_idx = func.file_idx,
+        .name_len = func.name_len, .name_ptr = func.name_ptr,
+
+        .type = function_type,
+        .locals = std::move(peeper.locals),
+        .instructions = std::move(peeper.instructions),
+        .blocks = std::move(peeper.blocks)
+        });
     }
 
-    tu.imports = std::move(peeper.imports);
+    peep_tu.imports = std::move(peeper.imports);
   }
 
 };
 
 }
 
-
-
-//printing functions
+// printing functions
 namespace {
 
 void printPeepInstruction(Instruction instruction) {
@@ -1007,30 +1020,25 @@ void printPeepBlocks(std::vector<Block> const& blocks, std::vector<Instruction> 
   printPeepBlockTerminator(blocks[current_block]);
 }
 
-void printPeepFunction(Function& func) {
-  std::println("{}fn {}{} {{",
+}
+
+void PeepMIR::printPeep(TU const& tu) {
+  for (auto const& func : tu.functions) {
+    std::println("{}fn {}{} {{",
     func.is_public ? "pub " : "",
-    func.name,
+    func.nameof(),
     func.type->toString());
 
-  std::print("Locals: | ");
-  auto const num_locals = func.locals.size() - 1;
-  for (auto i{0uz}; i<num_locals; ++i)
-    std::print("{}: {} | ", i + 1, func.locals[i + 1]->toString());
-  std::println();
+    std::print("Locals: | ");
+    auto const num_locals = func.locals.size() - 1;
+    for (auto i{0uz}; i<num_locals; ++i)
+      std::print("{}: {} | ", i + 1, func.locals[i + 1]->toString());
+    std::println();
 
-  printPeepBlocks(func.blocks, func.instructions);
-  std::println("}}\n");
-}
-
-}
-
-void PeepMIR::printPeep(TU& tu) {
-  for (auto& func : tu.functions) {
-    printPeepFunction(func);
+    printPeepBlocks(func.blocks, func.instructions);
+    std::println("}}\n");
   }
 }
-
 
 
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {

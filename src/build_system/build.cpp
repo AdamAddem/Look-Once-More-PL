@@ -73,6 +73,7 @@ lex_and_parse_module(fs::path const& directory) {
   for (auto const& entry : fs::directory_iterator{directory}) {
     if (not entry.is_regular_file())
       throw std::runtime_error( std::format("LookOnceMore: Sorry! Submodules not supported yet.\nModule Path: {}", entry.path().string() ));
+    if (entry.path().extension() != ".lom") continue;
     if (is_empty(entry))
       throw std::runtime_error( std::format("LookOnceMore: Sorry! Empty files not supported.\nFile Path: {}", entry.path().string() ));
 
@@ -95,7 +96,7 @@ void LOM::build() {
   std::vector<fs::path> module_paths;
   for (auto const& entry : fs::directory_iterator{"src"}) {
     if (entry.is_directory()) {
-      module_paths.emplace_back(entry.path().filename());
+      module_paths.emplace_back(entry.path().stem());
       parsed_tus.emplace_back(lex_and_parse_module(entry));
       continue;
     }
@@ -104,7 +105,7 @@ void LOM::build() {
     Parser::TU main_tu; main_tu.module = &main_module;
     if (lex_and_parse_file(main_tu, main_tokens, entry.path()) == false) std::quick_exit(1);
 
-    module_paths.emplace_back("src/main.lom");
+    module_paths.emplace_back("main.lom");
     parsed_tus.emplace_back(std::move(main_tu));
   }
 
@@ -113,7 +114,7 @@ void LOM::build() {
   for (auto i{0uz}; i<parsed_tus.size(); ++i) {
     auto& module_name = module_paths[i];
     if (Settings::do_output_parser) {
-      std::println("\n--- Parser Output --- {}", module_name.string());
+      std::println("\n--- Parser Output --- {}", module_name.native());
       Parser::printTU(parsed_tus[i]);
       std::println("\n--- Parser Output ---");
       continue;
@@ -127,14 +128,14 @@ void LOM::build() {
     }
 
     if (Settings::do_output_peep) {
-      std::println("\n--- Peep Output --- {}", module_name.string());
+      std::println("\n--- Peep Output --- {}", module_name.native());
       PeepMIR::printPeep(peeped);
       std::println("\n--- Peep Output ---");
       continue;
     }
 
     auto const& compiled = compiled_tus.emplace_back(
-      Backend::codegen( std::move(peeped), module_paths[i] )
+      Backend::codegen( std::move(peeped), module_name )
       );
 
     if (Settings::do_output_asm)

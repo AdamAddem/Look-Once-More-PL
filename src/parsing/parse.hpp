@@ -8,16 +8,20 @@ struct Token;
 }
 
 namespace LOM::Parser {
+struct TU;
 
 struct Function {
+  bool is_public;
   u8_t  file_idx;
   u32_t name_len;
   const char* name_ptr;
+
   std::vector<AST::ASTNode> body;
 
   [[nodiscard]] std::string_view
   nameof() const noexcept
   { return {name_ptr, name_len}; }
+
 };
 
 struct TU {

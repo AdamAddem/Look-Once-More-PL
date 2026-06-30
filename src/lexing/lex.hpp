@@ -77,6 +77,10 @@ struct Token {
     return file.view_at(position, length);
   }
 
+  [[nodiscard]] constexpr std::string_view
+  originalString(File const& file) const noexcept
+  { return file.view_at(position, length); }
+
   [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept { return type == token_type; }
   [[nodiscard]] constexpr bool isIdentifier() const noexcept           { return type == TokenType::IDENTIFIER; }
   [[nodiscard]] constexpr bool isPrimitive() const noexcept            { return isCategoryPRIMITIVES(type); }

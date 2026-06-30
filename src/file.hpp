@@ -27,7 +27,6 @@ public:
 
     std::strncpy(file_buff + file_size + 1, file_path.c_str(), file_path_size + 1);
     text.reset(file_buff, buff_length);
-
   }
 
   [[nodiscard]] std::string_view
@@ -49,12 +48,15 @@ public:
   view_at(u32_t position, u16_t length) const noexcept
   { return {text.get() + position, static_cast<u64_t>(length)}; }
 
-  [[nodiscard]] std::pair<u32_t, u16_t>
-  pos_and_length_from_view(std::string_view view_from_file) const noexcept
-  { return {view_from_file.data() - text.get(), view_from_file.length() };}
+  [[nodiscard]] std::pair<u16_t, u32_t>
+  len_and_pos_from_view(std::string_view view_from_file) const noexcept {
+    return {
+      view_from_file.length(),
+      view_from_file.data() - text.get()
+    };
+  }
 
 };
-
 
 // provided two pairs of {length, position}, returns a pair of {length, position} that includes both tokens and everything between
 [[nodiscard]] constexpr std::pair<u16_t, u32_t>

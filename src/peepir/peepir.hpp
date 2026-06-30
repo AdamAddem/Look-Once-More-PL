@@ -10,7 +10,7 @@ struct TU;
 }
 
 namespace LOM::PeepMIR {
-
+struct TU;
 
 struct Instruction {
   enum Type : u8_t {
@@ -245,16 +245,22 @@ public:
   }
 };
 
+
 struct Function {
+  bool is_public;
+  u8_t file_idx;
+  u32_t name_len;
+  const char* name_ptr;
+
   const FunctionType* type;
   std::vector<const Type*> locals;
   std::vector<Instruction> instructions;
   std::vector<Block> blocks;
 
-  bool is_public;
-  u8_t file_idx;
-  u32_t name_len;
-  const char* name_ptr;
+  [[nodiscard]] std::string_view
+  nameof() const noexcept
+  { return {name_ptr, name_len}; }
+
 };
 
 struct TU {
@@ -264,7 +270,7 @@ struct TU {
   std::vector<Function> functions;
 };
 
-void printPeep(TU&);
+void printPeep(TU const&);
 
 [[nodiscard]] TU lowerToPeep(Parser::TU &&);
 

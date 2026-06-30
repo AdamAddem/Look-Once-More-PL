@@ -58,7 +58,7 @@ void setArgs(unsigned argc, const char* argv[]) {
     std::filesystem::create_directory("src");
     std::ofstream main_lom_file("src/main.lom");
     main_lom_file << "\n\n"
-                     "__C puts(raw<char> str) i32;\n\n"
+                     "__C puts(raw char str) i32;\n\n"
                      "pub fn main() i32 {\n"
                      "\t__C.puts(\"Hello, World!\");\n"
                      "\treturn 0;"

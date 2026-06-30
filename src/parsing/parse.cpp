@@ -225,7 +225,7 @@ struct Body {
     if (tokens.peek_is(TokenType::IDENTIFIER) or tokens.peek_is(TokenType::DUNDER_CEXTERN)) {
       auto const identifier_idx = expression_tree.create(newNodeData(tokens.take(), ASTNode::IDENTIFIER));
 
-      if (not tokens.peek_is(TokenType::DOT) and not tokens.peek_is(TokenType::ARROW))
+      if (not tokens.peek_is(TokenType::DOT))
         return identifier_idx;
 
       tokens.pop();
@@ -254,9 +254,10 @@ struct Body {
       case TokenType::PLUSPLUS: opr = Operator::POST_INCREMENT; break;
       case TokenType::MINUSMINUS: opr = Operator::POST_DECREMENT; break;
       case TokenType::ARROW:
-        tokens.pop();
         if (not tokens.peek_is(TokenType::IDENTIFIER)) { opr = Operator::ARROW; break; }
-        left = expression_tree.create(newNodeData(token, ASTNode::MEMBER_ACCESS), left, generatePostfixExpression()); // identifier following arrow should only occur when accessing a member
+
+        tokens.pop();
+        left = expression_tree.create(newNodeData(token, ASTNode::MEMBER_ACCESS), left, generatePrimaryExpression()); // identifier following arrow should only occur when accessing a member
         continue;
 
       case TokenType::LPAREN:

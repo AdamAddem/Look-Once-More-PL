@@ -117,7 +117,7 @@ struct InstantiatedType {
 
   [[nodiscard]] constexpr std::string
   toString() const noexcept
-  { return (qualifiers.is_mutable ? "mut " : "") + type->toString(); }
+  { return (qualifiers.is_mutable ? "$" : "") + type->toString(); }
 private:
   [[no_unique_address]] struct Empty { constexpr bool operator==(const Empty&) const noexcept = default; }
   make_nonstandard_layout_for_packing_optimizations;

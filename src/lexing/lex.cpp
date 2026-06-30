@@ -149,6 +149,7 @@ struct Tokenizer {
     case '.': type = DOT; break;
     case ':': type = COLON; break;
     case ';': type = SEMI_COLON; break;
+    case '$': type = KEYWORD_MUT; break;
     case '\"': return grabStringLiteral();
     case '\'': return grabCharLiteral();
 

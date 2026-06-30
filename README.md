@@ -4,26 +4,25 @@ a LLVM backend; It is written as a passion project, and successfully compiles wi
 
 My main goal is to create a language that mirrors the performance and freedom that C++ provides while ditching many of the legacy practices.
 I want to prioritize improvements to the language over all else without being held back by tradition or long term backwards compatability.
-Below are language features that intend to improve upon C++.
 
 ### Features of Look Once More (Subject to Change)
 
 * Improved defaults
     ```
     i32 const_num = 5;  
-    mut i32 mutable_num = 4;
+    $i32 mutable_num = 4;
     
-    mut f32 uninitialized = junk;     // explicit junk initialization required
-    mut f32 not_allowed;              // error
+    $f32 uninitialized = junk;     // explicit junk initialization required
+    $f32 not_allowed;              // error
     f32 const_not_allowed = junk;     // error
 * Simple, intuitive pointer syntax
     ```
     // Pointer declarations are simply read left to right
-    raw<i32> x = null;              // Raw pointer to an integer
-    vague<mut> z = null;            // Pointer to anything mutable (void* equivalent)
+    raw i32 x = null;              // Raw pointer to an integer
+    vague$ z = null;            // Pointer to anything mutable (void* equivalent)
     
     // Uniform dereference syntax
-    raw<mut Rectangle> p = ...;
+    raw $Rectangle p = junk;
     p->length = 2;                    // Dereference to access member
     p-> = getSquare();                // Dereference to access object (*p equivalent)
 * Native variant, tuple, and nullable types (planned)
@@ -38,25 +37,16 @@ Below are language features that intend to improve upon C++.
     // Global variables may not be junk initialized.
     // Global variables must be initialized at compile time.
 
-    global mut i32 x = junk;    // error
-    global mut f32 y = 4.0f;
+    global $i32 x = junk;    // error
+    global $f32 y = 4.0f;
   
     fn foo() {...}  
     
     global i32 too_late = 5;    // error
-* Steal semantics (planned)
-    ```
-    fn foo(Resource param) {...}
-  
-    fn bar() {
-        Resource x = ...;
-        foo(steal x);
-        x.doThing() //error: x no longer usable
-    }
 * Strong typing and simple promotion rules
     ```
-    // No implicit conversions, with the exception of unsigned -> signed conversions where the signed type is of greater size
-    mut i8 signed_8 = 0; mut u8 unsigned_8 = 0; mut i32 signed_32 = 0; mut u32 unsigned_32 = 0;
+    // No implicit conversions, with the exception of unsigned to signed conversions where the signed type is of greater size
+    $i8 signed_8 = 0; $u8 unsigned_8 = 0; $i32 signed_32 = 0; $u32 unsigned_32 = 0;
     unsigned_32 = signed_8;   // error
     unsigned_32 = unsigned_8;
     signed_32 = unsigned_8;
@@ -68,10 +58,9 @@ Below are language features that intend to improve upon C++.
 * An actual module system (100% adoption rate)
   ```
   import whatever;
-  
   pub fn bar() {...}
 
-  fn foo() -> i32 {
+  fn foo() i32 { // visible only within current module
     return whatever.getNum() + 2;
   }
 ---

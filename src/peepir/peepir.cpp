@@ -76,10 +76,6 @@ struct TreeView {
     return false;
   }
 
-  [[nodiscard]] constexpr u64_t
-  take_scoped() noexcept
-  { assert(begin->m.type == ASTNode::SCOPED); return (begin++)->sub_statements(); }
-
   constexpr void
   undo() noexcept
   { --begin; }
@@ -91,18 +87,18 @@ struct TreeView {
 
 struct ExpressionResult {
   Type const* type;
-  InstantiatedType::Qualifiers qualifiers;
+  Type::Qualifiers qualifiers;
   u16_t length_in_file;
   u32_t position_in_file;
 
   ExpressionResult() = default;
-  ExpressionResult(InstantiatedType t, ASTNode node)
+  ExpressionResult(QualifiedType t, ASTNode node)
   : type(t.type), qualifiers(t.qualifiers), length_in_file(node.m.length_in_file), position_in_file(node.m.position_in_file) {}
 
-  ExpressionResult(InstantiatedType t, u16_t length_in_file, u32_t position_in_file)
+  ExpressionResult(QualifiedType t, u16_t length_in_file, u32_t position_in_file)
  : type(t.type), qualifiers(t.qualifiers), length_in_file(length_in_file), position_in_file(position_in_file) {}
 
-  InstantiatedType instantiated_type() const noexcept { return {type, qualifiers}; }
+  QualifiedType instantiated_type() const noexcept { return {type, qualifiers}; }
 };
 
 class Peeper {
@@ -160,9 +156,8 @@ class Peeper {
   }
 
   ExpressionResult
-  peepLiteral() {
-    auto node = nodes.take();
-    switch (node.m.type) { using enum ASTNode::Type;
+  peepLiteral(ASTNode node) {
+    switch (node.m.type) { using enum ASTNode::NodeType;
     case SIGNED_LITERAL:
       instructions.emplace_back(Instruction::I8_LITERAL, std::bit_cast<u64_t>(node.signed_val())); // signed and unsigned sizes will be adjusted later
       return {signedToLiteralInstance(node.signed_val()), node};
@@ -189,14 +184,14 @@ class Peeper {
   }
 
   ExpressionResult
-  peepMemberAccess() {
+  peepMemberAccess(ASTNode::MemberAccessData data) {
     auto const member_access_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP, 0).~Instruction(); // doing this to reuse the constructor
 
     if (nodes.peek().m.type == ASTNode::IDENTIFIER) {
       static constexpr auto module_search_predicate = [](const Module* element, std::string_view name) { return element->nameof() == name; };
 
-      auto const possible_module = imports.search(module_search_predicate, nodes.peek().identifier(*current_file));
+      auto const possible_module = imports.search(module_search_predicate, nodes.peek().identifier_val(*current_file));
       if (possible_module == nullptr) goto not_module;
       nodes.pop();
 
@@ -204,18 +199,18 @@ class Peeper {
       auto const other_module = *possible_module;
 
       auto const member_node = nodes.take();
-      auto const member_name = std::string_view(member_node.identifier(*current_file));
+      auto const member_name = std::string_view(member_node.identifier_val(*current_file));
       if (auto const member_variable = other_module->getPublicVariable(member_name)) {
         eden_unreachable("Globals unimplemented.");
         assert(member_variable->get_id() not_eq SymbolTable::INVALID_ID);
         new (member_access_instruction) Instruction(Instruction::MODULE_GLOBAL, other_module, member_variable->get_id());
-        return {member_variable->type, member_node};
+        return {member_variable->type, data.length_in_file, data.position_in_file};
       }
 
       if (auto const member_function = other_module->getPublicFunction(member_name)) {
         assert(member_function->get_id() not_eq SymbolTable::INVALID_ID);
         new (member_access_instruction) Instruction(Instruction::MODULE_FUNCTION, other_module, member_function->get_id());
-        return {{member_function->type, {}}, member_node};
+        return {{member_function->type, {}}, data.length_in_file, data.position_in_file};
       }
 
       report_error(*current_file, member_node.m.length_in_file, member_node.m.position_in_file, "Identifier is not a public member of module.");
@@ -233,7 +228,7 @@ class Peeper {
     auto const custom_type = object_expression.type->castToCustom();
     auto const member_table = custom_type->member_table();
     auto const identifier_node = nodes.take();
-    auto const identifier = std::string_view(identifier_node.identifier(*current_file));
+    auto const identifier = std::string_view(identifier_node.identifier_val(*current_file));
 
     if (auto const member_variable = member_table->getPublicVariable(identifier)) {
       assert(member_variable->get_id() not_eq SymbolTable::INVALID_ID);
@@ -241,12 +236,12 @@ class Peeper {
       new (member_access_instruction) Instruction(Instruction::TYPE_VARIABLE, custom_type, member_variable->get_id());
       return{
         {member_variable->type.type, object_expression.qualifiers}, // use the member's type and the object's qualifiers, member shouldn't have qualifiers regardless
-        identifier_node};
+        data.length_in_file, data.position_in_file};
     }
 
     if (auto const member_function = member_table->getPublicFunction(identifier)) {
       eden_unreachable("Member functions unimplemented."); assert(member_function->get_id() not_eq SymbolTable::INVALID_ID);
-      return { {member_function->type, {}}, identifier_node};
+      return { {member_function->type, {}}, data.length_in_file, data.position_in_file};
     }
 
     new (member_access_instruction) Instruction(Instruction::UCAST, 0); // this is only here to avoid the UB from double destruction once this returns
@@ -255,9 +250,13 @@ class Peeper {
     return {error_literal, identifier_node};
   }
 
+#define pre assert(data.type == ASTNode::IDENTIFIER);
   ExpressionResult
-  peepIdentifier(std::string_view identifier) {
-    auto const [len, pos] = current_file->len_and_pos_from_view(identifier);
+  peepIdentifier(ASTNode::IdentifierData data) { pre
+    // data.decl_type should NOT be used here
+    auto const identifier = current_file->view_at(data.length_in_file, data.position_in_file);
+    auto const len = data.length_in_file;
+    auto const pos = data.position_in_file;
 
     if (auto const variable = module->getLocal(identifier)) {
       instructions.emplace_back(Instruction::LOCAL, variable->second + 1); // adjust by 1 accounting for return type
@@ -275,56 +274,53 @@ class Peeper {
   }
 
   ExpressionResult
-  peepCastExpression(Type const* cast_type) {
+  peepCastExpression(ASTNode::CastData data) {
     auto const cast_idx = instructions.size();
-    instructions.emplace_back(Instruction::NOOP, std::bit_cast<u64_t>(cast_type));
+    instructions.emplace_back(Instruction::NOOP, std::bit_cast<u64_t>(data.cast_type));
 
     auto const casted_expr = peepExpression();
-    if (not casted_expr.type->castableTo(cast_type)) {
-      report_error(*current_file, casted_expr.length_in_file, casted_expr.position_in_file, std::format("Invalid cast from {} to {}", casted_expr.type->toString(), cast_type->toString()));
-      return {error_literal, casted_expr.length_in_file, casted_expr.position_in_file};
+    if (not casted_expr.type->castableTo(data.cast_type)) {
+      report_error(*current_file, casted_expr.length_in_file, casted_expr.position_in_file,
+        std::format("Invalid cast from {} to {}",
+        casted_expr.type->toString(), data.cast_type->toString()));
+      return {error_literal, data.length_in_file, data.position_in_file};
     }
 
     auto& cast_instruction = instructions[cast_idx];
     cast_instruction.type = castForType(casted_expr.type);
-    return {{cast_type, {}}, casted_expr.length_in_file, casted_expr.position_in_file};
+    return {{data.cast_type, {}}, data.length_in_file, data.position_in_file};
   }
 
   ExpressionResult
-  peepCallingExpression(u64_t call_parameter_count) {
-    instructions.emplace_back(Instruction::CALL, call_parameter_count);
+  peepCallingExpression(ASTNode::CallingData data) {
+    instructions.emplace_back(Instruction::CALL, data.num_parameters);
     auto const called = peepExpression();
     if (not called.type->isCallable()) {
       report_error(*current_file, called.length_in_file, called.position_in_file, "Call operator used on non-callable.");
       return {error_literal, called.length_in_file, called.position_in_file};
     }
 
-    if (not called.type->isFunction()) {
-      if (called.type not_eq Type::error())
-        report_error(*current_file, called.length_in_file, called.position_in_file, "Internal error: Callable non-functions unimplemented.");
-      return {error_literal, called.length_in_file, called.position_in_file};
-    }
+    assert(called.type->isFunction() or called.type == Type::error());
 
     FunctionType const* function_type = called.type->castToFunction();
     auto const function_parameter_types = function_type->parameterTypes();
     auto const function_parameter_count = function_parameter_types.size();
     bool const variadic = function_type->isVariadic();
 
-    if (call_parameter_count < function_parameter_count) {
+    if (data.num_parameters < function_parameter_count) {
       report_error(*current_file, called.length_in_file, called.position_in_file, "Too few parameters for function call.");
       return {error_literal, called.length_in_file, called.position_in_file};
     }
 
-    if (call_parameter_count > function_parameter_count and not variadic) {
+    if (data.num_parameters > function_parameter_count and not variadic) {
       report_error(*current_file, called.length_in_file, called.position_in_file, "Too many parameters for function call.");
       return {error_literal, called.length_in_file, called.position_in_file};
     }
 
     auto i{0uz};
-    ExpressionResult given_parameter{called}; // placed outside of the loop's scope so I can calculate the combined size of the call
     for (; i<function_parameter_count; ++i) {
       auto const given_parameter_idx = instructions.size();
-      given_parameter = peepExpression();
+      auto given_parameter = peepExpression();
       auto const function_parameter_type = function_parameter_types[i];
 
       if (given_parameter.type not_eq function_parameter_type) {
@@ -341,29 +337,27 @@ class Peeper {
     }
 
     if (variadic) {
-      for (; i<call_parameter_count; ++i)
-        given_parameter = peepExpression();
+      for (; i<data.num_parameters; ++i)
+        (void)peepExpression();
     }
 
-    auto const combined_with_last = combineTokens({called.length_in_file, called.position_in_file}, {given_parameter.length_in_file, given_parameter.position_in_file});
-    return {{function_type->returnType(), {}}, combined_with_last.first, combined_with_last.second};
+    return {{function_type->returnType(), {}}, data.length_in_file, data.position_in_file};
   }
 
   //TODO: Add Short Circuiting
   ExpressionResult
-  peepBinaryExpression(Operator opr) {
+  peepBinaryExpression(ASTNode::BinaryData data) {
     auto const opr_idx = instructions.size(); instructions.emplace_back(Instruction::NOOP, 0);
 
     auto const left_idx = instructions.size();
     auto left = peepExpression();
 
-    const bool left_signed = left.type->isSignedIntegral();
-    const bool left_float = left.type->isFloating();
-    const bool arithmetic = left.type->isArithmetic();
+    bool const left_signed = left.type->isSignedIntegral();
+    bool const left_float = left.type->isFloating();
+    bool const arithmetic = left.type->isArithmetic();
 
     auto const right_idx = instructions.size();
     auto right = peepExpression();
-    auto const combined_token = combineTokens( {left.length_in_file, left.position_in_file}, {right.length_in_file, right.position_in_file} );
 
     if (left.type not_eq right.type) { // if left or right is an integer literal, coerce its type to the other
       if (coerce_if_integerliteral(instructions[left_idx], right.type))
@@ -371,20 +365,23 @@ class Peeper {
       else if (coerce_if_integerliteral(instructions[right_idx], left.type))
         right.type = left.type;
       else {
-        report_error(*current_file, combined_token.first, combined_token.second, std::format("Right type {} in binary expression incompatable with left type {}.", left.type->toString(), operatorToString(opr), right.type->toString()));
-        left = {error_literal, combined_token.first, combined_token.second};
+        report_error(*current_file, data.length_in_file, data.position_in_file,
+          std::format("Right type {} in binary expression incompatable with left type {}.",
+          left.type->toString(), operatorToString(data.opr), right.type->toString()));
+
+        left = {error_literal, data.length_in_file, data.position_in_file};
       }
     }
 
-    switch (opr) { // first switch validates
+    switch (data.opr) { // first switch validates
     case Operator::ADD:
     case Operator::SUBTRACT:
     case Operator::MULTIPLY:
     case Operator::DIVIDE:
     case Operator::MODULUS:
       if (not arithmetic) {
-        report_error(*current_file, combined_token.first, combined_token.second, "Non-arithmetic expressions in arithmetic binary operation.");
-        left = {error_literal, combined_token.first, combined_token.second};
+        report_error(*current_file, data.length_in_file, data.position_in_file, "Non-arithmetic expressions in arithmetic binary operation.");
+        left = {error_literal, data.length_in_file, data.position_in_file};
         break;
       }
 
@@ -396,32 +393,32 @@ class Peeper {
     case Operator::LESS_EQUAL:
     case Operator::GREATER_EQUAL:
       if (not arithmetic) {
-        report_error(*current_file, combined_token.first, combined_token.second, "Non-arithmetic expressions in arithmetic binary operation.");
-        left = {error_literal, combined_token.first, combined_token.second};
+        report_error(*current_file, data.length_in_file, data.position_in_file, "Non-arithmetic expressions in arithmetic binary operation.");
+        left = {error_literal, data.length_in_file, data.position_in_file};
         break;
       }
 
-      left = {bool_literal, combined_token.first, combined_token.second};
+      left = {bool_literal, data.length_in_file, data.position_in_file};
       break;
 
     case Operator::AND:
     case Operator::OR:
     case Operator::XOR:
       if (not left.type->isBool()) {
-        report_error(*current_file, combined_token.first, combined_token.second, "Non-boolean expressions in boolean binary operation.");
-        left = {error_literal, combined_token.first, combined_token.second};
+        report_error(*current_file, data.length_in_file, data.position_in_file, "Non-boolean expressions in boolean binary operation.");
+        left = {error_literal, data.length_in_file, data.position_in_file};
         break;
       }
 
-      left = {bool_literal, combined_token.first, combined_token.second};
+      left = {bool_literal, data.length_in_file, data.position_in_file};
       break;
 
     case Operator::BITAND:
     case Operator::BITOR:
     case Operator::BITXOR:
       if (not arithmetic) {
-        report_error(*current_file, combined_token.first, combined_token.second, "Non-arithmetic expressions in bitwise operation.");
-        left = {error_literal, combined_token.first, combined_token.second};
+        report_error(*current_file, data.length_in_file, data.position_in_file, "Non-arithmetic expressions in bitwise operation.");
+        left = {error_literal, data.length_in_file, data.position_in_file};
         break;
       }
 
@@ -430,14 +427,14 @@ class Peeper {
 
     case Operator::ASSIGN:
       if (not left.qualifiers.is_mutable) {
-        report_error(*current_file, combined_token.first, combined_token.second, "Left expression in assignment non-mutable.");
-        left = {error_literal, combined_token.first, combined_token.second};
+        report_error(*current_file, data.length_in_file, data.position_in_file, "Left expression in assignment non-mutable.");
+        left = {error_literal, data.length_in_file, data.position_in_file};
       }
       break;
 
     case Operator::EQUAL:
     case Operator::NOT_EQUAL:
-      left = {bool_literal, combined_token.first, combined_token.second};
+      left = {bool_literal, data.length_in_file, data.position_in_file};
       break;
 
     default:
@@ -445,7 +442,7 @@ class Peeper {
     }
 
     auto& opr_instruction = instructions[opr_idx];
-    switch (opr) { // second sets the right instruction
+    switch (data.opr) { // second sets the right instruction
     case Operator::ADD:
       opr_instruction.type = left_float ? Instruction::FADD : Instruction::ADD;
       return left;
@@ -521,11 +518,11 @@ class Peeper {
   }
 
   ExpressionResult
-  peepUnaryExpression(Operator opr) {
-    if (opr == Operator::ADDRESS_OF) {
+  peepUnaryExpression(ASTNode::UnaryData data) {
+    if (data.opr == Operator::ADDRESS_OF) {
       instructions.emplace_back(Instruction::ADDRESS_OF, 0);
       auto const addressed = peepExpression();
-      return {{module->getRawPointerType(addressed.instantiated_type()), {}}, addressed.length_in_file, addressed.position_in_file };
+      return {{module->getRawPointerType(addressed.instantiated_type()), {}}, data.length_in_file, data.position_in_file };
     }
 
     auto const instruction_idx = instructions.size();
@@ -534,7 +531,7 @@ class Peeper {
     auto expression = peepExpression();
     const bool float_opr = expression.type->isFloating();
     const bool arithmetic = expression.type->isArithmetic();
-    switch (opr) {
+    switch (data.opr) {
     case Operator::PRE_INCREMENT:
     case Operator::PRE_DECREMENT:
       if (not expression.qualifiers.is_mutable) {
@@ -589,7 +586,7 @@ class Peeper {
     }
 
     auto& instruction = instructions[instruction_idx];
-    switch (opr) {
+    switch (data.opr) {
     case Operator::PRE_INCREMENT:
       instruction.type = float_opr ? Instruction::FPRE_INC : Instruction::PRE_INC;
       return expression;
@@ -622,15 +619,14 @@ class Peeper {
 
   [[nodiscard]] ExpressionResult
   peepExpression() {
-    auto const& node = nodes.take();
-    switch (node.m.type) {
-    using enum ASTNode::Type;
-    case MEMBER_ACCESS:    return peepMemberAccess();
-    case UNARY:            return peepUnaryExpression(node.operator_val());
-    case BINARY:           return peepBinaryExpression(node.operator_val());
-    case CALLING:          return peepCallingExpression(node.parameter_count());
-    case IDENTIFIER:       return peepIdentifier(node.identifier(*current_file));
-    case CAST:             return peepCastExpression(node.cast_type());
+    auto const node = nodes.take();
+    switch (node.m.type) { using enum ASTNode::NodeType;
+    case MEMBER_ACCESS:    return peepMemberAccess(node.member_access_data);
+    case UNARY:            return peepUnaryExpression(node.unary_data);
+    case BINARY:           return peepBinaryExpression(node.binary_data);
+    case CALLING:          return peepCallingExpression(node.calling_data);
+    case IDENTIFIER:       return peepIdentifier(node.identifier_data);
+    case CAST:             return peepCastExpression(node.cast_data);
 
     case SIGNED_LITERAL:
     case UNSIGNED_LITERAL:
@@ -638,13 +634,13 @@ class Peeper {
     case DOUBLE_LITERAL:
     case BOOL_LITERAL:
     case CHAR_LITERAL:
-    case STRING_LITERAL:   nodes.undo(); return peepLiteral();
+    case STRING_LITERAL:   return peepLiteral(node);
 
     default: eden_unreachable("Invalid ASTNode while peeping expression.");
     }
   }
 
-  void adjustAssignExpression(Instruction& assign, InstantiatedType left, InstantiatedType right) const noexcept {
+  void adjustAssignExpression(Instruction& assign, QualifiedType left, QualifiedType right) const noexcept {
     if (left.type not_eq right.type and not left.type->isPointer()) {
       assign.type = right.type->isSignedIntegral() ? Instruction::SCAST_ASSIGN : Instruction::UCAST_ASSIGN;
       assign.value = left.type->bitwidth();
@@ -684,7 +680,7 @@ class Peeper {
     current_block().set_ret();
   }
 
-  void peepScopedStatement(u64_t num_children) {
+  void peepScopedStatement(u32_t num_children) {
     if (num_children == 0)
       return (void)instructions.emplace_back(Instruction::NOOP, 0);
 
@@ -692,7 +688,7 @@ class Peeper {
       peepStatement();
   }
 
-  void peepWhileLoop() {
+  void peepWhileLoop(u32_t num_substatements) {
     br_fallthrough();
     new_block();
     auto const condition_idx = current_block_index();
@@ -704,7 +700,7 @@ class Peeper {
 
     auto const loop_body_idx = current_block_index() + 1;
     force_new_block();
-    peepScopedStatement(nodes.take_scoped());
+    peepScopedStatement(num_substatements);
     if (is_current_block_empty())
       instructions.emplace_back(Instruction::NOOP, 0);
     current_block().set_br(condition_idx);
@@ -714,23 +710,22 @@ class Peeper {
     blocks[condition_idx].set_brc(loop_body_idx, after_loop_idx);
   }
 
-  void peepIfStatement() {
+  void peepIfStatement(u32_t num_substatements) {
     auto const condition = peepExpression();
     if (not condition.type->isBool()) {
       report_error(*current_file, condition.length_in_file, condition.position_in_file, "If statement condition not boolean.");
       return;
     }
 
-    const u32_t condition_block_idx = current_block_index();
-    const u32_t true_block_idx = condition_block_idx + 1;
+    auto const condition_block_idx = current_block_index();
+    auto const true_block_idx = condition_block_idx + 1;
 
     new_block(); //true block
-    auto const num_true_statements = nodes.take_scoped();
-    peepScopedStatement(num_true_statements); //true statement(s)
+    peepScopedStatement(num_substatements); //true statement(s)
 
     new_block(); //false block
-    const u32_t false_block_idx = current_block_index();
-    u32_t after_block_idx = false_block_idx;
+    auto const false_block_idx = current_block_index();
+    auto after_block_idx = false_block_idx;
     if (not nodes.pop_if_empty()) {
       peepStatement();
       blocks.back().set_br(blocks.size());
@@ -741,70 +736,64 @@ class Peeper {
     blocks[condition_block_idx].set_brc(true_block_idx, false_block_idx);
   }
 
-  void peepVarDeclaration() {
-    auto const declaration_type = nodes.take().instance_type();
-    locals.emplace_back(declaration_type.type);
-    auto const name = nodes.take().identifier(*current_file);
+  void peepVarDeclaration(ASTNode::DeclarationData data) {
+    auto const declared = nodes.take();
+    auto const declared_name = declared.identifier_val(*current_file);
+    auto const type = declared.identifier_data.decl_type;
+    auto const qualified_type = QualifiedType{type, data.qualifiers};
+    locals.emplace_back(type);
 
-    if (module->containsLocal(name)) {
-      report_error(*current_file, name, "Redefinition of symbol name in variable declaration.");
+    if (module->containsLocal(declared_name)) {
+      report_error(*current_file, declared_name, "Redefinition of symbol name in variable declaration.");
       return;
     }
 
-    if (nodes.pop_if_empty()) {
-      module->addLocal(name, declaration_type);
+    if (not data.has_init) {
+      module->addLocal(declared_name, qualified_type);
       return;
     }
 
     auto const assign_idx = instructions.size();
     instructions.emplace_back(Instruction::ASSIGN, 0);
     instructions.emplace_back(Instruction::LOCAL, locals.size() - 1);
-    module->addLocal(name, declaration_type);
+    module->addLocal(declared_name, qualified_type);
 
     auto const init_expr_idx = instructions.size();
     auto const init_expr = peepExpression();
-    if (not init_expr.type->coercibleTo(declaration_type.type)) {
+    if (not init_expr.type->coercibleTo(qualified_type.type)) {
       report_error(*current_file, init_expr.length_in_file, init_expr.position_in_file, "Variable initialization's type is not compatible with variable type.");
       return;
     }
 
-    coerce_if_integerliteral(instructions[init_expr_idx], declaration_type.type);
-    adjustAssignExpression(instructions[assign_idx], declaration_type, init_expr.instantiated_type());
+    coerce_if_integerliteral(instructions[init_expr_idx], type);
+    adjustAssignExpression(instructions[assign_idx], qualified_type, init_expr.instantiated_type());
   }
 
   void peepStatement() {
-    auto const& node = nodes.take();
-    switch (node.m.type) {
-    case ASTNode::EMPTY:
+    auto const node = nodes.take();
+    switch (node.m.type) { using enum ASTNode::NodeType;
+    case EMPTY:
       assert(false);
-    case ASTNode::DECLARATION:  return peepVarDeclaration();
-    case ASTNode::IF:           return peepIfStatement();
-    case ASTNode::WHILE:        return peepWhileLoop();
-    case ASTNode::SCOPED:       return peepScopedStatement(node.sub_statements());
-    case ASTNode::RETURN:       return peepReturnStatement();
-    case ASTNode::EXPR_STMT:
-      if (nodes.pop_if_empty())
-        instructions.emplace_back(Instruction::NOOP, 0);
-      else
-        (void)peepExpression();
-      return;
+    case DECLARATION:  return peepVarDeclaration(node.declaration_data);
+    case IF:           return peepIfStatement(node.if_numstatements());
+    case WHILE:        return peepWhileLoop(node.while_numstatements());
+    case RETURN:       return peepReturnStatement();
 
-    case ASTNode::UNARY:
-    case ASTNode::BINARY:
-    case ASTNode::CALLING:
-    case ASTNode::IDENTIFIER:
+    case UNARY:
+    case BINARY:
+    case CALLING:
+    case IDENTIFIER:
       nodes.undo();
       return (void)peepExpression();
 
-    case ASTNode::SIGNED_LITERAL:
-    case ASTNode::UNSIGNED_LITERAL:
-    case ASTNode::FLOAT_LITERAL:
-    case ASTNode::DOUBLE_LITERAL:
-    case ASTNode::BOOL_LITERAL:
-    case ASTNode::CHAR_LITERAL:
-    case ASTNode::STRING_LITERAL:
-      nodes.undo();
-      return (void)peepLiteral();
+    case SIGNED_LITERAL:
+    case UNSIGNED_LITERAL:
+    case FLOAT_LITERAL:
+    case DOUBLE_LITERAL:
+    case BOOL_LITERAL:
+    case CHAR_LITERAL:
+    case STRING_LITERAL:
+      return (void)peepLiteral(node);
 
     default: eden_unreachable("Invalid ASTNode while peeping statement.");
     }

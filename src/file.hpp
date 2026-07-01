@@ -45,7 +45,7 @@ public:
   }
 
   [[nodiscard]] std::string_view
-  view_at(u32_t position, u16_t length) const noexcept
+  view_at(u16_t length, u32_t position) const noexcept
   { return {text.get() + position, static_cast<u64_t>(length)}; }
 
   [[nodiscard]] std::pair<u16_t, u32_t>
@@ -58,13 +58,12 @@ public:
 
 };
 
-// provided two pairs of {length, position}, returns a pair of {length, position} that includes both tokens and everything between
+// returns pair<length, position>
 [[nodiscard]] constexpr std::pair<u16_t, u32_t>
-combineTokens(std::pair<u16_t, u32_t> leftmost, std::pair<u16_t, u32_t> rightmost) {
+combine_spans(u32_t leftmost_pos, u16_t rightmost_len, u32_t rightmost_pos) noexcept {
   return {
-    u16_t(rightmost.second - leftmost.second) + rightmost.first
-    ,
-    leftmost.second
+    u16_t(rightmost_pos - leftmost_pos + rightmost_len),
+    leftmost_pos
   };
 }
 

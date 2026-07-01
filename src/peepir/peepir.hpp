@@ -1,9 +1,8 @@
 #pragma once
-#include "../edenlib/vectors/releasing_vector.hpp"
+#include "edenlib/vectors/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "file.hpp"
 #include "semantic_analysis/symbol_table.hpp"
-#include <unordered_map>
 
 namespace LOM::Parser {
 struct TU;
@@ -244,7 +243,6 @@ public:
       terminator_type = Terminator::RET;
   }
 };
-
 
 struct Function {
   bool is_public;

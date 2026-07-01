@@ -1,11 +1,10 @@
 #pragma once
-#include "file.hpp"
 #include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
+#include "file.hpp"
 #include "tokentype.hpp"
 
 #include <filesystem>
-#include <string>
 #include <vector>
 
 namespace LOM::Lexer {
@@ -15,13 +14,24 @@ struct Token {
   u16_t length;
   u32_t position;
 
+  [[nodiscard]] static constexpr Token
+  combine(Token leftmost, Token rightmost) noexcept {
+    return {
+      leftmost.type,
+      u16_t(rightmost.position - leftmost.position + rightmost.length),
+      leftmost.position
+    };
+  }
+
+
+
   // expensive
   [[nodiscard]] constexpr i64_t
   getSigned(File const& file) const noexcept {
     assume_assert(type == TokenType::SIGNED_LITERAL);
     auto const begin = file.contents().data() + position;
     i64_t res;
-    auto const from_chars_res = std::from_chars(begin, begin + length, res);
+    [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
     return res;
   }
@@ -32,7 +42,7 @@ struct Token {
     assume_assert(type == TokenType::UNSIGNED_LITERAL);
     auto const begin = file.contents().data() + position;
     u64_t res;
-    auto const from_chars_res = std::from_chars(begin, begin + length, res);
+    [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
     return res;
   }
@@ -43,7 +53,7 @@ struct Token {
     assume_assert(type == TokenType::FLOAT_LITERAL);
     auto const begin = file.contents().data() + position;
     float res;
-    auto const from_chars_res = std::from_chars(begin, begin + length, res);
+    [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
     return res;
   }
@@ -54,7 +64,7 @@ struct Token {
     assume_assert(type == TokenType::DOUBLE_LITERAL);
     auto const begin = file.contents().data() + position;
     double res;
-    auto const from_chars_res = std::from_chars(begin, begin + length, res);
+    [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
     return res;
   }
@@ -74,12 +84,12 @@ struct Token {
   [[nodiscard]] constexpr std::string_view
   getString(File const& file) const noexcept {
     assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
-    return file.view_at(position, length);
+    return file.view_at(length, position);
   }
 
   [[nodiscard]] constexpr std::string_view
   originalString(File const& file) const noexcept
-  { return file.view_at(position, length); }
+  { return file.view_at(length, position); }
 
   [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept { return type == token_type; }
   [[nodiscard]] constexpr bool isIdentifier() const noexcept           { return type == TokenType::IDENTIFIER; }

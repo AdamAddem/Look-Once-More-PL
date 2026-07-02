@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <utility>
 
+namespace {
+
 enum class Args {
   OUTPUT_LEXER,
   OUTPUT_PARSER,
@@ -24,12 +26,22 @@ enum class Args {
   O3,
 };
 
-inline const std::unordered_map<std::string, Args> stringToArgs{
-	    {"-emit-lexer", Args::OUTPUT_LEXER}, {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
-            {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
-            {"-o", Args::EXECUTABLE_NAME},{"build", Args::BUILD},
-            {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2}, {"-O3", Args::O3},
+const std::unordered_map<std::string, Args> stringToArgs{
+	      {"-emit-lexer", Args::OUTPUT_LEXER}, {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
+              {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
+              {"-o", Args::EXECUTABLE_NAME},{"build", Args::BUILD},
+              {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2}, {"-O3", Args::O3},
 };
+
+constexpr std::string_view hello_world = {
+  "__C puts(raw char str) i32;"
+  "\npub fn main() i32 {"
+  "\n\t__C.puts(\"Hello, World!\");"
+  "\n\treturn 0;"
+  "\n}"
+};
+
+}
 
 namespace LOM::Settings {
 
@@ -52,15 +64,9 @@ void setArgs(unsigned argc, const char* argv[]) {
   using Filepath = std::filesystem::path;
   if (std::string_view(argv[1]) == "init") {
     std::filesystem::create_directory("build");
-    std::filesystem::create_directory("external");
     std::filesystem::create_directory("src");
     std::ofstream main_lom_file("src/main.lom");
-    main_lom_file << "\n\n"
-                     "__C puts(raw char str) i32;\n\n"
-                     "pub fn main() i32 {\n"
-                     "\t__C.puts(\"Hello, World!\");\n"
-                     "\treturn 0;"
-                     "\n}";
+    main_lom_file << hello_world;
     main_lom_file.close();
     std::quick_exit(0);
   }

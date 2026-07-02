@@ -120,7 +120,7 @@ inline const std::unordered_map<std::string_view, TokenType> stringToTokenType{
 
 
 constexpr const char* tokenTypeToString(const TokenType e) {
-constexpr const char* toString[] = {
+static constexpr const char* toString[] = {
 
 	"INVALID_TOKEN","IDENTIFIER","SIGNED_LITERAL",
 	"UNSIGNED_LITERAL","FLOAT_LITERAL","DOUBLE_LITERAL",

@@ -55,16 +55,17 @@ lex_and_parse_file(
 }
 
 [[nodiscard]] static Parser::TU
-lex_and_parse_module(fs::path const& directory) {
+lex_and_parse_module(fs::path const& directory)  {
   std::vector<Lexer::Token> tokens; tokens.reserve(64);
 
   Parser::TU tu;
+
   { // set up module, this is horrible please change
     assert(not modules.contains(directory.c_str()));
-    const sz_t n = directory.filename().string().size() + 1; // this is so stupid i hate this language
+    auto const n = directory.filename().string().size() + 1; // this is so stupid i hate this language
     auto const module_name = new char[n]; // TODO: fix purposeful memory leak
     std::strcpy(module_name, directory.filename().c_str());
-    const std::string_view key_view(module_name, n-1);
+    std::string_view const key_view(module_name, n-1);
     auto const module_ptr = &modules.emplace(std::pair(key_view, Module{key_view, &types})).first->second;
     tu.module = module_ptr;
   }
@@ -96,6 +97,8 @@ void LOM::build() {
   std::vector<fs::path> module_paths;
   for (auto const& entry : fs::directory_iterator{"src"}) {
     if (entry.is_directory()) {
+      if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue;
+
       module_paths.emplace_back(entry.path().stem());
       parsed_tus.emplace_back(lex_and_parse_module(entry));
       continue;
@@ -113,6 +116,7 @@ void LOM::build() {
   std::vector<std::unique_ptr<Backend>> compiled_tus;
   for (auto i{0uz}; i<parsed_tus.size(); ++i) {
     auto& module_name = module_paths[i];
+
     if (Settings::do_output_parser) {
       std::println("\n--- Parser Output --- {}", module_name.native());
       Parser::printTU(parsed_tus[i]);

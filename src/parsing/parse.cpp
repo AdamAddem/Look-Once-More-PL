@@ -499,7 +499,10 @@ struct Body {
     expression_tree.reset();
 
     try { translateExpression( generateAssignmentExpression() ); }
-    catch (...) { report_error(current_file, tokens.peek_ahead(1), "Expected expression."); }
+    catch (...) {
+      report_error(current_file, tokens.peek_ahead(1), "Expected expression.");
+      nodes.emplace_back(ASTNode::EMPTY, current_file_idx());
+    }
   }
 
   Token parseVarDecl(sz_t decl_node_idx) noexcept {
@@ -660,9 +663,9 @@ struct Body {
   }
 
 #define pre  assert(not tokens.peek_is(TokenType::LBRACE));
-#define post assert(tokens.previous().is(TokenType::RBRACE));
+#define post assert(tokens.previous().is(TokenType::RBRACE) or tokens.previous().is(TokenType::INVALID_TOKEN));
   void parseStatementsBetweenBraces() { pre
-    while (not tokens.pop_if(TokenType::RBRACE))
+    while (not tokens.pop_if(TokenType::RBRACE) and not tokens.peek_is(TokenType::INVALID_TOKEN))
       parseStatement();
   post }
 #undef pre

@@ -2,11 +2,12 @@
 LOM is an ahead-of-time compiled, statically typed, systems level language inspired by C++ and supported by
 a LLVM backend; It is written as a passion project, and successfully compiles with a limited featureset.
 
+### Language Priorities
 My main goal is to create a language that mirrors the performance and freedom that C++ provides while ditching many of the legacy practices.
 I want to prioritize improvements to the language over all else without being held back by tradition or long term backwards compatability.
+Compilation speed is also a priority of mine.
 
 ### Features of Look Once More (Subject to Change)
-
 * Improved defaults
     ```
     i32 const_num = 5;  
@@ -14,17 +15,17 @@ I want to prioritize improvements to the language over all else without being he
     
     $f32 uninitialized = junk;     // explicit junk initialization required
     $f32 not_allowed;              // error
-    f32 const_not_allowed = junk;     // error
+    f32 const_not_allowed = junk;  // error
 * Simple, intuitive pointer syntax
     ```
     // Pointer declarations are simply read left to right
     raw i32 x = null;              // Raw pointer to an integer
-    vague$ z = null;            // Pointer to anything mutable (void* equivalent)
+    vague $ z = null;              // Pointer to anything mutable (void* equivalent)
     
     // Uniform dereference syntax
-    raw $Rectangle p = junk;
-    p->length = 2;                    // Dereference to access member
-    p-> = getSquare();                // Dereference to access object (*p equivalent)
+    raw $Rectangle p = @my_rect;   // GenZ address-of operator (don't @ me bro)
+    p->length = 2;                 // Dereference to access member
+    p-> = getSquare();             // Dereference to access object (*p equivalent)
 * Native variant, tuple, and nullable types (planned)
     ```
     <string, u32> name_or_id = 5;
@@ -77,15 +78,16 @@ Windows support hasn't been tested but feel free to try. <br>
 ### Running
 The executable can be ran with the following arguments:
 ```
-    -init                       Creates a project template.
-    -build                      Builds the project.
-    -o <output>                 Specifies output file name.
-    -validate                   Prints whether the files are legal LOM programs.
-    -O0, O1, O2, O3             Does absolutely nothing for now.
+    -init                Creates a project template.
+    -build               Builds, compiles, and links the project.
+    -o <output>          Specifies output file name.
+    -O0, O1, O2, O3      Sets optimization levels (No effect currently).
     
-    -emit-obj                   Produces object files.
-    -emit-llvm                  Produces the LLVM IR representation of the source code.
-    -emit-asm                   Produces the assembly representation of the source code.
+    -emit-obj            Produces object files.
+    -emit-llvm           Produces the LLVM IR representation of the source code.
+    -emit-asm            Produces the assembly representation of the source code.
+    
+    -emit-<lexer, parser, peep> Prints a textual representation of the respective stage to cout.
 ```
 Visit [GettingStarted](GettingStarted.md) for more information on setting up a project.
 

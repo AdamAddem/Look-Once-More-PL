@@ -34,9 +34,9 @@ struct Tokenizer {
   peek() const noexcept { return file.contents()[current_position]; }
 
   [[nodiscard]] char
-  pop() noexcept { return file.contents()[current_position++]; }
+  take() noexcept { return file.contents()[current_position++]; }
 
-  void skip() noexcept { ++current_position; }
+  void pop() noexcept { ++current_position; }
   void undo() noexcept { --current_position; }
 
   void report_error_at_currentpos(const char* msg) const {
@@ -67,7 +67,7 @@ struct Tokenizer {
   void grabStringLiteral() {
     u16_t length = 0;
     auto const pos = current_position; // grabbing the position after opening quotes
-    auto c = pop();
+    auto c = take();
     while (c not_eq FILE_EOF) {
       switch (c) {
       case '\"': goto ending_quote_found;
@@ -79,7 +79,7 @@ struct Tokenizer {
       default:
         ++length;
       }
-      c = pop();
+      c = take();
     }
 
     ending_quote_found: // don't crucify me for this pls
@@ -89,12 +89,12 @@ struct Tokenizer {
   // called when opening single-quote already consumed
   void grabCharLiteral() {
     u16_t length = 2; auto const pos = current_position;
-    auto const c1 = pop();
-    auto const c2 = pop();
+    auto const c1 = take();
+    auto const c2 = take();
 
     if (c1 == '\\') {
       ++length;
-      if (pop() not_eq '\'')
+      if (take() not_eq '\'')
         report_error_at_currentpos("Expected ending ' in char literal.");
     } else if (c2 not_eq '\'')
         report_error_at_currentpos("Expected ending ' in char literal.");
@@ -106,32 +106,32 @@ struct Tokenizer {
     TokenType type;
     u16_t length = 1;
     auto const pos = current_position;
-    auto const c = pop();
+    auto const c = take();
     auto const peeked = peek();
     switch (c) { using enum TokenType;
     case '+':
-      if (peeked == '+') { skip(); type = PLUSPLUS; length = 2; }
+      if (peeked == '+') { pop(); type = PLUSPLUS; length = 2; }
       else type = PLUS;
       break;
     case '-':
-      if (peeked == '-') { skip(); type = MINUSMINUS; length = 2; }
-      else if (peeked == '>') { skip(); type = ARROW; length = 2; }
+      if (peeked == '-') { pop(); type = MINUSMINUS; length = 2; }
+      else if (peeked == '>') { pop(); type = ARROW; length = 2; }
       else type = MINUS;
       break;
     case '<':
-      if (peeked == '=') { skip(); type = LESSEQ; length = 2;  }
+      if (peeked == '=') { pop(); type = LESSEQ; length = 2;  }
       else type = LESS;
       break;
     case '>':
-      if (peeked == '=') { skip(); type = GTREQ; length = 2;  }
+      if (peeked == '=') { pop(); type = GTREQ; length = 2;  }
       else type = GTR;
       break;
     case '!':
-      if (peeked == '=') { skip(); type = KEYWORD_NOT_EQUAL; length = 2;  }
+      if (peeked == '=') { pop(); type = KEYWORD_NOT_EQUAL; length = 2;  }
       else type = KEYWORD_NOT;
       break;
     case '=':
-      if (peeked == '=') { skip(); type = KEYWORD_EQUALS; length = 2;  }
+      if (peeked == '=') { pop(); type = KEYWORD_EQUALS; length = 2;  }
       else type = ASSIGN;
       break;
 
@@ -168,7 +168,7 @@ struct Tokenizer {
     u16_t newtoken_length = 0;
     auto const newtoken_pos = current_position;
 
-    while ((c = pop()) not_eq '\0') {
+    while ((c = take()) not_eq '\0') {
       if (c == 'f') {
         newtoken_type = TokenType::FLOAT_LITERAL;
         break;
@@ -190,12 +190,12 @@ struct Tokenizer {
 
   void grabIdentOrKeyword() {
     Token new_token{TokenType::INVALID_TOKEN, 0, current_position};
-    auto c = pop();
+    auto c = take();
 
     while (c not_eq '\0') {
       if (not std::isalnum(c) and c not_eq '_') break;
 
-      c = pop();
+      c = take();
       ++new_token.length;
     }
     undo();
@@ -218,19 +218,19 @@ struct Tokenizer {
 
   void skipWS() {
     while (std::isspace(peek())) {
-      auto const c = pop();
+      auto const c = take();
       if (c == '\0') return;
     }
   }
 
+  // true if we skipped comments
   [[nodiscard]] bool
   skipComments() {
-    skip();
+    pop();
     if (peek() == '/') {
-      skip();
+      pop();
 
-      auto c = pop();
-      while ( c not_eq '\n' and c not_eq '\0' ) c = pop();
+      while ( peek() not_eq '\n' and peek() not_eq FILE_EOF ) pop();
       return true;
     }
 
@@ -247,7 +247,7 @@ File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path c
   while (true) {
     tokenizer.skipWS();
     auto const c = tokenizer.peek();
-    if (c == '\0') break;
+    if (c == Tokenizer::FILE_EOF) break;
     if (c == '/' and tokenizer.skipComments()) continue;
 
     if (is_num(c))

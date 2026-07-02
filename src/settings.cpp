@@ -1,13 +1,12 @@
 #include "settings.hpp"
-
 #include "edenlib/typedefs.hpp"
 
 #include <cassert>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <unordered_map>
 #include <utility>
-#include <fstream>
-#include <filesystem>
 
 enum class Args {
   OUTPUT_LEXER,
@@ -26,11 +25,10 @@ enum class Args {
 };
 
 inline const std::unordered_map<std::string, Args> stringToArgs{
-	    {"-emit-lexer", Args::OUTPUT_LEXER}, {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP}, {"-validate", Args::OUTPUT_VALIDATION},
+	    {"-emit-lexer", Args::OUTPUT_LEXER}, {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
             {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
             {"-o", Args::EXECUTABLE_NAME},{"build", Args::BUILD},
-            {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2},
-            {"-O3", Args::O3},
+            {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2}, {"-O3", Args::O3},
 };
 
 namespace LOM::Settings {

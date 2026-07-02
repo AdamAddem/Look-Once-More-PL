@@ -36,7 +36,7 @@ C Interop using structs is untested and probably won't function as expected. I'm
 The C standard library (+ math) is linked to by default. Linking to anything else requires outputting object files and doing so manually. <br>
 
 ### Current Limitations, Missing Features, and Known Bugs
-- Functions may not have greater than 8 parameters, structs may not have greater than 256 members, modules may have no more than 255 files, and no token may exceed the u16 integer limit in length.
+- Functions may not have greater than 8 parameters, structs may not have greater than 256 members, modules may have no more than 256 files, and no token may exceed the u16 integer limit in length.
   - Violating any of these rules will cause a crash, assertion failure, or logical error rather than a standard error message.
   - These limits exist to increase compilation speed.
 - Globals are unsupported until a constant evaluator is made to enforce constant initialization.

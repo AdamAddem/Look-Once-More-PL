@@ -1,11 +1,11 @@
 ### Look Once More
 LOM is an ahead-of-time compiled, statically typed, systems level language inspired by C++ and supported by
-a LLVM backend; It is written as a passion project, and successfully compiles with a limited featureset.
+a LLVM backend; it is written as a passion project, and successfully compiles with a limited featureset.
 
 ### Language Priorities
 My main goal is to create a language that mirrors the performance and freedom that C++ provides while ditching many of the legacy practices.
 I want to prioritize improvements to the language over all else without being held back by tradition or long term backwards compatability.
-Compilation speed is also a priority of mine.
+Compilation speed is also a priority.
 
 ### Features of Look Once More (Subject to Change)
 * Improved defaults

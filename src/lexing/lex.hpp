@@ -132,16 +132,6 @@ public:
     };
   }
 
-
-  // expects that opening_token has already been popped
-  // does NOT include opening or closing token in returned view
-  // will pop closing_token, do not use for opening / closing tokens with a value that matters to you, it WILL be lost
-  // [[nodiscard]] TokenView getTokensBetween(TokenType opening_token, TokenType closing_token);
-  // [[nodiscard]] TokenView getTokensBetweenBraces() { return getTokensBetween(TokenType::LBRACE, TokenType::RBRACE); }
-  // [[nodiscard]] TokenView getTokensBetweenParenthesis() { return getTokensBetween(TokenType::LPAREN, TokenType::RPAREN); }
-  // [[nodiscard]] TokenView getTokensBetweenBrackets() { return getTokensBetween(TokenType::LBRACKET, TokenType::RBRACKET); }
-  // [[nodiscard]] TokenView getTokensBetweenAngleBrackets() { return getTokensBetween(TokenType::LESS, TokenType::GTR); }
-
   // return does not include the type specified
   [[nodiscard]] TokenView getAllTokensUntilFirstOf(TokenType type);
 };

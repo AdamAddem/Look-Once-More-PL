@@ -1,37 +1,42 @@
 #pragma once
 #include "ast.hpp"
 #include "semantic_analysis/symbol_table.hpp"
+#include "file.hpp"
 
 namespace LOM::Lexer {
-class Token;
+struct Token;
 }
 
 namespace LOM::Parser {
+struct TU;
 
 struct Function {
-  std::string_view name;
-  AST::SyntaxTree body;
   bool is_public;
+  u8_t  file_idx;
+  u32_t name_len;
+  const char* name_ptr;
+
+  std::vector<AST::ASTNode> body;
+
+  [[nodiscard]] std::string_view
+  nameof() const noexcept
+  { return {name_ptr, name_len}; }
+
 };
 
 struct TU {
-
-  eden_nonull_args
-  TU(Module* module, std::string_view name)
-  : name(name), module(module) {}
-
-  TU(TU&&) noexcept = default;
-
-  std::string_view name;
-  Module* eden_notnullptr module;
-  AST::SyntaxTree global_tree;
+  std::vector<File> source_files;
+  Module* module;
   std::vector<std::string_view> imports;
   std::vector<Function> functions;
 };
 
-void printTU(TU&);
 
-using TokenIter = std::vector<Lexer::Token>::iterator;
 
-void parseTokens(TU& tu, TokenIter begin, TokenIter end);
+void printTU(TU const&);
+
+void parseTokens(TU& tu, std::vector<Lexer::Token> const& tokens);
+
+inline constexpr bool STRUCT_MEMBERS_START_PUBLIC = true;
+
 } // namespace Parser

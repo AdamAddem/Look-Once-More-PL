@@ -1,175 +1,43 @@
 #include "ast.hpp"
-
 #include "edenlib/macros.hpp"
+#include <print>
 
-#include <iostream>
 
-using namespace LOM::AST;
-
-[[nodiscard]] static constexpr bool has_ln(ASTNode::Type type) {
-  return eden::enumBetween(type, ASTNode::DECLARATION, ASTNode::EXPR_STMT) &&
-         type not_eq ASTNode::SCOPED;
-}
-
-static void print(std::vector<ASTNode>::const_iterator &node,
-                  u64_t &ln) noexcept {
-  if (has_ln(node->type())) {
-    while (ln <= node->line_number())
-      std::cout << '\n' << ln++ << ":\t\t";
-  }
-
-  using enum ASTNode::Type;
-  switch (node->type()) {
-  case EMPTY:
-    eden_unreachable("Empty should not be printed.");
-  case DECLARATION:
-    std::cout << (++node)->instance_type().toString() << " ";
-    std::cout << (++node)->identifier() << " = ";
-    if ((++node)->type() == EMPTY)
-      std::cout << "junk";
-    else
-      print(node, ln);
-    return;
-  case IF:
-    std::cout << "if ( ";
-    print(++node, ln);
-    std::cout << " ) ";
-    print(++node, ln);
-    if ((++node)->type() not_eq EMPTY) {
-      std::cout << " else ";
-      print(node, ln);
-    }
-    return;
-  case FOR:
-    std::cout << "for ( " << std::flush;
-    print(++node, ln);
-    std::cout << "; ";
-    print(++node, ln);
-    std::cout << "; ";
-    print(++node, ln);
-    std::cout << " )";
-    print(++node, ln);
-    return;
-  case WHILE:
-    std::cout << "while ( ";
-    print(++node, ln);
-    std::cout << " )";
-    return print(++node, ln);
-  case SCOPED: {
-    const u64_t num_children = node->sub_statements();
-    if (num_children == 0)
-      return;
-
-    std::cout << "{ ";
-    for (auto i{0uz}; i < num_children; ++i) {
-      print(++node, ln);
-      std::cout << ';';
-    }
-    std::cout << " }";
-    return;
-  }
-  case RETURN:
-    std::cout << "return ";
-    if ((++node)->type() not_eq EMPTY)
-      print(node, ln);
-    return;
-  case EXPR_STMT:
-    return print(++node, ln);
-  case UNARY: {
-    const auto opr = node->operator_val();
-    const char *opr_str = operatorToString(opr);
-    assert(isCategoryUNARY_OPS(opr));
-
-    std::cout << '(';
-    if (isCategoryPREFIX_OPS(opr)) {
-      std::cout << opr_str;
-      if (opr == Operator::NOT or opr == Operator::BITNOT)
-        std::cout << ' ';
-
-      print(++node, ln);
-    } else {
-      print(++node, ln);
-      std::cout << opr_str;
-    }
-    std::cout << ')';
-    return;
-  }
-  case BINARY: {
-    const auto opr = node->operator_val();
-    const char *opr_str = operatorToString(opr);
-    assert(isCategoryBINARY_OPS(opr));
-
-    std::cout << '(';
-    print(++node, ln);
-    std::cout << ' ' << opr_str << ' ';
-    print(++node, ln);
-    std::cout << ')';
-    return;
-  }
-  case CALLING: {
-    u64_t num_params = node->parameter_count();
-    print(++node, ln);
-
-    std::cout << '(';
-    if (num_params == 0) {
-      std::cout << ')';
-      return;
-    }
-
-    while (num_params--) {
-      print(++node, ln);
-      std::cout << ", ";
-    }
-    std::cout << "\b\b)";
-    return;
-  }
-  case SUBSCRIPT:
-  case DOT_IDENTIFIER:
-    std::cout << node++->identifier() << ". ";
-    print(node, ln);
-    return;
-  case IDENTIFIER:
-    std::cout << node->identifier();
-    return;
-  case CAST:
-    std::cout << "cast<" << node->cast_type()->toString()
-    << ">("; print(++node, ln); std::cout << ")";
-    return;
-  case SIGNED_LITERAL:
-    std::cout << node->signed_val();
-    return;
-  case UNSIGNED_LITERAL:
-    std::cout << node->unsigned_val();
-    return;
-  case FLOAT_LITERAL:
-    std::cout << node->float_val();
-    return;
-  case DOUBLE_LITERAL:
-    std::cout << node->double_val();
-    return;
-  case BOOL_LITERAL:
-    std::cout << (node->bool_val() ? "true" : "false");
-    return;
-  case CHAR_LITERAL:
-    std::cout << node->char_val();
-    return;
-  case STRING_LITERAL:
-    std::cout << '"' << node->string_val() << '"';
-    return;
-  default:
-    eden_unreachable("Invalid literal astnode type.");
-  }
-}
-
-void SyntaxTree::print(u64_t starting_line_number) const noexcept {
-  if (nodes.empty())
-    return;
+namespace LOM::AST {
+void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
 
   auto curr = nodes.begin();
   const auto end = nodes.end();
+  std::print("\n");
+
   while (curr not_eq end) {
-    ::print(curr, starting_line_number);
-    std::cout << "; ";
+    using enum ASTNode::NodeType;
+    switch (curr->m.type) {
+    case EMPTY: std::print("EMPTY"); break;
+    case DECLARATION: std::print("DECLARATION WITH TYPE {}", QualifiedType{(curr + 1)->declaration_identifier_val(), curr->declaration_qualifiers()}.toString()); break;
+    case IF: std::print("IF{} W/ {} SUB_STATEMENTS", curr->if_has_else() ? " W/ ELSE" : "", curr->if_numstatements()); break;
+    case WHILE: std::print("WHILE W/ {} SUB_STATEMENTS", curr->while_numstatements()); break;
+    case RETURN: std::print("RETURN{}", curr->return_has_value() ? "" : " W/ NO VALUE"); break;
+
+    case MEMBER_ACCESS: std::print("MEMBER_ACCESS"); break;
+    case UNARY: std::print("UNARY: {}", operatorToString(curr->unary_operator())); break;
+    case BINARY: std::print("BINARY: {}", operatorToString(curr->binary_operator())); break;
+    case CALLING: std::print("CALLING W/ {} PARAMETERS", curr->parameter_count()); break;
+    case IDENTIFIER: std::print("IDENTIFIER: {}", curr->identifier_val(file)); break;
+    case CAST: std::print("CAST TO {}", curr->cast_type()->toString()); break;
+
+    case SIGNED_LITERAL: std::print("SIGNED_LITERAL: {}", curr->signed_val()); break;
+    case UNSIGNED_LITERAL: std::print("UNSIGNED_LITERAL: {}", curr->unsigned_val()); break;
+    case FLOAT_LITERAL: std::print("FLOAT_LITERAL: {}", curr->float_val()); break;
+    case DOUBLE_LITERAL: std::print("DOUBLE_LITERAL: {}", curr->double_val()); break;
+    case BOOL_LITERAL: std::print("BOOL_LITERAL: {}", curr->bool_val()); break;
+    case CHAR_LITERAL: std::print("CHAR_LITERAL: {}", curr->char_val()); break;
+    case STRING_LITERAL: std::print("STRING_LITERAL: {}", curr->string_val(file)); break;
+
+    default: eden_unreachable("Invalid ASTNode Type.");
+    }
+    std::println();
     ++curr;
   }
+}
 }

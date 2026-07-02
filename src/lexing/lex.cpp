@@ -1,371 +1,271 @@
+#include "edenlib/vectors/releasing_vector.hpp"
 #include "lex.hpp"
-
-#include "edenlib/releasing_vector.hpp"
 #include "error.hpp"
-#include "settings.hpp"
 
 #include <cassert>
 #include <cctype>
-#include <fstream>
 #include <unordered_map>
 #include <vector>
 
 namespace {
-
 using namespace LOM;
 using namespace LOM::Lexer;
 using eden::releasing_string;
 using eden::flags::reserve_initial;
 
-struct FileInAnalysis {
-  std::ifstream stream;
-  u32_t needs_closing_paren{0};
-  u32_t line_number{1};
-  std::vector<Token>& token_list;
+[[nodiscard]] bool
+canStartIdentifier(char c)
+{ return std::isalpha(c) or c == '_'; }
 
-  FileInAnalysis(const std::filesystem::path& file_path, std::vector<Token>& token_list)
-  : stream(file_path), token_list(token_list) {}
+[[nodiscard]] bool
+is_num(char c)
+{ return c >= '0' and c <= '9'; }
+
+struct Tokenizer {
+  std::vector<Token>& token_list;
+  File file;
+  u32_t current_position{};
+
+  static constexpr char FILE_EOF = '\0';
+  explicit Tokenizer(std::vector<Token>& token_list, std::filesystem::path const& path)
+  : token_list(token_list), file(path) {}
+
+  [[nodiscard]] char
+  peek() const noexcept { return file.contents()[current_position]; }
+
+  [[nodiscard]] char
+  peek_ahead(sz_t i = 1) const noexcept { return file.contents()[current_position + i]; }
+
+  [[nodiscard]] char
+  take() noexcept { return file.contents()[current_position++]; }
+
+  void pop() noexcept { ++current_position; }
+  void undo() noexcept { --current_position; }
+
+  void report_error_at_currentpos(const char* msg) const {
+    report_error(file, 1, current_position, msg);
+  }
+
+  [[maybe_unused]] [[nodiscard]] char
+  charToEscapeSequenceEquivalent(char c) {
+    switch (c) {
+    case 'n':   return '\n';
+    case 't':   return '\t';
+    case 'b':   return '\b';
+    case 'r':   return '\r';
+    case 'f':   return '\f';
+    case '\\':  return '\\';
+    case '"':   return '"';
+    case '\'':  return '\'';
+    case '0':   return '\0';
+    case 'v':   return '\v';
+
+    default:
+      report_error(file, 2, current_position - 1, "Unknown escape sequence.");
+      return '?';
+    }
+  }
+
+  // called when opening quotes already consumed
+  void grabStringLiteral() {
+    u16_t length = 0;
+    auto const pos = current_position; // grabbing the position after opening quotes
+    auto c = take();
+    while (c not_eq FILE_EOF) {
+      switch (c) {
+      case '\"': goto ending_quote_found;
+
+      case '\n':
+      case FILE_EOF:
+        report_error_at_currentpos("Expected ending \" in string literal.");
+        goto ending_quote_found;
+      default:
+        ++length;
+      }
+      c = take();
+    }
+
+    ending_quote_found: // don't crucify me for this pls
+      token_list.emplace_back(TokenType::STRING_LITERAL, length, pos);
+  }
+
+  // called when opening single-quote already consumed
+  void grabCharLiteral() {
+    u16_t length = 2; auto const pos = current_position;
+    auto const c1 = take();
+    auto const c2 = take();
+
+    if (c1 == '\\') {
+      ++length;
+      if (take() not_eq '\'')
+        report_error_at_currentpos("Expected ending ' in char literal.");
+    } else if (c2 not_eq '\'')
+        report_error_at_currentpos("Expected ending ' in char literal.");
+
+    token_list.emplace_back(TokenType::CHAR_LITERAL, length, pos);
+  }
+
+  void grabSymbol() {
+    TokenType type;
+    u16_t length = 1;
+    auto const pos = current_position;
+    auto const c = take();
+    auto const peeked = peek();
+    switch (c) { using enum TokenType;
+    case '+':
+      if (peeked == '+') { pop(); type = PLUSPLUS; length = 2; }
+      else type = PLUS;
+      break;
+    case '-':
+      if (peeked == '-') { pop(); type = MINUSMINUS; length = 2; }
+      else if (peeked == '>') { pop(); type = ARROW; length = 2; }
+      else type = MINUS;
+      break;
+    case '<':
+      if (peeked == '=') { pop(); type = LESSEQ; length = 2;  }
+      else type = LESS;
+      break;
+    case '>':
+      if (peeked == '=') { pop(); type = GTREQ; length = 2;  }
+      else type = GTR;
+      break;
+    case '!':
+      if (peeked == '=') { pop(); type = KEYWORD_NOT_EQUAL; length = 2;  }
+      else type = KEYWORD_NOT;
+      break;
+    case '=':
+      if (peeked == '=') { pop(); type = KEYWORD_EQUALS; length = 2;  }
+      else type = ASSIGN;
+      break;
+
+    case '/': type = SLASH; break;
+    case '*': type = STAR; break;
+    case '%': type = MOD; break;
+    case '(': type = LPAREN; break;
+    case ')': type = RPAREN; break;
+    case '{': type = LBRACE; break;
+    case '}': type = RBRACE; break;
+    //case '[': type = LBRACKET; break;
+    //case ']': type = RBRACKET; break; // re-implement when adding arrays
+    case '@': type = ADDR; break;
+    case ',': type = COMMA; break;
+    case '.': type = DOT; break;
+    case ':': type = COLON; break;
+    case ';': type = SEMI_COLON; break;
+    case '$': type = KEYWORD_MUT; break;
+    case '\"': return grabStringLiteral();
+    case '\'': return grabCharLiteral();
+
+    default:
+      type = INVALID_TOKEN;
+      report_error_at_currentpos("Invalid symbol.");
+    }
+
+    token_list.emplace_back(type, length, pos);
+  }
+
+  void grabNumber() {
+    auto newtoken_type = TokenType::UNSIGNED_LITERAL;
+    u16_t newtoken_length = 0;
+    auto const newtoken_pos = current_position;
+
+    while (peek() not_eq '\0') {
+      auto const c = take();
+      if (c == 'f') {
+        newtoken_type = TokenType::FLOAT_LITERAL;
+        break;
+      }
+      if (c == '.') {
+        newtoken_type = TokenType::DOUBLE_LITERAL;
+        continue;
+      }
+      if (not is_num(c)) {
+        undo();
+        break;
+      }
+
+      ++newtoken_length;
+    }
+
+    token_list.emplace_back(newtoken_type, newtoken_length, newtoken_pos);
+  }
+
+  void grabIdentOrKeyword() {
+    Token new_token{TokenType::INVALID_TOKEN, 0, current_position};
+    auto c = take();
+
+    while (c not_eq '\0') {
+      if (not std::isalnum(c) and c not_eq '_') break;
+
+      c = take();
+      ++new_token.length;
+    }
+    undo();
+
+    const std::string_view word_view{file.contents().data() + new_token.position, new_token.length};
+    if (stringToTokenType.contains(word_view))
+      new_token.type = stringToTokenType.at(word_view);
+
+    else if (word_view == "elif") {
+      new_token.type = TokenType::KEYWORD_ELSE; token_list.emplace_back(new_token);
+      new_token.type = TokenType::KEYWORD_IF;
+    }
+    else if (word_view == "true" or word_view == "false")
+      new_token.type = TokenType::BOOL_LITERAL;
+    else
+      new_token.type = TokenType::IDENTIFIER;
+
+    token_list.emplace_back(new_token);
+  }
+
+  void skipWS() {
+    while (std::isspace(peek())) {
+      auto const c = take();
+      if (c == '\0') return;
+    }
+  }
+
+  // true if we skipped comments
+  [[nodiscard]] bool
+  skipComments() {
+    pop();
+    if (peek() == '/') {
+      pop();
+
+      while ( peek() not_eq '\n' and peek() not_eq FILE_EOF ) pop();
+      return true;
+    }
+
+    undo();
+    return false;
+  }
 };
 
-void grabNumber(FileInAnalysis& file);
-
-[[nodiscard]] bool
-is_num(int c) { return c >= '0' and c <= '9'; }
-
-[[nodiscard]] int
-charToEscapeSequenceEquivalent(const FileInAnalysis& file, int c) {
-  switch (c) {
-  case 'n':
-    return '\n';
-  case 't':
-    return '\t';
-  case 'b':
-    return '\b';
-  case 'r':
-    return '\r';
-  case 'f':
-    return '\f';
-  case '\\':
-    return '\\';
-  case '"':
-    return '"';
-  case '\'':
-    return '\'';
-  case '0':
-    return '\0';
-  case 'v':
-    return '\v';
-  default:
-    throw LexingError("Unknown escape sequence.", std::to_string(c), file.line_number);
-  }
 }
 
-// called when opening quotes already consumed
-void grabStringLiteral(FileInAnalysis &file) {
-
-  releasing_string literal{reserve_initial<5>};
-  int c = file.stream.get();
-  while (c not_eq EOF) {
-    // stupid and dumb
-    switch (c) {
-    case '\"':
-      goto ending_quote_found;
-
-    case '\n':
-    case EOF:
-      throw LexingError("Expected ending \" in string literal.", "Reached end of file.", file.line_number);
-
-    case '\\':
-      c = charToEscapeSequenceEquivalent(file, file.stream.get());
-      [[fallthrough]];
-    default:
-      literal.push_back(static_cast<char>(c));
-    }
-    c = file.stream.get();
-  }
-
-ending_quote_found: // don't crucify me for this pls
-  file.token_list.emplace_back(TokenType::STRING_LITERAL, std::bit_cast<u64_t>(literal.release().get()), file.line_number);
-}
-
-// called when opening single-quote already consumed
-void grabCharLiteral(FileInAnalysis &file) {
-  int c1 = file.stream.get();
-  const int c2 = file.stream.get();
-
-  if (c1 == '\\') {
-    c1 = charToEscapeSequenceEquivalent(file, c2);
-    if (file.stream.get() not_eq '\'')
-      throw LexingError("Expected ending ' in char literal.", std::to_string(static_cast<char>(c1)), file.line_number);
-  } else if (c2 not_eq '\'')
-    throw LexingError("Expected ending ' in char literal.", std::to_string(static_cast<char>(c2)), file.line_number);
-
-  file.token_list.emplace_back(c1, file.line_number);
-}
-
-void grabSymbol(FileInAnalysis &file) {
-  TokenType type;
-  const int c = file.stream.get();
-  const auto prev_token_type = file.token_list.back().getType();
-  if (c == '-' and
-    (isCategorySYMBOLS(prev_token_type) or isCategoryKEYWORDS(prev_token_type)) and  //this is dumb but it works
-    is_num(file.stream.peek())) {
-    file.stream.putback('-');
-    return grabNumber(file);
-  }
-
-  std::string symbol(1, static_cast<char>(c));
-  switch (c) {
-
-  // compound symbols up first, single char symbols down there
-  case '+':
-  case '-':
-    if (file.stream.peek() == c) {
-      symbol.push_back(static_cast<char>(file.stream.get()));
-      type = stringToTokenType.at(symbol);
-      break;
-    }
-
-    if (c == '-' && file.stream.peek() == '>') {
-      file.stream.get();
-      type = TokenType::ARROW;
-      break;
-    }
-    [[fallthrough]];
-  case '/':
-  case '*':
-  case '%':
-    if (file.stream.peek() == '=') {
-      // desugaring for x _= (...) -> x = x _ (...)
-      const auto &d = file.token_list.back();
-      if (d.getType() not_eq TokenType::IDENTIFIER)
-        throw LexingError("Expected identifier to the left of assignment operator.", d.toString(), file.line_number);
-
-      file.token_list.emplace_back(TokenType::ASSIGN, file.line_number);
-      file.token_list.emplace_back(d);
-      file.token_list.emplace_back(stringToTokenType.at(symbol), file.line_number);
-      file.token_list.emplace_back(TokenType::LPAREN, file.line_number);
-      ++file.needs_closing_paren;
-      file.stream.get();
-      return;
-    }
-    [[fallthrough]];
-
-
-  case '<':
-  case '>':
-    if (file.stream.peek() == '=')
-      symbol.push_back(static_cast<char>(file.stream.get()));
-    [[fallthrough]];
-
-  case '(':
-  case ')':
-  case '{':
-  case '}':
-  case '[':
-  case ']':
-  case '@':
-  case ',':
-  case '.':
-    type = stringToTokenType.at(symbol);
-    break;
-
-  case '!':
-    if (file.stream.peek() == '=') [[likely]] {
-      file.stream.get();
-      type = TokenType::KEYWORD_NOT_EQUAL;
-      break;
-    }
-    throw LexingError("! token not supported.", "", file.line_number);
-
-  case '=':
-    if (file.stream.peek() == '=') {
-      file.stream.get();
-      type = TokenType::KEYWORD_EQUALS;
-    }
-    else
-      type = TokenType::ASSIGN;
-    break;
-
-
-  case ';':
-    while (file.needs_closing_paren) {
-      file.token_list.emplace_back(TokenType::RPAREN, file.line_number);
-      --file.needs_closing_paren;
-    }
-    type = TokenType::SEMI_COLON;
-    break;
-
-  case '\"':
-    grabStringLiteral(file);
-    return;
-  case '\'':
-    grabCharLiteral(file);
-    return;
-
-  default:
-    throw LexingError("Invalid symbol found.", std::string(1, static_cast<char>(c)), file.line_number);
-  }
-
-  file.token_list.emplace_back(type, file.line_number);
-}
-
-void grabNumber(FileInAnalysis &file) {
-  u64_t value;
-  int c = file.stream.get();
-  const bool is_negative = c == '-';
-  TokenType type = is_negative
-    ? TokenType::SIGNED_LITERAL
-    : TokenType::UNSIGNED_LITERAL;
-
-  std::string num_stringrep(1, static_cast<char>(c));
-  while ((c = file.stream.get()) not_eq EOF) {
-    // i hate file handling so much, replace
-    // this stupid monkey code eventually
-    if (c == 'f') {
-      type = TokenType::FLOAT_LITERAL;
-      break;
-    }
-    if (c == 'u') {
-      type = TokenType::UNSIGNED_LITERAL;
-      if (is_negative)
-        throw LexingError("Negative unsigned literal.", num_stringrep, file.line_number);
-      break;
-    }
-    if (c == '.') {
-      type = TokenType::DOUBLE_LITERAL;
-      num_stringrep.push_back('.');
-      continue;
-    }
-    if (not is_num(c)) {
-      file.stream.putback(static_cast<char>(c));
-      break;
-    }
-
-    num_stringrep.push_back(static_cast<char>(c));
-  }
-
-  switch (type) {
-  case TokenType::SIGNED_LITERAL:
-    static_assert((sizeof(long long) == 8) and "The following line of code may cause problems if long longs are not 64 bits in width");
-    value = std::bit_cast<u64_t>(static_cast<i64_t>(std::stoll(num_stringrep)));
-    break;
-  case TokenType::UNSIGNED_LITERAL:
-    static_assert((sizeof(unsigned long long) == 8) and "The following line of code may cause problems if unsigned long longs are not 64 bits in width");
-    value = static_cast<u64_t>(std::stoull(num_stringrep));
-    break;
-  case TokenType::FLOAT_LITERAL:
-    static_assert((sizeof(float) == 4) and "You get the idea by now");
-    value = static_cast<u64_t>(std::bit_cast<u32_t>(std::stof(num_stringrep)));
-    break;
-  case TokenType::DOUBLE_LITERAL:
-    static_assert(sizeof(double) == 8);
-    value = std::bit_cast<u64_t>(std::stod(num_stringrep));
-    break;
-
-  default:
-    eden_unreachable("Invalid literal token type.");
-  }
-
-  file.token_list.emplace_back(type, value, file.line_number);
-}
-
-// first letter in front of file
-void grabIdentOrKeyword(FileInAnalysis &file) {
-  int c = file.stream.get();
-
-  thread_local char keyword_buffer[Settings::MAX_IDENTIFIER_LENGTH]; //this exists so that keyword lexing doesn't need to allocate memory
-  char* buffer_start = keyword_buffer;
-
-  while (c not_eq EOF) {
-    if (not std::isalnum(c) and c not_eq '_')
-      break;
-
-    *buffer_start = static_cast<char>(c);
-    ++buffer_start;
-    c = file.stream.get();
-  }
-
-  file.stream.putback(static_cast<char>(c));
-  const std::string_view word_view{keyword_buffer, sz_t(buffer_start-keyword_buffer)};
-
-  if (stringToTokenType.contains(word_view)) {
-    auto token_type = stringToTokenType.at(word_view);
-    file.token_list.emplace_back(token_type, file.line_number);
-    return;
-  }
-  if (word_view == "elif") {
-    file.token_list.emplace_back(TokenType::KEYWORD_ELSE, file.line_number);
-    file.token_list.emplace_back(TokenType::KEYWORD_IF, file.line_number);
-    return;
-  }
-  if (word_view == "true") {
-    file.token_list.emplace_back(TokenType::BOOL_LITERAL, 1, file.line_number);
-    return;
-  }
-  if (word_view == "false") {
-    file.token_list.emplace_back(TokenType::BOOL_LITERAL,  0, file.line_number);
-    return;
-  }
-
-  *buffer_start = '\0';
-  const auto identifier_len = word_view.size() + 1;
-  char* identifier_str = new char[identifier_len];
-  std::memcpy(identifier_str, keyword_buffer, identifier_len);
-  file.token_list.emplace_back(TokenType::IDENTIFIER, std::bit_cast<u64_t>(identifier_str), file.line_number);
-}
-
-void skipWS(FileInAnalysis& file) {
-  while (std::isspace(file.stream.peek())) {
-    const int c = file.stream.get();
-     if (c == '\n')
-       ++file.line_number;
-
-     else if (c == EOF)
-      return;
-  }
-}
-
-[[nodiscard]] bool
-skipComments(FileInAnalysis& file) {
-  constexpr static auto stream_max = std::numeric_limits<std::streamsize>::max();
-  file.stream.get();
-  if (file.stream.peek() == '/') {
-    file.stream.get();
-    file.stream.ignore(stream_max, '\n');
-    ++file.line_number;
-    return true;
-  }
-
-  file.stream.putback('/');
-  return false;
-}
-
-[[nodiscard]] bool
-canStartIdentifier(int c)
-{return std::isalpha(c) or c == '_';}
-}
-
-void Lexer::tokenizeFile(std::vector<Token>& out_tokens, const std::filesystem::path &file_path) {
-  FileInAnalysis file(file_path, out_tokens);
-  if (not file.stream)
-    throw LexingError("File not found.", file_path.string(), 0);
+File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& file_path) {
+  Tokenizer tokenizer{out_tokens, file_path};
 
   while (true) {
-    skipWS(file);
-    const int c = file.stream.peek();
-    if (c == EOF)
-      break;
-    if (c == '/' and skipComments(file))
-      continue;
+    tokenizer.skipWS();
+    auto const c = tokenizer.peek();
+    if (c == Tokenizer::FILE_EOF) break;
+    if (c == '/' and tokenizer.skipComments()) continue;
 
-    if (is_num(c) )
-      grabNumber(file);
+    if (is_num(c))
+      tokenizer.grabNumber();
     else if (canStartIdentifier(c))
-      grabIdentOrKeyword(file);
+      tokenizer.grabIdentOrKeyword();
     else
-      grabSymbol(file);
+      tokenizer.grabSymbol();
   }
-  file.stream.close();
 
+  assert(not out_tokens.empty());
+
+  auto const INVALID_TOKEN = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
+  out_tokens.reserve(out_tokens.size() + INVALID_TOKEN_PADDING);
+  for (auto i{0uz}; i < INVALID_TOKEN_PADDING; ++i)
+    out_tokens.push_back(INVALID_TOKEN);
+
+  return std::move(tokenizer.file);
 }

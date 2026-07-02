@@ -1,25 +1,33 @@
 #pragma once
-#include <cstdint>
+#include "edenlib/typedefs.hpp"
 #include <string>
 
 namespace LOM::Settings {
 
-[[nodiscard]] bool doOutputLexer() noexcept;
-[[nodiscard]] bool doOutputParser() noexcept;
-[[nodiscard]] bool doOutputPeep()noexcept;
-[[nodiscard]] bool doOutputValidation()noexcept;
-[[nodiscard]] bool doOutputIR()noexcept;
-[[nodiscard]] bool doOutputASM()noexcept;
-[[nodiscard]] bool doOutputOBJ()noexcept;
-[[nodiscard]] bool doLinking()noexcept;
-[[nodiscard]] bool doBuild() noexcept;
+extern bool const& do_output_lexer;
+extern bool const& do_output_parser;
+extern bool const& do_output_peep;
+extern bool const& do_output_validation;
+extern bool const& do_output_llvmir;
+extern bool const& do_output_asm;
+extern bool const& do_output_obj;
+extern bool const& do_linking;
+extern bool const& do_build;
 
-const std::string& getExecutableName();
-uint8_t getOptimizationLevel();
-
+std::string const& getExecutableName() noexcept;
+u8_t getOptimizationLevel() noexcept;
 void setArgs(unsigned argc, const char* argv[]);
 
-static constexpr auto MAX_FUNCTION_PARAMETERS = 8;
-static constexpr auto MAX_IDENTIFIER_LENGTH = 256;
-static constexpr auto MAX_TYPELIST_MEMBERS = 8;
+inline constexpr auto MAX_FUNCTION_PARAMETERS = 8;
+inline constexpr auto MAX_TYPELIST_MEMBERS = 8;
+inline constexpr auto MAX_STRUCT_MEMBER_VARIABLES = 255;
+
+#ifdef __clang__
+inline constexpr std::string_view external_compiler{"clang"};
+#elif defined(__GNUC__)
+inline constexpr std::string_view external_compiler{"gcc"};
+#else
+inline constexpr std::string_view external_compiler;
+#endif
+
 }

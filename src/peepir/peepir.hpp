@@ -63,7 +63,7 @@ struct Instruction {
   }type;
 
   u8_t file_idx;
-  u16_t pad;
+  // u16_t pad;
   u32_t aux_value;
   u64_t value;
 

@@ -221,18 +221,6 @@ class Lowerer final {
     return res;
   }
 
-  [[nodiscard]] llvm::IntegerType*
-  typeForInteger(i64_t int_literal) noexcept {
-    auto const lom_type = signedToLiteralInstance(int_literal).type; assert(type_map.contains(lom_type));
-    return llvm::cast<llvm::IntegerType>(type_map[lom_type]);
-  }
-
-  [[nodiscard]] llvm::IntegerType*
-  typeForUnsigned(u64_t uint_literal) noexcept {
-    auto const lom_type = unsignedToLiteralInstance(uint_literal).type; assert(type_map.contains(lom_type));
-    return llvm::cast<llvm::IntegerType>(type_map[lom_type]);
-  }
-
    [[nodiscard]] llvm::Constant*
   fpConstant(llvm::Type* t, double value) const noexcept
   {return llvm::ConstantFP::get(t, value);}

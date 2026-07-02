@@ -221,24 +221,52 @@ struct Body {
   }
 #undef pre
 
-  u32_t generatePrimaryExpression() {
-    if (tokens.peek().isLiteral()) {
-      auto const token = tokens.take();
-      ASTNode node = newNode(token);
+#define pre assert(tokens.peek().isLiteral());
+  template <bool negate = false>
+  u32_t generateLiteral() { pre
+    auto const token = tokens.take();
+    ASTNode node = newNode(token);
 
-      switch (token.type) {
-      case TokenType::SIGNED_LITERAL:   node.m.type = ASTNode::SIGNED_LITERAL; node.signed_data.value = token.getSigned(current_file); break;
-      case TokenType::UNSIGNED_LITERAL: node.m.type = ASTNode::UNSIGNED_LITERAL; node.unsigned_data.value = token.getUnsigned(current_file); break;
-      case TokenType::FLOAT_LITERAL:    node.m.type = ASTNode::FLOAT_LITERAL; node.float_data.value = token.getFloat(current_file); break;
-      case TokenType::DOUBLE_LITERAL:   node.m.type = ASTNode::DOUBLE_LITERAL; node.double_data.value = token.getDouble(current_file); break;
-      case TokenType::BOOL_LITERAL:     node.m.type = ASTNode::BOOL_LITERAL; node.bool_data.value = token.getBool(current_file); break;
-      case TokenType::CHAR_LITERAL:     node.m.type = ASTNode::CHAR_LITERAL; node.char_data.value = token.getChar(current_file); break;
-      case TokenType::STRING_LITERAL:   node.m.type = ASTNode::STRING_LITERAL; break;
-      default: eden_unreachable("Invalid literal token type.");
+    switch (token.type) {
+    case TokenType::UNSIGNED_LITERAL: {
+      if constexpr (negate) {
+        node.m.type = ASTNode::SIGNED_LITERAL;
+        node.signed_data.value = -static_cast<i64_t>(token.getUnsigned(current_file));
+        break;
       }
-
-      return expression_tree.create(node);
+      else {
+        node.m.type = ASTNode::UNSIGNED_LITERAL;
+        node.unsigned_data.value = token.getUnsigned(current_file);
+        break;
+      }
     }
+    case TokenType::FLOAT_LITERAL:
+      node.m.type = ASTNode::FLOAT_LITERAL;
+      node.float_data.value = negate ? -token.getFloat(current_file) : token.getFloat(current_file);
+      break;
+    case TokenType::DOUBLE_LITERAL:
+      node.m.type = ASTNode::DOUBLE_LITERAL;
+      node.double_data.value = negate ? -token.getDouble(current_file) : token.getDouble(current_file);
+      break;
+    case TokenType::BOOL_LITERAL:
+      node.m.type = ASTNode::BOOL_LITERAL;
+      node.bool_data.value = negate ? not token.getBool(current_file) : token.getBool(current_file);
+      break;
+    case TokenType::CHAR_LITERAL:
+      node.m.type = ASTNode::CHAR_LITERAL;
+      node.char_data.value = negate ? -token.getChar(current_file) : token.getChar(current_file);
+      break;
+    case TokenType::STRING_LITERAL:   node.m.type = ASTNode::STRING_LITERAL; assert(not negate); break;
+    default: eden_unreachable("Invalid literal token type.");
+    }
+
+    return expression_tree.create(node);
+  }
+#undef pre
+
+  u32_t generatePrimaryExpression() {
+    if (tokens.peek().isLiteral())
+      return generateLiteral();
 
     if (tokens.peek_is(TokenType::LPAREN)) {
       tokens.pop();
@@ -318,7 +346,6 @@ struct Body {
     switch (token.type) {
     case TokenType::PLUSPLUS:           opr = Operator::PRE_INCREMENT; break;
     case TokenType::MINUSMINUS:         opr = Operator::PRE_DECREMENT; break;
-    case TokenType::MINUS:              opr = Operator::UNARY_MINUS; break;
     case TokenType::ADDR:               opr = Operator::ADDRESS_OF; break;
     case TokenType::KEYWORD_NOT:        opr = Operator::NOT; break;
     case TokenType::KEYWORD_BITNOT:     opr = Operator::BITNOT; break;
@@ -329,6 +356,15 @@ struct Body {
       if (not tokens.pop_if(TokenType::GTR)) report_error(current_file, tokens.peek(), "Expected opening > in cast.");
 
       return expression_tree.create(node, generatePrefixExpression(), 0);
+    }
+
+    case TokenType::MINUS: {
+      if (tokens.peek_ahead(1).isNumericLiteral()) {
+        tokens.pop();
+        return generateLiteral<true>();
+      }
+
+      opr = Operator::UNARY_MINUS; break;
     }
 
     default: return generatePostfixExpression();
@@ -464,10 +500,13 @@ struct Body {
       return;
 
     case CALLING: { // i think this might be unnecessarily complicated
+      auto const calling_idx = nodes.size();
       nodes.emplace_back(expression.node);
-      auto const calling_idx = nodes.size() - 1;
       translateExpression(expression.left_idx);
-      if (expression.right_idx == 0) return;
+      if (expression.right_idx == 0) {
+        nodes[calling_idx].calling_data.num_parameters = 0;
+        return;
+      }
 
       auto left_idx = expression_tree.data[expression.right_idx].left_idx;
       auto right_idx = expression_tree.data[expression.right_idx].right_idx;
@@ -787,8 +826,10 @@ Function parseFunction(TU& tu, Body& global_body) {
   current_function.file_idx = static_cast<u8_t>(tu.source_files.size() - 1);
   current_function.is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
 
-  if (not tokens.pop_if(TokenType::KEYWORD_FN))
+  if (not tokens.pop_if(TokenType::KEYWORD_FN)) {
     report_error(current_file, tokens.peek(), "Expected function declaration.");
+    return current_function;
+  }
 
   // name
   {
@@ -835,8 +876,10 @@ Function parseFunction(TU& tu, Body& global_body) {
     tu.module->enterFunctionScope(current_function.nameof());
   }
 
-  if (not tokens.pop_if(TokenType::LBRACE))
+  if (not tokens.pop_if(TokenType::LBRACE)) {
     report_error(current_file, tokens.peek(), "Expected function definition.");
+    return current_function;
+  }
 
   // body
   {

@@ -11,9 +11,9 @@ enum class TokenType : u8_t {
   UNSIGNED_LITERAL,
   FLOAT_LITERAL,
   DOUBLE_LITERAL,
-  STRING_LITERAL,
   CHAR_LITERAL,
   BOOL_LITERAL,
+  STRING_LITERAL,
   PLUS,
   PLUSPLUS,
   MINUS,
@@ -91,7 +91,7 @@ inline const std::unordered_map<std::string_view, TokenType> stringToTokenType{
 
 	{"INVALID_TOKEN", TokenType::INVALID_TOKEN}, {"IDENTIFIER", TokenType::IDENTIFIER}, {"SIGNED_LITERAL", TokenType::SIGNED_LITERAL}, 
 	{"UNSIGNED_LITERAL", TokenType::UNSIGNED_LITERAL}, {"FLOAT_LITERAL", TokenType::FLOAT_LITERAL}, {"DOUBLE_LITERAL", TokenType::DOUBLE_LITERAL}, 
-	{"STRING_LITERAL", TokenType::STRING_LITERAL}, {"CHAR_LITERAL", TokenType::CHAR_LITERAL}, {"BOOL_LITERAL", TokenType::BOOL_LITERAL}, 
+	{"CHAR_LITERAL", TokenType::CHAR_LITERAL}, {"BOOL_LITERAL", TokenType::BOOL_LITERAL}, {"STRING_LITERAL", TokenType::STRING_LITERAL},
 	{"+", TokenType::PLUS}, {"++", TokenType::PLUSPLUS}, {"-", TokenType::MINUS}, 
 	{"--", TokenType::MINUSMINUS}, {"/", TokenType::SLASH}, {"*", TokenType::STAR}, 
 	{"%", TokenType::MOD}, {"=", TokenType::ASSIGN}, {"(", TokenType::LPAREN}, 
@@ -124,7 +124,7 @@ constexpr const char* toString[] = {
 
 	"INVALID_TOKEN","IDENTIFIER","SIGNED_LITERAL",
 	"UNSIGNED_LITERAL","FLOAT_LITERAL","DOUBLE_LITERAL",
-	"STRING_LITERAL","CHAR_LITERAL","BOOL_LITERAL",
+	"CHAR_LITERAL","BOOL_LITERAL", "STRING_LITERAL",
 	"+","++","-",
 	"--","/","*",
 	"%","=","(",
@@ -153,25 +153,16 @@ constexpr const char* toString[] = {
 	return toString[std::to_underlying(e)];
 }
 constexpr bool isCategoryLITERALS(const TokenType e) { return std::to_underlying(e) >= 2 && std::to_underlying(e) < 9; }
-
+constexpr bool isCategoryNUMERICLITERALS(const TokenType e) { return std::to_underlying(e) >= 2 && std::to_underlying(e) < 8; }
 constexpr bool isCategorySYMBOLS(const TokenType e) { return std::to_underlying(e) >= 9 && std::to_underlying(e) < 33; }
-
 constexpr bool isCategoryBITWISE(const TokenType e) { return std::to_underlying(e) >= 33 && std::to_underlying(e) < 43; }
-
 constexpr bool isCategoryPOINTERS(const TokenType e) { return std::to_underlying(e) >= 57 && std::to_underlying(e) < 60; }
-
 constexpr bool isCategoryPRIMITIVES(const TokenType e) { return std::to_underlying(e) >= 43 && std::to_underlying(e) < 60; }
-
 constexpr bool isCategoryTYPE_QUALIFIER(const TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 61; }
-
 constexpr bool isCategoryCONTROL_FLOW(const TokenType e) { return std::to_underlying(e) >= 61 && std::to_underlying(e) < 69; }
-
 constexpr bool isCategoryCAST(const TokenType e) { return std::to_underlying(e) >= 69 && std::to_underlying(e) < 70; }
-
 constexpr bool isCategoryMODULE(const TokenType e) { return std::to_underlying(e) >= 75 && std::to_underlying(e) < 77; }
-
 constexpr bool isCategoryKEYWORDS(const TokenType e) { return std::to_underlying(e) >= 33 && std::to_underlying(e) < 77; }
-
 constexpr bool isCategoryDUNDER(const TokenType e) { return std::to_underlying(e) >= 77 && std::to_underlying(e) < 79; }
 
 }; //namespace LOM::Lexer

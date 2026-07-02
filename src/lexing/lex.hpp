@@ -25,16 +25,16 @@ struct Token {
 
 
 
-  // expensive
+  /* expensive
   [[nodiscard]] constexpr i64_t
   getSigned(File const& file) const noexcept {
-    assume_assert(type == TokenType::SIGNED_LITERAL);
+    // assume_assert(type == TokenType::SIGNED_LITERAL); temporary
     auto const begin = file.contents().data() + position;
     i64_t res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
     return res;
-  }
+  } */
 
   // expensive
   [[nodiscard]] constexpr u64_t
@@ -95,6 +95,7 @@ struct Token {
   [[nodiscard]] constexpr bool isIdentifier() const noexcept           { return type == TokenType::IDENTIFIER; }
   [[nodiscard]] constexpr bool isPrimitive() const noexcept            { return isCategoryPRIMITIVES(type); }
   [[nodiscard]] constexpr bool isLiteral() const noexcept              { return isCategoryLITERALS(type); }
+  [[nodiscard]] constexpr bool isNumericLiteral() const noexcept       { return isCategoryNUMERICLITERALS(type); }
   [[nodiscard]] constexpr bool isPointer() const noexcept              { return isCategoryPOINTERS(type); }
   [[nodiscard]] constexpr bool isTypeQualifier() const noexcept        { return isCategoryTYPE_QUALIFIER(type); }
 

@@ -34,6 +34,9 @@ struct Tokenizer {
   peek() const noexcept { return file.contents()[current_position]; }
 
   [[nodiscard]] char
+  peek_ahead(sz_t i = 1) const noexcept { return file.contents()[current_position + i]; }
+
+  [[nodiscard]] char
   take() noexcept { return file.contents()[current_position++]; }
 
   void pop() noexcept { ++current_position; }
@@ -162,13 +165,12 @@ struct Tokenizer {
   }
 
   void grabNumber() {
-    auto c = peek();
-    bool const is_negative = c == '-';
-    TokenType newtoken_type = is_negative ? TokenType::SIGNED_LITERAL : TokenType::UNSIGNED_LITERAL;
+    auto newtoken_type = TokenType::UNSIGNED_LITERAL;
     u16_t newtoken_length = 0;
     auto const newtoken_pos = current_position;
 
-    while ((c = take()) not_eq '\0') {
+    while (peek() not_eq '\0') {
+      auto const c = take();
       if (c == 'f') {
         newtoken_type = TokenType::FLOAT_LITERAL;
         break;

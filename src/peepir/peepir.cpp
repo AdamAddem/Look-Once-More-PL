@@ -647,9 +647,9 @@ class Peeper {
     }
   }
 
-  void peepReturnStatement() {
+  void peepReturnStatement(bool return_has_value) {
     auto const return_type = current_function_type->returnType();
-    if (nodes.peek_is_empty()) {
+    if (not return_has_value) {
       if (not return_type->isDevoid()) {
         auto const empty_return = nodes.take();
         return report_error(*current_file, empty_return.m.length_in_file, empty_return.m.position_in_file, "Non-devoid function expects return value.");
@@ -777,7 +777,7 @@ class Peeper {
     case DECLARATION:  return peepVarDeclaration(node.declaration_data);
     case IF:           return peepIfStatement(node.if_numstatements());
     case WHILE:        return peepWhileLoop(node.while_numstatements());
-    case RETURN:       return peepReturnStatement();
+    case RETURN:       return peepReturnStatement(node.return_has_value());
 
     case UNARY:
     case BINARY:

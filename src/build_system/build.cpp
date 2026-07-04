@@ -23,6 +23,18 @@ LOM::getModule(std::string_view name) {
   return &modules.at(name);
 }
 
+#ifdef PROFILE
+void LOM::reset_state() noexcept {
+  modules.~unordered_map<std::string_view, Module>();
+  main_module.~Module();
+  types.~TypeContext();
+
+  new (&types) TypeContext;
+  new (&main_module) Module("", &types);
+  new (&modules) std::unordered_map<std::string_view, Module>();
+}
+#endif
+
 namespace fs = std::filesystem;
 
 // returns whether an error occured
@@ -92,7 +104,7 @@ void LOM::build() {
   if (not fs::exists("src"))
     throw std::runtime_error("LookOnceMore: src directory not found!");
 
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
@@ -143,20 +155,25 @@ void LOM::build() {
       continue;
     }
 
+    [[maybe_unused]]
     auto const& compiled = compiled_tus.emplace_back(
       Backend::codegen( std::move(peeped), module_name )
       );
 
+#ifndef STAGE_BENCHMARKS
+#ifndef PROFILE
     if (Settings::do_output_asm)
       compiled->createASMFile(module_name);
     if (Settings::do_output_llvmir)
       compiled->createIRFile(module_name);
     if (Settings::do_output_obj)
       module_name = compiled->createObjectFile(module_name);
-  }
+#endif
+#endif
   if (not success) return;
+  }
 
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("Full: {} | {} | {}",
     end_time - begin_time,
@@ -165,7 +182,11 @@ void LOM::build() {
   );
 #endif
 
+#ifndef STAGE_BENCHMARKS
+#ifndef PROFILE
   if (Settings::do_linking or Settings::do_output_obj)
     Backend::linkObjects(module_paths);
+#endif
+#endif
 
 }

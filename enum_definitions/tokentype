@@ -92,17 +92,19 @@ tokentype.hpp TokenType LOM::Lexer u8_t
     KEYWORD_RETURN return
     KEYWORD_SWITCH switch
     KEYWORD_CASE case
-    KEYWORD_DEFAULT default
 !END CONTROL_FLOW
 
 !BEGIN CAST
     KEYWORD_CAST cast
 !END CAST
+
     KEYWORD_GLOBAL global
     KEYWORD_NULL null
     KEYWORD_JUNK junk
+    KEYWORD_DEFAULT default
     KEYWORD_FN fn
     KEYWORD_STRUCT struct
+
 !BEGIN MODULE
     KEYWORD_PUB pub
     KEYWORD_IMPORT import

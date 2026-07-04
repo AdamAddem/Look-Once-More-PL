@@ -765,7 +765,7 @@ public:
 
 std::unique_ptr<Backend> ToLLVM::codegen(PeepMIR::TU&& peeped_tu, std::filesystem::path const& file) {
 
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
@@ -773,7 +773,7 @@ std::unique_ptr<Backend> ToLLVM::codegen(PeepMIR::TU&& peeped_tu, std::filesyste
   Lowerer codegen(backend.get(), peeped_tu.module->getTypeContext());
   codegen.lowerToLLVM(peeped_tu);
 
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("LLVM {}: {} | {} | {}",
     peeped_tu.module->nameof(),

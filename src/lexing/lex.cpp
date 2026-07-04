@@ -245,7 +245,7 @@ struct Tokenizer {
 }
 
 File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& file_path) {
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
@@ -272,7 +272,7 @@ File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path c
   for (auto i{0uz}; i < INVALID_TOKEN_PADDING; ++i)
     out_tokens.push_back(INVALID_TOKEN);
 
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("Lexing {}: {} | {} | {}",
     file_path.native(),

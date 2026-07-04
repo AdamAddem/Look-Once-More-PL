@@ -19,7 +19,7 @@ using namespace LOM::AST;
 
 namespace {
 
-[[maybe_unused]] [[noreturn]] void throw_notfound() eden_throws(0 if empty) { throw 0; }
+[[noreturn]] void throw_notfound() eden_throws(0 if empty) { throw 0; }
 
 [[nodiscard]] QualifiedType parseType(TokenView& tokens, TU& tu);
 
@@ -325,11 +325,6 @@ struct Body {
         continue;
 
       case TokenType::LBRACKET: throw std::runtime_error("Subscript unsupported.");
-
-      /* case TokenType::DOT:
-        tokens.pop();
-        left = expression_tree.create(newNodeData(token, ASTNode::MEMBER_ACCESS), left, generatePostfixExpression());
-        continue; */
       default: return left;
       }
 
@@ -543,6 +538,15 @@ struct Body {
     }
   }
 
+  void sync_to(TokenType sync_type) noexcept {
+    while (not tokens.peek_is(sync_type)) {
+      if (tokens.peek_is(TokenType::INVALID_TOKEN)) return;
+      tokens.pop();
+    }
+  }
+
+  void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
+
   Token parseVarDecl(sz_t decl_node_idx) noexcept {
     auto const declaration_type = parseType(tokens, tu);
     bool has_init;
@@ -552,6 +556,7 @@ struct Body {
       auto const identifier_token = tokens.take();
       if (not identifier_token.is(TokenType::IDENTIFIER)) {
         report_error(current_file, identifier_token, "Expected identifier in variable declaration.");
+        sync_to(TokenType::SEMI_COLON);
         return identifier_token;
       }
 
@@ -561,8 +566,10 @@ struct Body {
     }
 
     if (not tokens.pop_if(TokenType::ASSIGN)) {
-      report_error(current_file, tokens.peek(), "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
-      return tokens.take_if_valid();
+      auto err = tokens.peek();
+      report_error(current_file, err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
+      sync_to_semicolon();
+      return err;
     }
 
     if (tokens.pop_if(TokenType::KEYWORD_JUNK))
@@ -572,8 +579,12 @@ struct Body {
       parseExpression();
     }
 
-    if (not tokens.peek_is(TokenType::SEMI_COLON))
-      report_error(current_file, tokens.peek(), "Expected semicolon ending variable declaration.");
+    if (not tokens.peek_is(TokenType::SEMI_COLON)) {
+      auto const err = tokens.peek();
+      report_error(current_file, err, "Expected semicolon ending variable declaration.");
+      sync_to_semicolon();
+      return err;
+    }
 
     auto& data = nodes[decl_node_idx].declaration_data;
     data.has_init = has_init;
@@ -586,7 +597,6 @@ struct Body {
     parseExpression();
     if (not tokens.pop_if(TokenType::LBRACE)) {
       report_error(current_file, tokens.peek(), "Expected {.");
-      return tokens.peek();
     }
 
     sz_t num_substatements = 0;
@@ -618,7 +628,6 @@ struct Body {
     parseExpression();
     if (not tokens.pop_if(TokenType::LBRACE)) {
       report_error(current_file, tokens.peek(), "Expected {.");
-      return tokens.peek();
     }
 
     sz_t num_substatements = 0;
@@ -714,8 +723,9 @@ struct Body {
 void parseCExtern(TU& tu, TokenView& tokens) {
   auto const& current_file = tu.source_files.back();
   auto const name = parseIdentifier(tokens, tu);
-  if (not tokens.pop_if(TokenType::LPAREN))
+  if (not tokens.pop_if(TokenType::LPAREN)) {
     report_error(current_file, tokens.peek(), "Expected opening ( for parameter list.");
+  }
 
 
   Module::Variable parameters[Settings::MAX_FUNCTION_PARAMETERS];
@@ -945,7 +955,7 @@ void Parser::printTU([[maybe_unused]] TU const& tu) {
 }
 
 void Parser::parseTokens(TU& tu, std::vector<Token> const& tokens) {
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
@@ -957,7 +967,7 @@ void Parser::parseTokens(TU& tu, std::vector<Token> const& tokens) {
   Body global_body(global_view, tu, expression_tree);
   parseFunctionsAndStructs(tu, global_body, tu.functions);
 
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("Parsing {}: {} | {} | {}",
     global_body.current_file.path(),

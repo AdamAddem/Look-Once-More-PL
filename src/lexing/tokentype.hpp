@@ -2,7 +2,6 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
-
 #include <edenlib/typedefs.hpp>
 
 namespace LOM::Lexer {
@@ -75,11 +74,11 @@ enum class TokenType : u8_t {
 	KEYWORD_RETURN,
 	KEYWORD_SWITCH,
 	KEYWORD_CASE,
-	KEYWORD_DEFAULT,
 	KEYWORD_CAST,
 	KEYWORD_GLOBAL,
 	KEYWORD_NULL,
 	KEYWORD_JUNK,
+	KEYWORD_DEFAULT,
 	KEYWORD_FN,
 	KEYWORD_STRUCT,
 	KEYWORD_PUB,
@@ -121,9 +120,9 @@ inline const std::unordered_map<std::string_view, TokenType> stringToTokenType{
 	{"if", TokenType::KEYWORD_IF}, {"else", TokenType::KEYWORD_ELSE}, 
 	{"for", TokenType::KEYWORD_FOR}, {"while", TokenType::KEYWORD_WHILE}, 
 	{"return", TokenType::KEYWORD_RETURN}, {"switch", TokenType::KEYWORD_SWITCH}, 
-	{"case", TokenType::KEYWORD_CASE}, {"default", TokenType::KEYWORD_DEFAULT}, 
-	{"cast", TokenType::KEYWORD_CAST}, {"global", TokenType::KEYWORD_GLOBAL}, 
-	{"null", TokenType::KEYWORD_NULL}, {"junk", TokenType::KEYWORD_JUNK}, 
+	{"case", TokenType::KEYWORD_CASE}, {"cast", TokenType::KEYWORD_CAST}, 
+	{"global", TokenType::KEYWORD_GLOBAL}, {"null", TokenType::KEYWORD_NULL}, 
+	{"junk", TokenType::KEYWORD_JUNK}, {"default", TokenType::KEYWORD_DEFAULT}, 
 	{"fn", TokenType::KEYWORD_FN}, {"struct", TokenType::KEYWORD_STRUCT}, 
 	{"pub", TokenType::KEYWORD_PUB}, {"import", TokenType::KEYWORD_IMPORT}, 
 	{"__C", TokenType::DUNDER_CEXTERN}, {"__va", TokenType::DUNDER_VA}, 
@@ -165,9 +164,9 @@ constexpr std::string_view TokenTypeToString(TokenType e) {
 	"if","else",
 	"for","while",
 	"return","switch",
-	"case","default",
-	"cast","global",
-	"null","junk",
+	"case","cast",
+	"global","null",
+	"junk","default",
 	"fn","struct",
 	"pub","import",
 	"__C","__va",
@@ -183,8 +182,8 @@ constexpr bool isCategoryBITWISE(TokenType e) { return std::to_underlying(e) >= 
 constexpr bool isCategoryPRIMITIVES(TokenType e) { return std::to_underlying(e) >= 43 && std::to_underlying(e) < 60; }
 constexpr bool isCategoryPOINTERS(TokenType e) { return std::to_underlying(e) >= 57 && std::to_underlying(e) < 60; }
 constexpr bool isCategoryTYPE_QUALIFIERS(TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 61; }
-constexpr bool isCategoryCONTROL_FLOW(TokenType e) { return std::to_underlying(e) >= 61 && std::to_underlying(e) < 69; }
-constexpr bool isCategoryCAST(TokenType e) { return std::to_underlying(e) >= 69 && std::to_underlying(e) < 70; }
+constexpr bool isCategoryCONTROL_FLOW(TokenType e) { return std::to_underlying(e) >= 61 && std::to_underlying(e) < 68; }
+constexpr bool isCategoryCAST(TokenType e) { return std::to_underlying(e) >= 68 && std::to_underlying(e) < 69; }
 constexpr bool isCategoryMODULE(TokenType e) { return std::to_underlying(e) >= 75 && std::to_underlying(e) < 77; }
 constexpr bool isCategoryDUNDER(TokenType e) { return std::to_underlying(e) >= 77 && std::to_underlying(e) < 79; }
 

@@ -9,7 +9,15 @@ int main(int argc, const char* argv[]) {
   }
 
   LOM::Settings::setArgs(argc, argv);
+
+#ifdef PROFILE
+  for (auto i{0uz}; i<100000; ++i) {
+    LOM::build();
+    LOM::reset_state();
+  }
+#else
   LOM::build();
+#endif
 
   return 0;
 }

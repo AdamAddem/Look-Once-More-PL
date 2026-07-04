@@ -108,6 +108,7 @@ public:
   [[nodiscard]] Token previous() const noexcept/* ub if first */{ return *(begin - 1); }
   void pop() noexcept                                           { ++begin; }
   bool pop_if(TokenType type) noexcept                          { if (begin->type not_eq type) return false; ++begin; return true; }
+  void pop_if_valid() noexcept                                  { if (not begin->is(TokenType::INVALID_TOKEN)) ++begin; }
   void undo() noexcept                                          { --begin; }
   [[nodiscard]] Token take_if_valid() noexcept {
     auto const res = *begin;

@@ -1037,7 +1037,7 @@ void PeepMIR::printPeep(TU const& tu) {
 
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
 
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
@@ -1051,11 +1051,10 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   for (auto const import_name : parsed_tu.imports)
     tu.imports.emplace_back(getModule(import_name));
 
-
   Peeper::peepFunctions(tu, parsed_tu.functions);
 
 
-#ifndef NDEBUG
+#ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("Peeping {}: {} | {} | {}",
     parsed_tu.module->nameof(),

@@ -22,6 +22,7 @@ inline constexpr auto MAX_FUNCTION_PARAMETERS = 8;
 inline constexpr auto MAX_TYPELIST_MEMBERS = 8;
 inline constexpr auto MAX_STRUCT_MEMBER_VARIABLES = 255;
 
+// lol
 #ifdef __clang__
 inline constexpr std::string_view external_compiler{"clang"};
 #elif defined(__GNUC__)
@@ -29,5 +30,8 @@ inline constexpr std::string_view external_compiler{"gcc"};
 #else
 inline constexpr std::string_view external_compiler;
 #endif
+
+// #define PROFILE
+// #define STAGE_BENCHMARKS
 
 }

@@ -1,16 +1,12 @@
-__C printf(raw char fmt, __va);
+__C printf(raw char fmt, __va); # C-Interop!
 
+#:
+    Returns the n'th fibonnaci number.
+:#
 fn fib(u32 n) u32 {
     if n <= 1 { return n; }
     return fib(n-1) + fib(n-2);
 }
-
-# Hello! This is a single line comment
-#:  Multi-line!
-    #:
-        Nested!
-    :#
-:#
 
 pub fn main() i32 {
     $i32 n = -1;

@@ -17,7 +17,7 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
-
+#include <chrono>
 using namespace LOM;
 
 namespace {
@@ -764,10 +764,23 @@ public:
 }
 
 std::unique_ptr<Backend> ToLLVM::codegen(PeepMIR::TU&& peeped_tu, std::filesystem::path const& file) {
-  auto backend = std::make_unique<TU>(file.native());
 
+#ifndef NDEBUG
+  auto begin_time = std::chrono::high_resolution_clock::now();
+#endif
+
+  auto backend = std::make_unique<TU>(file.native());
   Lowerer codegen(backend.get(), peeped_tu.module->getTypeContext());
   codegen.lowerToLLVM(peeped_tu);
 
+#ifndef NDEBUG
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::println("LLVM {}: {} | {} | {}",
+    peeped_tu.module->nameof(),
+    end_time - begin_time,
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
+    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+  );
+#endif
   return backend;
 }

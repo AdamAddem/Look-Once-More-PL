@@ -1,0 +1,23 @@
+__C printf(raw char fmt, __va);
+
+fn fib(u32 n) u32 {
+    if n <= 1 { return n; }
+    return fib(n-1) + fib(n-2);
+}
+
+# Hello! This is a single line comment
+#:  Multi-line!
+    #:
+        Nested!
+    :#
+:#
+
+pub fn main() i32 {
+    $i32 n = -1;
+    while n++ < 10 {
+        u32 fib_result = fib( cast<u32> n );
+        __C.printf("fib number %d: %d\n", n, fib_result);
+    }
+
+    return 0;
+}

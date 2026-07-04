@@ -1,8 +1,4 @@
 builds/
-lom_project/
+example/build/
 tests/
-enum_definitions/tokentype_generator.cpp
-example.lom
-not_working.lom
-src/ToDo.txt
 .idea/

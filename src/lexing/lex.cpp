@@ -6,6 +6,7 @@
 #include <cctype>
 #include <unordered_map>
 #include <vector>
+#include <chrono>
 
 namespace {
 using namespace LOM;
@@ -37,6 +38,12 @@ struct Tokenizer {
   peek_ahead(sz_t i = 1) const noexcept { return file.contents()[current_position + i]; }
 
   [[nodiscard]] char
+  previous() const noexcept {
+    assert(current_position not_eq 0);
+    return file.contents()[current_position - 1];
+  }
+
+  [[nodiscard]] char
   take() noexcept { return file.contents()[current_position++]; }
 
   void pop() noexcept { ++current_position; }
@@ -45,7 +52,6 @@ struct Tokenizer {
   void report_error_at_currentpos(const char* msg) const {
     report_error(file, 1, current_position, msg);
   }
-
 
   // called when opening quotes already consumed
   void grabStringLiteral() {
@@ -149,7 +155,7 @@ struct Tokenizer {
   }
 
   void grabNumber() {
-    auto newtoken_type = TokenType::UNSIGNED_LITERAL;
+    auto newtoken_type = TokenType::INTEGER_LITERAL;
     u16_t newtoken_length = 0;
     auto const newtoken_pos = current_position;
 
@@ -209,32 +215,47 @@ struct Tokenizer {
     }
   }
 
-  // true if we skipped comments
-  [[nodiscard]] bool
-  skipComments() {
+#define pre assert(peek() == '#');
+  void skipComments() { pre
     pop();
-    if (peek() == '/') {
-      pop();
 
+    if (peek() not_eq ':') {
       while ( peek() not_eq '\n' and peek() not_eq FILE_EOF ) pop();
-      return true;
+      return;
     }
 
-    undo();
-    return false;
+    pop();
+    auto nested{1uz};
+    while (peek() not_eq FILE_EOF and nested > 0) {
+      auto const first = peek();
+      auto const second = peek_ahead();
+
+      if (first == '#' and second == ':')
+        ++nested, pop();
+      else if (first == ':' and second == '#')
+        --nested, pop();
+
+      pop();
+    }
+
   }
+#undef pre
 };
 
 }
 
 File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& file_path) {
+#ifndef NDEBUG
+  auto begin_time = std::chrono::high_resolution_clock::now();
+#endif
+
   Tokenizer tokenizer{out_tokens, file_path};
 
   while (true) {
     tokenizer.skipWS();
     auto const c = tokenizer.peek();
     if (c == Tokenizer::FILE_EOF) break;
-    if (c == '/' and tokenizer.skipComments()) continue;
+    if (c == '#') { tokenizer.skipComments(); continue; }
 
     if (is_num(c))
       tokenizer.grabNumber();
@@ -250,6 +271,16 @@ File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path c
   out_tokens.reserve(out_tokens.size() + INVALID_TOKEN_PADDING);
   for (auto i{0uz}; i < INVALID_TOKEN_PADDING; ++i)
     out_tokens.push_back(INVALID_TOKEN);
+
+#ifndef NDEBUG
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::println("Lexing {}: {} | {} | {}",
+    file_path.native(),
+    end_time - begin_time,
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
+    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+  );
+#endif
 
   return std::move(tokenizer.file);
 }

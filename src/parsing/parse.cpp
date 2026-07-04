@@ -10,6 +10,7 @@
 #include <numeric>
 #include <print>
 #include <utility>
+#include <chrono>
 
 using namespace LOM;
 using namespace LOM::Lexer;
@@ -228,15 +229,15 @@ struct Body {
     ASTNode node = newNode(token);
 
     switch (token.type) {
-    case TokenType::UNSIGNED_LITERAL: {
+    case TokenType::INTEGER_LITERAL: {
       if constexpr (negate) {
         node.m.type = ASTNode::SIGNED_LITERAL;
-        node.signed_data.value = -static_cast<i64_t>(token.getUnsigned(current_file));
+        node.signed_data.value = -static_cast<i64_t>(token.getInteger(current_file));
         break;
       }
       else {
         node.m.type = ASTNode::UNSIGNED_LITERAL;
-        node.unsigned_data.value = token.getUnsigned(current_file);
+        node.unsigned_data.value = token.getInteger(current_file);
         break;
       }
     }
@@ -269,7 +270,7 @@ struct Body {
     if (tokens.peek_is(TokenType::LPAREN)) {
       tokens.pop();
       auto const res = generateAssignmentExpression();
-      if (not tokens.pop_if(TokenType::RPAREN)) report_error(current_file, tokens.take(), "Expected closing ).");
+      if (not tokens.pop_if(TokenType::RPAREN)) report_error(current_file, tokens.take_if_valid(), "Expected closing ).");
       return res;
     }
 
@@ -561,7 +562,7 @@ struct Body {
 
     if (not tokens.pop_if(TokenType::ASSIGN)) {
       report_error(current_file, tokens.peek(), "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
-      return tokens.take();
+      return tokens.take_if_valid();
     }
 
     if (tokens.pop_if(TokenType::KEYWORD_JUNK))
@@ -592,7 +593,7 @@ struct Body {
     while (not tokens.peek_is(TokenType::RBRACE)) {
       parseStatement();
       ++num_substatements;
-      if (tokens.peek().type == TokenType::INVALID_TOKEN) {
+      if (tokens.peek().isInvalid()) {
         report_error(current_file, tokens.peek(), "Expected closing } in scoped statement.");
         break;
       }
@@ -624,7 +625,7 @@ struct Body {
     while (not tokens.peek_is(TokenType::RBRACE)) {
       parseStatement();
       ++num_substatements;
-      if (tokens.peek().type == TokenType::INVALID_TOKEN) {
+      if (tokens.peek().isInvalid()) {
         report_error(current_file, tokens.peek(), "Expected closing } in scoped statement.");
         break;
       }
@@ -700,7 +701,7 @@ struct Body {
   }
 
 #define pre  assert(not tokens.peek_is(TokenType::LBRACE));
-#define post assert(tokens.previous().is(TokenType::RBRACE) or tokens.previous().is(TokenType::INVALID_TOKEN));
+#define post assert(tokens.previous().is(TokenType::RBRACE) or tokens.previous().isInvalid());
   void parseStatementsBetweenBraces() { pre
     while (not tokens.pop_if(TokenType::RBRACE) and not tokens.peek_is(TokenType::INVALID_TOKEN))
       parseStatement();
@@ -944,6 +945,10 @@ void Parser::printTU([[maybe_unused]] TU const& tu) {
 }
 
 void Parser::parseTokens(TU& tu, std::vector<Token> const& tokens) {
+#ifndef NDEBUG
+  auto begin_time = std::chrono::high_resolution_clock::now();
+#endif
+
   ExpressionTree expression_tree; // the stack can have 6kb as a treat :)
 
   TokenView global_view{tokens};
@@ -951,5 +956,15 @@ void Parser::parseTokens(TU& tu, std::vector<Token> const& tokens) {
 
   Body global_body(global_view, tu, expression_tree);
   parseFunctionsAndStructs(tu, global_body, tu.functions);
+
+#ifndef NDEBUG
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::println("Parsing {}: {} | {} | {}",
+    global_body.current_file.path(),
+    end_time - begin_time,
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
+    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+  );
+#endif
 }
 

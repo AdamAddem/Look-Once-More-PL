@@ -10,8 +10,8 @@
 #include <cassert>
 #include <format>
 #include <iostream>
-
 #include <print>
+#include <chrono>
 
 using namespace LOM;
 using namespace LOM::PeepMIR;
@@ -1036,15 +1036,33 @@ void PeepMIR::printPeep(TU const& tu) {
 
 
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
+
+#ifndef NDEBUG
+  auto begin_time = std::chrono::high_resolution_clock::now();
+#endif
+
   TU tu;
   tu.source_files = std::move(parsed_tu.source_files);
   tu.module = parsed_tu.module;
-  tu.imports.reserve(parsed_tu.imports.size() + 1);
-  for (auto const import_name : parsed_tu.imports)
-    tu.imports.emplace_back(getModule(import_name));
-  tu.imports.emplace_back(getModule("__C"));
   tu.functions.reserve(parsed_tu.functions.size());
 
+  tu.imports.reserve(parsed_tu.imports.size() + 1);
+  tu.imports.emplace_back(getModule("__C"));
+  for (auto const import_name : parsed_tu.imports)
+    tu.imports.emplace_back(getModule(import_name));
+
+
   Peeper::peepFunctions(tu, parsed_tu.functions);
+
+
+#ifndef NDEBUG
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::println("Peeping {}: {} | {} | {}",
+    parsed_tu.module->nameof(),
+    end_time - begin_time,
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
+    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+  );
+#endif
   return tu;
 }

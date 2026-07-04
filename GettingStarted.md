@@ -45,6 +45,7 @@ The C standard library (+ math) is linked to by default. Linking to anything els
 - String literals are accessable only through raw pointer to immutable char.
 - No support for creating or importing precompiled LOM libraries directly.
 - Import names currently shadow local variabels when accessing members. (local variable named foo cannot access any members if a module named foo has been imported).
+- Parsing errors don't sync very well. One error will likely cause many many more.
 - No pointer arithmetic.
 - No arrays.
 - No working variants or tuples.

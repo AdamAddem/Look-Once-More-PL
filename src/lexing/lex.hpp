@@ -23,23 +23,10 @@ struct Token {
     };
   }
 
-
-
-  /* expensive
-  [[nodiscard]] constexpr i64_t
-  getSigned(File const& file) const noexcept {
-    // assume_assert(type == TokenType::SIGNED_LITERAL); temporary
-    auto const begin = file.contents().data() + position;
-    i64_t res;
-    [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
-    assert(from_chars_res.ec == std::errc());
-    return res;
-  } */
-
   // expensive
   [[nodiscard]] constexpr u64_t
-  getUnsigned(File const& file) const noexcept {
-    assume_assert(type == TokenType::UNSIGNED_LITERAL);
+  getInteger(File const& file) const noexcept {
+    assume_assert(type == TokenType::INTEGER_LITERAL);
     auto const begin = file.contents().data() + position;
     u64_t res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
@@ -98,6 +85,7 @@ struct Token {
   [[nodiscard]] constexpr bool isNumericLiteral() const noexcept       { return isCategoryNUMERIC_LITERALS(type); }
   [[nodiscard]] constexpr bool isPointer() const noexcept              { return isCategoryPOINTERS(type); }
   [[nodiscard]] constexpr bool isTypeQualifier() const noexcept        { return isCategoryTYPE_QUALIFIERS(type); }
+  [[nodiscard]] constexpr bool isInvalid() const noexcept              { return type == TokenType::INVALID_TOKEN; }
 
 };
 
@@ -115,13 +103,18 @@ public:
 
   [[nodiscard]] Token peek() const noexcept                     { return *begin; }
   [[nodiscard]] bool peek_is(TokenType type) const noexcept     { return begin->type == type; }
-  [[nodiscard]] Token peek_ahead(sz_t distance) const noexcept  { return *(begin + distance); }
+  [[nodiscard]] Token peek_ahead(long distance) const noexcept  { return *(begin + distance); }
   [[nodiscard]] Token take() noexcept                           { return *begin++; }
-  // [[nodiscard]] bool empty() const noexcept                     { return begin == end; }
+  [[nodiscard]] Token previous() const noexcept/* ub if first */{ return *(begin - 1); }
   void pop() noexcept                                           { ++begin; }
-  bool pop_if(const TokenType type) noexcept                    { if (begin->type not_eq type) return false; ++begin; return true; }
+  bool pop_if(TokenType type) noexcept                          { if (begin->type not_eq type) return false; ++begin; return true; }
   void undo() noexcept                                          { --begin; }
-  Token previous() const noexcept   /* ub if first token */     { return *(begin - 1); }
+  [[nodiscard]] Token take_if_valid() noexcept {
+    auto const res = *begin;
+    if (not res.is(TokenType::INVALID_TOKEN)) ++begin;
+    return res;
+  }
+
 
   void print(File const& file) const;
 

@@ -13,47 +13,53 @@ Compilation speed is also a priority.
     i32 const_num = 5;  
     $i32 mutable_num = 4;
     
-    $f32 uninitialized = junk;     // explicit junk initialization required
-    $f32 not_allowed;              // error
-    f32 const_not_allowed = junk;  // error
+    $f32 uninitialized = junk;     # explicit junk initialization required
+    $f32 not_allowed;              # error
+    f32 const_not_allowed = junk;  # error
 * Simple, intuitive pointer syntax
     ```
-    // Pointer declarations are simply read left to right
-    raw i32 x = null;              // Raw pointer to an integer
-    vague $ z = null;              // Pointer to anything mutable (void* equivalent)
+    # Pointer declarations are simply read left to right
+    raw i32 x = null;              # Raw pointer to an integer
+    vague $ z = null;              # Pointer to anything mutable (void* equivalent)
     
-    // Uniform dereference syntax
-    raw $Rectangle p = @my_rect;   // GenZ address-of operator (don't @ me bro)
-    p->length = 2;                 // Dereference to access member
-    p-> = getSquare();             // Dereference to access object (*p equivalent)
+    # Uniform dereference syntax
+    raw $Rectangle p = @my_rect;   # GenZ address-of operator (don't @ me bro)
+    p->length = 2;                 # Dereference to access member
+    p-> = getSquare();             # Dereference to access object (*p equivalent)
 * Native variant, tuple, and nullable types (planned)
     ```
     <string, u32> name_or_id = 5;
-    <string, devoid> first_member = getFirstClubMember();    // Nullable type represented via 'devoid' keyword
+    <string, devoid> first_member = getFirstClubMember();    # Nullable type represented via 'devoid' keyword
     
-    [string first, string last] person = ["Gabe", "Newell"]; // Tuple / Anonymous struct
+    [string first, string last] person = ["Gabe", "Newell"]; # Tuple / Anonymous struct
 * Strict and explicit global variables (planned)
     ```
-    // Global variables must be declared before functions and after imports.
-    // Global variables may not be junk initialized.
-    // Global variables must be initialized at compile time.
+    #: 
+       Global variables must be declared before functions and after imports.
+       Global variables may not be junk initialized.
+       Global variables must be initialized at compile time.
+    :#
 
-    global $i32 x = junk;    // error
+    global $i32 x = junk;    # error
     global $f32 y = 4.0f;
   
     fn foo() {...}  
     
-    global i32 too_late = 5;    // error
+    global i32 too_late = 5; # error
 * Strong typing and simple promotion rules
     ```
-    // No implicit conversions, with the exception of unsigned to signed conversions where the signed type is of greater size
+    #:
+       No implicit conversions.
+       #: except unsigned to signed conversions where the signed type is of greater size :#
+    :#
+  
     $i8 signed_8 = 0; $u8 unsigned_8 = 0; $i32 signed_32 = 0; $u32 unsigned_32 = 0;
-    unsigned_32 = signed_8;   // error
+    unsigned_32 = signed_8;   # error
     unsigned_32 = unsigned_8;
     signed_32 = unsigned_8;
-    signed_8 = unsigned_8;    // error
+    signed_8 = unsigned_8;    # error
   
-    // Cast operator with prefix precedence
+    # Cast operator with prefix precedence
     unsigned_32 = cast<u32> signed_8;
     f32 res = cast<f32> (signed_8 + 3);
 * An actual module system (100% adoption rate)
@@ -61,7 +67,7 @@ Compilation speed is also a priority.
   import whatever;
   pub fn bar() {...}
 
-  fn foo() i32 { // visible only within current module
+  fn foo() i32 { # visible only within current module
     return whatever.getNum() + 2;
   }
 ---

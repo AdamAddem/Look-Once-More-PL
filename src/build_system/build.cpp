@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <print>
+#include <chrono>
 using namespace LOM;
 
 
@@ -50,7 +51,6 @@ lex_and_parse_file(
     std::println( "{}", get_file_errors( file_path.native() ) );
     return false;
   }
-
   return true;
 }
 
@@ -84,6 +84,7 @@ lex_and_parse_module(fs::path const& directory)  {
 
   if (not success) std::quick_exit(1); //TODO: temporary
 
+
   return tu;
 }
 
@@ -91,10 +92,14 @@ void LOM::build() {
   if (not fs::exists("src"))
     throw std::runtime_error("LookOnceMore: src directory not found!");
 
+#ifndef NDEBUG
+  auto begin_time = std::chrono::high_resolution_clock::now();
+#endif
+
   modules.emplace(std::pair(std::string_view("__C"), Module{"__C", &types}));
 
-  std::vector<Parser::TU> parsed_tus;
-  std::vector<fs::path> module_paths;
+  std::vector<Parser::TU> parsed_tus; parsed_tus.reserve(4);
+  std::vector<fs::path> module_paths; parsed_tus.reserve(4);
   for (auto const& entry : fs::directory_iterator{"src"}) {
     if (entry.is_directory()) {
       if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue;
@@ -151,6 +156,16 @@ void LOM::build() {
   }
   if (not success) return;
 
+#ifndef NDEBUG
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::println("Full: {} | {} | {}",
+    end_time - begin_time,
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
+    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+  );
+#endif
+
   if (Settings::do_linking or Settings::do_output_obj)
     Backend::linkObjects(module_paths);
+
 }

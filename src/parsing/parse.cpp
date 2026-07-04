@@ -95,7 +95,7 @@ parseUnqualifiedType(TokenView& tokens, TU& tu) {
 template <bool allow_qualifiers>
 [[maybe_unused]] [[nodiscard]] auto
 parseTypeList(TokenView& tokens, TU& tu) {
-  using type = std::conditional_t<allow_qualifiers, QualifiedType, const Type *>;
+  using type = std::conditional_t<allow_qualifiers, QualifiedType, Type const*>;
   std::vector<type> list;
   list.reserve(2);
 

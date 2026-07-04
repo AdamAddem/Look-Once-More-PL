@@ -10,25 +10,23 @@ struct TU;
 }
 
 namespace LOM::PeepMIR {
-struct TU;
 
-
-  [[nodiscard]] constexpr char
-  charToEscapeSequenceEquivalent(char c) {
-    switch (c) {
-    case 'n':   return '\n';
-    case 't':   return '\t';
-    case 'b':   return '\b';
-    case 'r':   return '\r';
-    case 'f':   return '\f';
-    case '\\':  return '\\';
-    case '"':   return '"';
-    case '\'':  return '\'';
-    case '0':   return '\0';
-    case 'v':   return '\v';
-    default:    return c;
-    }
+[[nodiscard]] constexpr char
+charToEscapeSequenceEquivalent(char c) {
+  switch (c) {
+  case 'n':   return '\n';
+  case 't':   return '\t';
+  case 'b':   return '\b';
+  case 'r':   return '\r';
+  case 'f':   return '\f';
+  case '\\':  return '\\';
+  case '"':   return '"';
+  case '\'':  return '\'';
+  case '0':   return '\0';
+  case 'v':   return '\v';
+  default:    return c;
   }
+}
 
 struct Instruction {
   enum Type : u8_t {
@@ -293,7 +291,7 @@ struct Function {
   u32_t name_len;
   const char* name_ptr;
 
-  const FunctionType* type;
+  FunctionType const* type;
   std::vector<const Type*> locals;
   std::vector<Instruction> instructions;
   std::vector<Block> blocks;
@@ -309,6 +307,8 @@ struct TU {
   Module* module;
   eden::swap_vector<Module*> imports;
   std::vector<Function> functions;
+  bool has_errors{false};
+  //char _pad[7];
 };
 
 void printPeep(TU const&);

@@ -1,19 +1,7 @@
 __C printf(raw char fmt, __va); # C-Interop!
 
-#:
-    Returns the n'th fibonnaci number.
-:#
-fn fib(u32 n) u32 {
-    if n <= 1 { return n; }
-    return fib(n-1) + fib(n-2);
-}
-
 pub fn main() i32 {
-    $i32 n = -1;
-    while n++ < 10 {
-        u32 fib_result = fib( cast<u32> n );
-        __C.printf("fib number %d: %d\n", n, fib_result);
-    }
-
+    char c = 'H';
+    __C.printf("%c\n", c);
     return 0;
 }

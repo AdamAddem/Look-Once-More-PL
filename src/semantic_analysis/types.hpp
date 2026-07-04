@@ -35,7 +35,7 @@ class Type {
   u8_t flags{}; // flags for quicker type checking
 
   // should only be called for the error type
-  explicit consteval Type() : flags(u8_max), derived_type(ERROR) {}
+  // explicit consteval Type() : flags(u8_max), derived_type(ERROR) {}
 
 protected:
   constexpr void setArithmetic() noexcept {flags or_eq is_arithmetic_mask;}
@@ -59,9 +59,10 @@ public:
   }; static_assert(sizeof(Qualifiers) == 1, "If increased this would make SymbolTable::Variable go from 24 -> 32 bytes");
 
   [[nodiscard]] static consteval Type const* devoid()     noexcept  {static constexpr Type devoid{DEVOID}; return &devoid;}
-  [[nodiscard]] static consteval Type const* error()      noexcept  {static constexpr Type error;  return &error;}
+  [[nodiscard]] static consteval Type const* error()      noexcept  {static constexpr Type error{ERROR};  return &error;}
 
   [[nodiscard]] constexpr bool isDevoid()           const noexcept  {return derived_type == DEVOID;}
+  [[nodiscard]] constexpr bool isError()            const noexcept  {return derived_type == ERROR;}
   [[nodiscard]] constexpr bool isPrimitive()        const noexcept  {return derived_type == PRIMITIVE;}
   [[nodiscard]] constexpr bool isPointer()          const noexcept  {return derived_type == POINTER;}
   [[nodiscard]] constexpr bool isVariant()          const noexcept  {return derived_type == VARIANT;}

@@ -45,7 +45,7 @@ lex_and_parse_file(
   fs::path const& file_path) {
 
   auto file = Lexer::tokenizeFile(tokens, file_path);
-  if (does_file_have_errors(file_path.native())) {
+  if (file_has_errors(file_path.native())) {
     std::println( "{}", get_file_errors( file_path.native() ) );
     return false;
   }
@@ -59,7 +59,7 @@ lex_and_parse_file(
 
   tu.source_files.emplace_back(std::move(file));
   Parser::parseTokens(tu, tokens);
-  if (does_file_have_errors(file_path.native())) {
+  if (file_has_errors(file_path.native())) {
     std::println( "{}", get_file_errors( file_path.native() ) );
     return false;
   }
@@ -142,9 +142,13 @@ void LOM::build() {
     }
 
     auto peeped = PeepMIR::lowerToPeep(std::move(parsed_tus[i]));
-    if (does_file_have_errors(module_name.native())) {
-      std::println("{}", get_file_errors(module_name.native()));
+    if (peeped.has_errors) {
       success = false;
+      for (auto& file : peeped.source_files) {
+        auto const fp = file.path();
+        if (file_has_errors(fp)) std::println("{}", get_file_errors(fp));
+      }
+
       continue;
     }
 

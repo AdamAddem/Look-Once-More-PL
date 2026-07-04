@@ -81,7 +81,8 @@ struct Tokenizer {
 
   // called when opening single-quote already consumed
   void grabCharLiteral() {
-    u16_t length = 2; auto const pos = current_position;
+    u16_t length = 2;
+    auto const pos = current_position;
     auto const c1 = take();
     auto const c2 = take();
 

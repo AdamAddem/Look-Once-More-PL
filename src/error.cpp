@@ -11,7 +11,7 @@ struct Error {
   u32_t position;
 };
 
-// filepath -> vector of error's
+// filepath -> errors
 std::unordered_map<std::string_view, std::vector<Error>> file_to_errors_map;
 
 }
@@ -19,7 +19,7 @@ std::unordered_map<std::string_view, std::vector<Error>> file_to_errors_map;
 // TODO: make all of this thread safe
 namespace LOM {
 
-bool does_file_have_errors(std::string_view file_path) {
+bool file_has_errors(std::string_view file_path) {
   return file_to_errors_map.contains(file_path);
 }
 
@@ -33,7 +33,7 @@ std::string get_file_errors(std::string_view file_path) {
   error_messages.append("Errors within file: "); error_messages.append(file_path); error_messages.append("\n\n");
   for (auto& error : error_vec) {
     error_messages.append(error.message);
-    auto const beginning_line_idx = error.file_text.substr(0, error.position - 1).find_last_of('\n');
+    auto const beginning_line_idx = error.file_text.substr(0, error.position).find_last_of('\n');
     auto const ending_line_idx = error.file_text.substr(error.position).find_first_of('\n');
     auto const ln = std::count(error.file_text.begin(), error.file_text.begin() + error.position, '\n') + 1;
     auto const entire_line = error.file_text.substr(beginning_line_idx + 1, (error.position + ending_line_idx) - beginning_line_idx);
@@ -45,7 +45,7 @@ std::string get_file_errors(std::string_view file_path) {
 
     error_messages.append(
       std::format("{}{}\n",
-        std::string(error.position - beginning_line_idx, ' '),
+        std::string(error.position - beginning_line_idx + 1, ' '),
         std::string(error.length, '^'))
       );
   }

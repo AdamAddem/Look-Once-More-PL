@@ -104,15 +104,15 @@ struct ExpressionResult {
 class Peeper {
   Module* module;
   File const* current_file;
+  bool has_error{false};
 
   eden::swap_vector<Module*> imports;
-
-  std::vector<const Type*> locals;
+  std::vector<Type const*> locals;
   std::vector<Instruction> instructions;
   std::vector<Block> blocks;
 
   TreeView nodes;
-  const FunctionType* current_function_type;
+  FunctionType const* current_function_type;
 
   [[nodiscard]] constexpr Block&
   current_block() noexcept
@@ -154,6 +154,12 @@ class Peeper {
     possible_literal.adjust_literal(expected_type_primitive->bitwidth(), is_signed);
     return true;
   }
+
+  void error(auto err, std::string msg) noexcept
+  { report_error(*current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
+
+  void error(ASTNode err, std::string msg) noexcept
+  { report_error(*current_file, err.m.length_in_file, err.m.position_in_file, std::move(msg)); has_error = true; }
 
   ExpressionResult
   peepLiteral(ASTNode node) {
@@ -216,14 +222,14 @@ class Peeper {
         return {{member_function->type, {}}, data.length_in_file, data.position_in_file};
       }
 
-      report_error(*current_file, member_node.m.length_in_file, member_node.m.position_in_file, "Identifier is not a public member of module.");
+      error(member_node, "Identifier is not a public member of module.");
       return {error_literal, member_node};
     }
 
     not_module:
     auto const object_expression = peepExpression();
     if (not object_expression.type->isCustom()) {
-      report_error(*current_file, object_expression.length_in_file, object_expression.position_in_file, "Attempt to access member of non-custom type.");
+      error(object_expression, "Attempt to access member of non-custom type.");
       return {error_literal, object_expression.length_in_file, object_expression.position_in_file};
     }
 
@@ -249,7 +255,7 @@ class Peeper {
 
     new (member_access_instruction) Instruction(Instruction::UCAST, 0); // this is only here to avoid the UB from double destruction once this returns
 
-    report_error(*current_file, identifier_node.m.length_in_file, identifier_node.m.position_in_file, "Identifier is not a public member of type.");
+    error(identifier_node,"Identifier is not a public member of type.");
     return {error_literal, identifier_node};
   }
 
@@ -271,10 +277,11 @@ class Peeper {
       return {{function->type, {}}, len, pos};
     }
 
-    report_error(*current_file, len, pos, std::format("Undeclared identifier: {}.", identifier));
+    error(data, std::format("Undeclared identifier: {}.", identifier));
     instructions.emplace_back(Instruction::NOOP, 0);
     return {error_literal, len, pos};
   }
+#undef pre
 
   ExpressionResult
   peepCastExpression(ASTNode::CastData data) {
@@ -283,9 +290,9 @@ class Peeper {
 
     auto const casted_expr = peepExpression();
     if (not casted_expr.type->castableTo(data.cast_type)) {
-      report_error(*current_file, casted_expr.length_in_file, casted_expr.position_in_file,
-        std::format("Invalid cast from {} to {}",
-        casted_expr.type->toString(), data.cast_type->toString()));
+      error(casted_expr,
+        std::format("Invalid cast from {} to {}", casted_expr.type->toString(), data.cast_type->toString())
+        );
       return {error_literal, data.length_in_file, data.position_in_file};
     }
 
@@ -299,7 +306,10 @@ class Peeper {
     instructions.emplace_back(Instruction::CALL, data.num_parameters);
     auto const called = peepExpression();
     if (not called.type->isCallable()) {
-      report_error(*current_file, called.length_in_file, called.position_in_file, "Call operator used on non-callable.");
+      if (not called.type->isError()) error(called, "Call operator used on non-callable.");
+      for (auto i{0uz}; i<data.num_parameters; ++i)
+        (void)peepExpression();
+
       return {error_literal, called.length_in_file, called.position_in_file};
     }
 
@@ -311,12 +321,12 @@ class Peeper {
     bool const variadic = function_type->isVariadic();
 
     if (data.num_parameters < function_parameter_count) {
-      report_error(*current_file, called.length_in_file, called.position_in_file, "Too few parameters for function call.");
+      error(called, "Too few parameters for function call.");
       return {error_literal, called.length_in_file, called.position_in_file};
     }
 
     if (data.num_parameters > function_parameter_count and not variadic) {
-      report_error(*current_file, called.length_in_file, called.position_in_file, "Too many parameters for function call.");
+      error(called, "Too many parameters for function call.");
       return {error_literal, called.length_in_file, called.position_in_file};
     }
 
@@ -328,7 +338,7 @@ class Peeper {
 
       if (given_parameter.type not_eq function_parameter_type) {
         if (not given_parameter.type->coercibleTo(function_parameter_type)) {
-          report_error(*current_file, given_parameter.length_in_file, given_parameter.position_in_file, std::format("Cannot convert parameter of type {} to type {}.", given_parameter.type->toString(), function_parameter_type->toString()));
+          error(given_parameter, std::format("Cannot convert parameter of type {} to type {}.", given_parameter.type->toString(), function_parameter_type->toString()));
           return {error_literal, given_parameter.length_in_file, given_parameter.position_in_file};
         }
 
@@ -368,7 +378,7 @@ class Peeper {
       else if (coerce_if_integerliteral(instructions[right_idx], left.type))
         right.type = left.type;
       else {
-        report_error(*current_file, data.length_in_file, data.position_in_file,
+        error(data,
           std::format("Right type {} in binary expression incompatable with left type {}.",
           left.type->toString(), operatorToString(data.opr), right.type->toString()));
 
@@ -383,7 +393,7 @@ class Peeper {
     case Operator::DIVIDE:
     case Operator::MODULUS:
       if (not arithmetic) {
-        report_error(*current_file, data.length_in_file, data.position_in_file, "Non-arithmetic expressions in arithmetic binary operation.");
+        error(data, "Non-arithmetic expressions in arithmetic binary operation.");
         left = {error_literal, data.length_in_file, data.position_in_file};
         break;
       }
@@ -396,7 +406,7 @@ class Peeper {
     case Operator::LESS_EQUAL:
     case Operator::GREATER_EQUAL:
       if (not arithmetic) {
-        report_error(*current_file, data.length_in_file, data.position_in_file, "Non-arithmetic expressions in arithmetic binary operation.");
+        error(data, "Non-arithmetic expressions in arithmetic binary operation.");
         left = {error_literal, data.length_in_file, data.position_in_file};
         break;
       }
@@ -408,7 +418,7 @@ class Peeper {
     case Operator::OR:
     case Operator::XOR:
       if (not left.type->isBool()) {
-        report_error(*current_file, data.length_in_file, data.position_in_file, "Non-boolean expressions in boolean binary operation.");
+        error(data, "Non-boolean expressions in boolean binary operation.");
         left = {error_literal, data.length_in_file, data.position_in_file};
         break;
       }
@@ -420,7 +430,7 @@ class Peeper {
     case Operator::BITOR:
     case Operator::BITXOR:
       if (not arithmetic) {
-        report_error(*current_file, data.length_in_file, data.position_in_file, "Non-arithmetic expressions in bitwise operation.");
+        error(data, "Non-arithmetic expressions in bitwise operation.");
         left = {error_literal, data.length_in_file, data.position_in_file};
         break;
       }
@@ -430,7 +440,7 @@ class Peeper {
 
     case Operator::ASSIGN:
       if (not left.qualifiers.is_mutable) {
-        report_error(*current_file, data.length_in_file, data.position_in_file, "Left expression in assignment non-mutable.");
+        error(data, "Left expression in assignment non-mutable.");
         left = {error_literal, data.length_in_file, data.position_in_file};
       }
       break;
@@ -538,13 +548,13 @@ class Peeper {
     case Operator::PRE_INCREMENT:
     case Operator::PRE_DECREMENT:
       if (not expression.qualifiers.is_mutable) {
-        report_error(*current_file, expression.length_in_file, expression.position_in_file, "Prefix operator used on non-mutable expression.");
+        error(expression, "Prefix operator used on non-mutable expression.");
         expression = {error_literal, expression.length_in_file, expression.position_in_file};
       }
       break;
     case Operator::UNARY_MINUS:
       if (not arithmetic) {
-        report_error(*current_file, expression.length_in_file, expression.position_in_file, "Unary minus used on non-arithmetic expression.");
+        error(expression, "Unary minus used on non-arithmetic expression.");
         expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
@@ -552,7 +562,7 @@ class Peeper {
       break;
     case Operator::BITNOT:
       if (not arithmetic) {
-        report_error(*current_file, expression.length_in_file, expression.position_in_file, "bitnot operator used non-arithmetic expression.");
+        error(expression, "bitnot operator used non-arithmetic expression.");
         expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
@@ -560,7 +570,7 @@ class Peeper {
       break;
     case Operator::NOT:
       if (not expression.type->isBool()) {
-        report_error(*current_file, expression.length_in_file, expression.position_in_file, "not operator used on non-boolean expression.");
+        error(expression, "not operator used on non-boolean expression.");
         expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
@@ -569,7 +579,7 @@ class Peeper {
     case Operator::POST_INCREMENT:
     case Operator::POST_DECREMENT:
       if (not expression.qualifiers.is_mutable) {
-        report_error(*current_file, expression.length_in_file, expression.position_in_file, "Postfix decrement operator used on non-mutable expression.");
+        error(expression, "Postfix decrement operator used on non-mutable expression.");
         expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
@@ -577,7 +587,7 @@ class Peeper {
       break;
     case Operator::ARROW:
       if (not expression.type->isPointer()) {
-        report_error(*current_file, expression.length_in_file, expression.position_in_file, "Arrow operator used on non-pointer type.");
+        error(expression, "Arrow operator used on non-pointer type.");
         expression = {error_literal, expression.length_in_file, expression.position_in_file};
         break;
       }
@@ -619,7 +629,6 @@ class Peeper {
 
   }
 
-
   [[nodiscard]] ExpressionResult
   peepExpression() {
     auto const node = nodes.take();
@@ -656,7 +665,7 @@ class Peeper {
     if (not return_has_value) {
       if (not return_type->isDevoid()) {
         auto const empty_return = nodes.take();
-        return report_error(*current_file, empty_return.m.length_in_file, empty_return.m.position_in_file, "Non-devoid function expects return value.");
+        return error(empty_return,"Non-devoid function expects return value.");
       }
 
       current_block().set_ret();
@@ -670,12 +679,12 @@ class Peeper {
 
     auto const return_expression = peepExpression();
     if (return_type->isDevoid()) {
-      report_error(*current_file, return_expression.length_in_file, return_expression.position_in_file,  "Cannot return value from devoid function");
+      error(return_expression,  "Cannot return value from devoid function");
       return;
     }
 
     if (not return_expression.type->coercibleTo(return_type)) {
-      report_error(*current_file, return_expression.length_in_file, return_expression.position_in_file, "Return statement's type is not compatible with function return type.");
+      error(return_expression, "Return statement's type is not compatible with function return type.");
       return;
     }
 
@@ -686,7 +695,7 @@ class Peeper {
 
   void peepScopedStatement(u32_t num_children) {
     if (num_children == 0)
-      return (void)instructions.emplace_back(Instruction::NOOP, 0);
+      return ;//(void)instructions.emplace_back(Instruction::NOOP, 0);
 
     while (num_children-- not_eq 0)
       peepStatement();
@@ -698,7 +707,7 @@ class Peeper {
     auto const condition_idx = current_block_index();
     auto const condition = peepExpression();
     if (not condition.type->isBool()) {
-      report_error(*current_file, condition.length_in_file, condition.position_in_file, "While Loop condition not boolean.");
+      error(condition, "While Loop condition not boolean.");
       return;
     }
 
@@ -717,7 +726,7 @@ class Peeper {
   void peepIfStatement(u32_t num_substatements) {
     auto const condition = peepExpression();
     if (not condition.type->isBool()) {
-      report_error(*current_file, condition.length_in_file, condition.position_in_file, "If statement condition not boolean.");
+      error(condition, "If statement condition not boolean.");
       return;
     }
 
@@ -748,7 +757,7 @@ class Peeper {
     locals.emplace_back(type);
 
     if (module->containsLocal(declared_name)) {
-      report_error(*current_file, declared_name, "Redefinition of symbol name in variable declaration.");
+      error(declared, "Redefinition of symbol name in variable declaration.");
       return;
     }
 
@@ -765,7 +774,7 @@ class Peeper {
     auto const init_expr_idx = instructions.size();
     auto const init_expr = peepExpression();
     if (not init_expr.type->coercibleTo(qualified_type.type)) {
-      report_error(*current_file, init_expr.length_in_file, init_expr.position_in_file, "Variable initialization's type is not compatible with variable type.");
+      error(init_expr, "Variable initialization's type is not compatible with variable type.");
       return;
     }
 
@@ -882,6 +891,7 @@ public:
     }
 
     peep_tu.imports = std::move(peeper.imports);
+    peep_tu.has_errors = peeper.has_error;
   }
 
 };
@@ -1033,7 +1043,6 @@ void PeepMIR::printPeep(TU const& tu) {
     std::println("}}\n");
   }
 }
-
 
 TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
 

@@ -95,9 +95,9 @@ struct Token {
   [[nodiscard]] constexpr bool isIdentifier() const noexcept           { return type == TokenType::IDENTIFIER; }
   [[nodiscard]] constexpr bool isPrimitive() const noexcept            { return isCategoryPRIMITIVES(type); }
   [[nodiscard]] constexpr bool isLiteral() const noexcept              { return isCategoryLITERALS(type); }
-  [[nodiscard]] constexpr bool isNumericLiteral() const noexcept       { return isCategoryNUMERICLITERALS(type); }
+  [[nodiscard]] constexpr bool isNumericLiteral() const noexcept       { return isCategoryNUMERIC_LITERALS(type); }
   [[nodiscard]] constexpr bool isPointer() const noexcept              { return isCategoryPOINTERS(type); }
-  [[nodiscard]] constexpr bool isTypeQualifier() const noexcept        { return isCategoryTYPE_QUALIFIER(type); }
+  [[nodiscard]] constexpr bool isTypeQualifier() const noexcept        { return isCategoryTYPE_QUALIFIERS(type); }
 
 };
 

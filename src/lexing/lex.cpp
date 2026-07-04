@@ -46,47 +46,31 @@ struct Tokenizer {
     report_error(file, 1, current_position, msg);
   }
 
-  [[maybe_unused]] [[nodiscard]] char
-  charToEscapeSequenceEquivalent(char c) {
-    switch (c) {
-    case 'n':   return '\n';
-    case 't':   return '\t';
-    case 'b':   return '\b';
-    case 'r':   return '\r';
-    case 'f':   return '\f';
-    case '\\':  return '\\';
-    case '"':   return '"';
-    case '\'':  return '\'';
-    case '0':   return '\0';
-    case 'v':   return '\v';
-
-    default:
-      report_error(file, 2, current_position - 1, "Unknown escape sequence.");
-      return '?';
-    }
-  }
 
   // called when opening quotes already consumed
   void grabStringLiteral() {
     u16_t length = 0;
     auto const pos = current_position; // grabbing the position after opening quotes
     auto c = take();
+
+    auto string_type = TokenType::STRING_LITERAL;
     while (c not_eq FILE_EOF) {
       switch (c) {
       case '\"': goto ending_quote_found;
-
       case '\n':
       case FILE_EOF:
         report_error_at_currentpos("Expected ending \" in string literal.");
         goto ending_quote_found;
-      default:
-        ++length;
+
+      case '\\': string_type = TokenType::ESCAPED_STRING_LITERAL; [[fallthrough]];
+      default: break;
       }
+      ++length;
       c = take();
     }
 
     ending_quote_found: // don't crucify me for this pls
-      token_list.emplace_back(TokenType::STRING_LITERAL, length, pos);
+      token_list.emplace_back(string_type, length, pos);
   }
 
   // called when opening single-quote already consumed

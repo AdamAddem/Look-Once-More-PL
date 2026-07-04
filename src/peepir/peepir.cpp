@@ -179,6 +179,9 @@ class Peeper {
     case STRING_LITERAL:
       instructions.emplace_back(Instruction::STRING_LITERAL, node.string_val(*current_file));
       return {string_literal, node};
+    case ESCAPED_STRING_LITERAL:
+      instructions.emplace_back(Instruction::ESCAPED_STRING_LITERAL, node.string_val(*current_file));
+      return {string_literal, node};
     default: eden_unreachable("Invalid literal type.");
     }
   }
@@ -634,7 +637,8 @@ class Peeper {
     case DOUBLE_LITERAL:
     case BOOL_LITERAL:
     case CHAR_LITERAL:
-    case STRING_LITERAL:   return peepLiteral(node);
+    case STRING_LITERAL:
+    case ESCAPED_STRING_LITERAL: return peepLiteral(node);
 
     default: eden_unreachable("Invalid ASTNode while peeping expression.");
     }
@@ -914,6 +918,7 @@ void printPeepInstruction(Instruction instruction) {
   case BOOL_LITERAL: return std::println("BOOL_LITERAL {}", instruction.bool_value());
   case CHAR_LITERAL: return std::println("CHAR_LITERAL {}", instruction.char_value());
   case STRING_LITERAL: return std::println("STRING_LITERAL {}", instruction.string_value());
+  case ESCAPED_STRING_LITERAL: return std::println("STRING_LITERAL W/ ESCAPE_SEQUENCE {}", instruction.original_string());
   case ADD: return std::println("ADD");
   case FADD: return std::println("FADD");
   case SUB: return std::println("SUB");

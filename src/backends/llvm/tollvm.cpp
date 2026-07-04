@@ -454,6 +454,8 @@ class Lowerer final {
       return llvm::ConstantInt::get(i8, instruction.char_value());
     case STRING_LITERAL:
       return builder.CreateGlobalString(instruction.string_value());
+    case ESCAPED_STRING_LITERAL:
+      return builder.CreateGlobalString(instruction.escaped_string_value());
 
     case ADD: case FADD:
     case SUB: case FSUB:

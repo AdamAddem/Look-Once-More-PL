@@ -45,7 +45,7 @@ std::string get_file_errors(std::string_view file_path) {
 
     error_messages.append(
       std::format("{}{}\n",
-        std::string(error.position - beginning_line_idx + 1, ' '),
+        std::string(error.position - beginning_line_idx, ' '),
         std::string(error.length, '^'))
       );
   }

@@ -240,23 +240,21 @@ struct Body {
         break;
       }
     }
-    case TokenType::FLOAT_LITERAL:
-      node.m.type = ASTNode::FLOAT_LITERAL;
+    case TokenType::FLOAT_LITERAL:  node.m.type = ASTNode::FLOAT_LITERAL;
       node.float_data.value = negate ? -token.getFloat(current_file) : token.getFloat(current_file);
       break;
-    case TokenType::DOUBLE_LITERAL:
-      node.m.type = ASTNode::DOUBLE_LITERAL;
+    case TokenType::DOUBLE_LITERAL: node.m.type = ASTNode::DOUBLE_LITERAL;
       node.double_data.value = negate ? -token.getDouble(current_file) : token.getDouble(current_file);
       break;
-    case TokenType::BOOL_LITERAL:
-      node.m.type = ASTNode::BOOL_LITERAL;
+    case TokenType::BOOL_LITERAL:   node.m.type = ASTNode::BOOL_LITERAL;
       node.bool_data.value = negate ? not token.getBool(current_file) : token.getBool(current_file);
       break;
-    case TokenType::CHAR_LITERAL:
-      node.m.type = ASTNode::CHAR_LITERAL;
+    case TokenType::CHAR_LITERAL:   node.m.type = ASTNode::CHAR_LITERAL;
       node.char_data.value = negate ? -token.getChar(current_file) : token.getChar(current_file);
       break;
+
     case TokenType::STRING_LITERAL:   node.m.type = ASTNode::STRING_LITERAL; assert(not negate); break;
+    case TokenType::ESCAPED_STRING_LITERAL:   node.m.type = ASTNode::ESCAPED_STRING_LITERAL; assert(not negate); break;
     default: eden_unreachable("Invalid literal token type.");
     }
 
@@ -524,7 +522,7 @@ struct Body {
       return;
     }
 
-    case IDENTIFIER: case STRING_LITERAL: case SIGNED_LITERAL: case UNSIGNED_LITERAL:
+    case IDENTIFIER: case STRING_LITERAL: case ESCAPED_STRING_LITERAL: case SIGNED_LITERAL: case UNSIGNED_LITERAL:
     case FLOAT_LITERAL: case DOUBLE_LITERAL: case BOOL_LITERAL: case CHAR_LITERAL:
       nodes.emplace_back(expression.node);
       return;

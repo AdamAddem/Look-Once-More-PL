@@ -33,6 +33,7 @@ void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
     case BOOL_LITERAL: std::print("BOOL_LITERAL: {}", curr->bool_val()); break;
     case CHAR_LITERAL: std::print("CHAR_LITERAL: {}", curr->char_val()); break;
     case STRING_LITERAL: std::print("STRING_LITERAL: {}", curr->string_val(file)); break;
+    case ESCAPED_STRING_LITERAL: std::print("ESCAPED_STRING_LITERAL: {}", curr->string_val(file)); break;
 
     default: eden_unreachable("Invalid ASTNode Type.");
     }

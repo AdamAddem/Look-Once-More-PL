@@ -3,6 +3,7 @@
 #include "edenlib/typedefs.hpp"
 #include "file.hpp"
 #include "semantic_analysis/symbol_table.hpp"
+#include "error.hpp"
 
 namespace LOM::Parser {
 struct TU;
@@ -10,6 +11,24 @@ struct TU;
 
 namespace LOM::PeepMIR {
 struct TU;
+
+
+  [[nodiscard]] constexpr char
+  charToEscapeSequenceEquivalent(char c) {
+    switch (c) {
+    case 'n':   return '\n';
+    case 't':   return '\t';
+    case 'b':   return '\b';
+    case 'r':   return '\r';
+    case 'f':   return '\f';
+    case '\\':  return '\\';
+    case '"':   return '"';
+    case '\'':  return '\'';
+    case '0':   return '\0';
+    case 'v':   return '\v';
+    default:    return c;
+    }
+  }
 
 struct Instruction {
   enum Type : u8_t {
@@ -29,7 +48,8 @@ struct Instruction {
     FLOAT_LITERAL, DOUBLE_LITERAL,
     BOOL_LITERAL, CHAR_LITERAL,
 
-    STRING_LITERAL,      // value is char* to string, aux_value is string length
+    STRING_LITERAL,         // value is char* to string, aux_value is string length
+    ESCAPED_STRING_LITERAL, // value is char* to string, aux_value is string length
 
     // value indeterminate
     ADD, FADD,
@@ -73,7 +93,7 @@ struct Instruction {
 
   constexpr Instruction(Type type, std::string_view str) noexcept
   : type(type), aux_value(static_cast<u32_t>(str.length())), value(std::bit_cast<u64_t>(str.data()))
-  { assert(type == GLOBAL or type == FUNCTION or type == STRING_LITERAL); }
+  { assert(type == GLOBAL or type == FUNCTION or type == STRING_LITERAL or type == ESCAPED_STRING_LITERAL); }
 
   constexpr Instruction(Type type, const Module* module, u32_t order) noexcept
   : type(type), aux_value(order), value(std::bit_cast<u64_t>(module))
@@ -131,6 +151,29 @@ struct Instruction {
   [[nodiscard]] constexpr std::string_view
   string_value() const noexcept
   { assume_assert(type == STRING_LITERAL); return {std::bit_cast<const char*>(value), aux_value}; }
+
+  [[nodiscard]] constexpr std::string_view
+  original_string() const noexcept
+  { return {std::bit_cast<const char*>(value), aux_value}; }
+
+  [[nodiscard]] constexpr std::string
+  escaped_string_value() const noexcept {
+    assume_assert(type == ESCAPED_STRING_LITERAL);
+    std::string res;
+    auto const orig = original_string();
+    res.reserve(orig.size() + 1);
+
+    for (auto i{0uz}; i < orig.size(); ++i) {
+      char c = orig[i];
+      if (c == '\\') {
+        ++i;
+        c = charToEscapeSequenceEquivalent(orig[i]);
+      }
+      res.push_back(c);
+    }
+
+    return res;
+  }
 
   [[nodiscard]] constexpr std::string_view
   global_name() const noexcept

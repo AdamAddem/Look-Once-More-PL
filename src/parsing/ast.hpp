@@ -94,8 +94,9 @@ struct ASTNode {
     CALLING,        // NUM       | CALLED_EXPRESSION, PARAMETERS... * NUM
     CAST,           // Type*     | EXPRESSION
 
-    IDENTIFIER,     // holds Type* ONLY if preceeded by declaration
-    STRING_LITERAL, // no value, uses the length_in_file and position_in_file
+    IDENTIFIER,             // value is Type* ONLY if preceeded by declaration, otherwise nothing
+    STRING_LITERAL,         // no value, uses the length_in_file and position_in_file
+    ESCAPED_STRING_LITERAL, // no value, uses the length_in_file and position_in_file
 
     // holds respective value in nodedata
     SIGNED_LITERAL,
@@ -189,7 +190,7 @@ struct ASTNode {
   [[nodiscard]] constexpr bool             bool_val()                        const noexcept { assume_assert(m.type == BOOL_LITERAL); return bool_data.value; }
   [[nodiscard]] constexpr char             char_val()                        const noexcept { assume_assert(m.type == CHAR_LITERAL); return char_data.value; }
   [[nodiscard]] constexpr std::string_view identifier_val(File const& file)  const noexcept { assume_assert(m.type == IDENTIFIER); return file.view_at(m.length_in_file, m.position_in_file); }
-  [[nodiscard]] constexpr std::string_view string_val(File const& file)      const noexcept { assume_assert(m.type == STRING_LITERAL); return file.view_at(m.length_in_file, m.position_in_file); }
+  [[nodiscard]] constexpr std::string_view string_val(File const& file)      const noexcept { assume_assert(m.type == STRING_LITERAL or m.type == ESCAPED_STRING_LITERAL); return file.view_at(m.length_in_file, m.position_in_file); }
   [[nodiscard]] constexpr std::string_view original_string(File const& file) const noexcept { return file.view_at(m.length_in_file, m.position_in_file); }
 };
 static_assert(sizeof(ASTNode) == 16);

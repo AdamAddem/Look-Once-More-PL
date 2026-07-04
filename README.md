@@ -87,7 +87,8 @@ The executable can be ran with the following arguments:
     -emit-llvm           Produces the LLVM IR representation of the source code.
     -emit-asm            Produces the assembly representation of the source code.
     
-    -emit-<lexer, parser, peep> Prints a textual representation of the respective stage to cout.
+    Prints a textual representation of the respective stage to cout (Don't expect it to be pretty!).
+    -emit-<lexer, parser, peep> 
 ```
 Visit [GettingStarted](GettingStarted.md) for more information on setting up a project.
 

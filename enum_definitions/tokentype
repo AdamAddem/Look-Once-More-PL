@@ -84,31 +84,19 @@ tokentype.hpp TokenType LOM::Lexer u8_t
     KEYWORD_MUT mut
 !END TYPE_QUALIFIERS
 
-!BEGIN CONTROL_FLOW
     KEYWORD_IF if
     KEYWORD_ELSE else
-    KEYWORD_FOR for
     KEYWORD_WHILE while
     KEYWORD_RETURN return
-    KEYWORD_SWITCH switch
-    KEYWORD_CASE case
-!END CONTROL_FLOW
-
-!BEGIN CAST
     KEYWORD_CAST cast
-!END CAST
-
     KEYWORD_GLOBAL global
     KEYWORD_NULL null
     KEYWORD_JUNK junk
     KEYWORD_DEFAULT default
     KEYWORD_FN fn
     KEYWORD_STRUCT struct
-
-!BEGIN MODULE
     KEYWORD_PUB pub
     KEYWORD_IMPORT import
-!END MODULE
 
 !END KEYWORDS
 

@@ -87,6 +87,13 @@ def file_output(lines, out_filename, enum_name, namespace, underlying_type):
 
     for category in categories:
         out.write(f'constexpr bool isCategory{category.name}({enum_name} e) {{ return std::to_underlying(e) >= {category.begin} && std::to_underlying(e) < {category.end}; }}\n')
+    out.write("\n")
+
+    for category in categories:
+        out.write(f'#define {enum_name.upper()}_{category.name}_CASES ')
+        for i in range(category.begin, category.end):
+            out.write(f'case {entries[i].enum_rep}: ')
+        out.write("\n")
 
     out.write(f"\n}}; //namespace {namespace}")
     out.close()

@@ -3,5 +3,6 @@ __C printf(raw char fmt, __va); # C-Interop!
 pub fn main() i32 {
     char c = 'H';
     __C.printf("%c\n", c);
+
     return 0;
 }

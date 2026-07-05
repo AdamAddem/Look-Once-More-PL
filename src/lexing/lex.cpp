@@ -149,7 +149,9 @@ struct Tokenizer {
 
     default:
       type = INVALID_TOKEN;
-      report_error_at_currentpos("Invalid symbol.");
+      --current_position;
+      report_error_at_currentpos("Unrecognized symbol.");
+      ++current_position;
     }
 
     token_list.emplace_back(type, length, pos);

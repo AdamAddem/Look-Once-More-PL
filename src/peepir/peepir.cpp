@@ -307,6 +307,7 @@ class Peeper {
     auto const called = peepExpression();
     if (not called.type->isCallable()) {
       if (not called.type->isError()) error(called, "Call operator used on non-callable.");
+
       for (auto i{0uz}; i<data.num_parameters; ++i)
         (void)peepExpression();
 

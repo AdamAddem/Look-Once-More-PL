@@ -11,7 +11,7 @@ int main(int argc, const char* argv[]) {
   LOM::Settings::setArgs(argc, argv);
 
 #ifdef PROFILE
-  for (auto i{0uz}; i<100000; ++i) {
+  for (auto i{0uz}; i<500000; ++i) {
     LOM::build();
     LOM::reset_state();
   }

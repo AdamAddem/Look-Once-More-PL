@@ -75,7 +75,7 @@ constexpr bool isCategoryPOSTFIX_OPS(const Operator e) { return std::to_underlyi
 constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 28; }
 
 
-// Is this overengineered? Absolutely.
+// TODO: Overengineer more.
 struct ASTNode {
 
   enum class NodeType : u8_t {
@@ -93,6 +93,7 @@ struct ASTNode {
     BINARY,         // OPERATOR  | LEFT_EXPRESSION, RIGHT_EXPRESSION
     CALLING,        // NUM       | CALLED_EXPRESSION, PARAMETERS... * NUM
     CAST,           // Type*     | EXPRESSION
+    SUBSCRIPT,      //           | ARRAY_EXPRESSION, INDEX_EXPRESSION
 
     IDENTIFIER,             // value is Type* ONLY if preceeded by declaration, otherwise nothing
     STRING_LITERAL,         // no value, uses the length_in_file and position_in_file

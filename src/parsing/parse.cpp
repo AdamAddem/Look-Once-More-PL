@@ -666,39 +666,33 @@ struct Body {
     auto const first = tokens.peek();
     sz_t stmt_idx;
     Token final;
-    if (first.type == TokenType::SEMI_COLON) [[unlikely]] { return tokens.take(); }
 
-    if ((first.isPrimitive() or first.isTypeQualifier()) or
-        (first.isIdentifier() and tokens.peek_ahead(1).isIdentifier())) { // There should exist no other scenario with two identifiers in a row. TODO: Change when array types are introduced
-      stmt_idx = insertTypedNode(ASTNode::DECLARATION);
-      final = parseVarDecl(stmt_idx);
-    }
-    else if (first.type == TokenType::KEYWORD_IF) {
-      tokens.pop();
-      stmt_idx = insertTypedNode(ASTNode::IF);
-      final = parseIf(stmt_idx);
-    }
-    else if (first.type == TokenType::KEYWORD_WHILE) {
-      tokens.pop();
-      stmt_idx = insertTypedNode(ASTNode::WHILE);
-      final = parseWhile(stmt_idx);
-    }
-    else if (first.type == TokenType::KEYWORD_RETURN) {
-      tokens.pop();
-      stmt_idx = insertTypedNode(ASTNode::RETURN);
-      final = parseReturn(stmt_idx);
-    }
-    else if (first.type == TokenType::LBRACE) {
-      tokens.pop();
-      parseStatementsBetweenBraces();
-      return tokens.previous();
-    }
-    else { // expression statement
+    switch (first.type) { using enum TokenType;
+    case SEMI_COLON:      return tokens.take();
+    case KEYWORD_IF:      tokens.pop(); stmt_idx = insertTypedNode(ASTNode::IF);      final = parseIf(stmt_idx);     break;
+    case KEYWORD_WHILE:   tokens.pop(); stmt_idx = insertTypedNode(ASTNode::WHILE);   final = parseWhile(stmt_idx);  break;
+    case KEYWORD_RETURN:  tokens.pop(); stmt_idx = insertTypedNode(ASTNode::RETURN);  final = parseReturn(stmt_idx); break;
+    case LBRACE:          tokens.pop(); parseStatementsBetweenBraces(); return tokens.previous();
+
+    case LBRACKET:
+    TOKENTYPE_PRIMITIVES_CASES
+    TOKENTYPE_TYPE_QUALIFIERS_CASES stmt_idx = insertTypedNode(ASTNode::DECLARATION); final = parseVarDecl(stmt_idx); break;
+
+    case IDENTIFIER:
+      if (tokens.peek_ahead(1).isIdentifier()) {
+                                    stmt_idx = insertTypedNode(ASTNode::DECLARATION); final = parseVarDecl(stmt_idx); break;
+      }
+
+      [[fallthrough]];
+    default: // expression statement
       stmt_idx = nodes.size();
       parseExpression();
-      if (not tokens.peek_is(TokenType::SEMI_COLON))
+      if (not tokens.peek_is(SEMI_COLON)) {
         report_error(current_file, tokens.peek(), "Expected semi-colon.");
-      final = tokens.take();
+        sync_to_semicolon();
+        final = tokens.previous();
+      }
+      else final = tokens.take();
     }
 
     auto const combined = Token::combine(first, final);

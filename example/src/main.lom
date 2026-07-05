@@ -4,5 +4,7 @@ pub fn main() i32 {
     char c = 'H';
     __C.printf("%c\n", c);
 
+    $i32 arr = junk;
+    arr = arr + 2;
     return 0;
 }

@@ -1,6 +1,7 @@
 #include "edenlib/vectors/releasing_vector.hpp"
 #include "lex.hpp"
 #include "error.hpp"
+#include "settings.hpp"
 
 #include <cassert>
 #include <cctype>
@@ -136,8 +137,8 @@ struct Tokenizer {
     case ')': type = RPAREN; break;
     case '{': type = LBRACE; break;
     case '}': type = RBRACE; break;
-    //case '[': type = LBRACKET; break;
-    //case ']': type = RBRACKET; break; // re-implement when adding arrays
+    case '[': type = LBRACKET; break;
+    case ']': type = RBRACKET; break;
     case '@': type = ADDR; break;
     case ',': type = COMMA; break;
     case '.': type = DOT; break;

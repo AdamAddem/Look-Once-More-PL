@@ -17,8 +17,6 @@ using namespace LOM;
 using namespace LOM::PeepMIR;
 using namespace LOM::AST;
 
-/* For now, globals will be parsed but not added to the symbol table or validated, and can't be used in anyway. */
-
 namespace {
 
 [[nodiscard]] constexpr Instruction::Type
@@ -283,31 +281,32 @@ class Peeper {
 
     auto const array_expr = peepExpression(); bool const is_array = array_expr.type->isArray();
 
-    [[maybe_unused]] auto const index_idx = instructions.size();
+    auto const index_idx /*lol*/ = instructions.size();
     auto const index_expr = peepExpression(); bool const is_unsigned = index_expr.type->isUnsignedIntegral();
+
     ExpressionResult res;
-
-    if (not is_array) {
-      error(array_expr, std::format("Subscript operator used on non-array type {}.", array_expr.type->toString()) );
-      res.type = Type::devoid();
-      res.qualifiers = Type::Qualifiers{};
-    }
-    else {
-      auto const array_type = array_expr.type->castToArray();
-      instructions[subscript_idx].value = std::bit_cast<u64_t>(array_type);
-      res.type = array_type->getSubtype();
-      res.qualifiers = array_expr.qualifiers;
-    }
-
-    if (not is_unsigned) {
-      error(index_expr, std::format("Expression used as array index is of signed type {}.", index_expr.type->toString()) );
-    }
-    else {
-      //coerce_if_integerliteral(instructions[index_idx], index_expr.type);
-    }
-
     res.length_in_file = data.length_in_file;
     res.position_in_file = data.position_in_file;
+
+    bool const valid = is_array & is_unsigned;
+    if (not valid) {
+      res.type = Type::devoid();
+      res.qualifiers = Type::Qualifiers{};
+      if (not is_array)
+        error(array_expr, std::format("Subscript operator used on non-array type {}.", array_expr.type->toString()) );
+      if (not is_unsigned)
+        error(index_expr, std::format("Expression used as array index is of signed type {}.", index_expr.type->toString()) );
+      return res;
+    }
+
+    auto const array_type = array_expr.type->castToArray();
+    auto const array_subtype = array_type->getSubtype();
+    res.type = array_subtype;
+
+    instructions[subscript_idx].value = std::bit_cast<u64_t>(array_type);
+    res.qualifiers = array_expr.qualifiers;
+
+    coerce_if_integerliteral(instructions[index_idx], PrimitiveType::uptr_t());
     return res;
   }
 
@@ -401,6 +400,7 @@ class Peeper {
     auto const right_idx = instructions.size();
     auto right = peepExpression();
 
+    // TODO: THIS IS BAD AND SUCKS FIX IT NOW
     if (left.type not_eq right.type) { // if left or right is an integer literal, coerce its type to the other
       if (coerce_if_integerliteral(instructions[left_idx], right.type))
         left.type = right.type;
@@ -408,8 +408,8 @@ class Peeper {
         right.type = left.type;
       else {
         error(data,
-          std::format("Right type {} in binary expression incompatable with left type {}.",
-          left.type->toString(), operatorToString(data.opr), right.type->toString()));
+          std::format("Right type {} in binary expression cannot coerce to left type {}.",
+          right.type->toString(), left.type->toString()));
 
         left = {error_literal, data.length_in_file, data.position_in_file};
       }
@@ -707,9 +707,10 @@ class Peeper {
     instructions.emplace_back(Instruction::ASSIGN, 0);
     instructions.emplace_back(Instruction::LOCAL, 0);
 
+    auto const return_idx = instructions.size();
     auto const return_expression = peepExpression();
     if (return_type->isDevoid()) {
-      error(return_expression,  "Cannot return value from devoid function");
+      error(return_expression,  "Cannot return value from devoid function.");
       return;
     }
 
@@ -718,7 +719,7 @@ class Peeper {
       return;
     }
 
-    coerce_if_integerliteral(instructions.back(), return_type);
+    coerce_if_integerliteral(instructions[return_idx], return_type);
     adjustAssignExpression(instructions[assign_idx], {return_type, {}}, return_expression.instantiated_type());
     current_block().set_ret();
   }
@@ -788,6 +789,7 @@ class Peeper {
 
     if (module->containsLocal(declared_name)) {
       error(declared, "Redefinition of symbol name in variable declaration.");
+      if (data.has_init) (void)peepExpression();
       return;
     }
 

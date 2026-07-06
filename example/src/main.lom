@@ -1,8 +1,21 @@
+__C printf(raw char fmt, __va);
 
 pub fn main() i32 {
-    $[200]i32 array = junk;
+    $[20]i64 array = junk;
 
-    # u8 idx = 150;
-    array[cast<i32> 150] = 2;
-    return array[150];
+    $u32 n = 0;
+    $i64 x = 0;
+    x = n;
+    while n < 20 {
+        # array[n] = n;
+        ++n;
+    }
+
+    n = 0;
+    while n < 20 {
+        # __C.printf("%d\n", array[n]);
+        ++n;
+    }
+
+    return 0;
 }

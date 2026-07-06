@@ -91,7 +91,7 @@ std::string Type::toString() const noexcept {
 
 
 /* Primitive Type */
-bool PrimitiveType::coercibleTo(const PrimitiveType* other) const noexcept {
+bool PrimitiveType::coercibleTo(PrimitiveType const* other) const noexcept {
   const auto other_type = other->primitive_type;
   switch (primitive_type) {
   case I8:
@@ -130,7 +130,7 @@ bool PrimitiveType::coercibleTo(const PrimitiveType* other) const noexcept {
   }
 }
 
-bool PrimitiveType::castableTo(const PrimitiveType* other) const noexcept {
+bool PrimitiveType::castableTo(PrimitiveType const* other) const noexcept {
   const auto other_type = other->primitive_type;
   switch (primitive_type) {
   case I8:
@@ -189,7 +189,7 @@ std::string PrimitiveType::toString() const noexcept {
 /* Primitive Type */
 
 /* Pointer Type */
-bool PointerType::coercibleTo(const PointerType* other) const noexcept {
+bool PointerType::coercibleTo(PointerType const* other) const noexcept {
   auto const other_type = other->pointer_type;
   auto const other_subtype = other->getSubtype();
   assume_assert(pointer_type not_eq UNIQUE); assume_assert(other_type not_eq UNIQUE);
@@ -215,7 +215,7 @@ bool PointerType::coercibleTo(const PointerType* other) const noexcept {
 }
 
 //TODO: Revisit pointer casting rules. At the moment its unconditional.
-bool PointerType::castableTo(const PointerType* other) const noexcept {
+bool PointerType::castableTo(PointerType const* other) const noexcept {
   assume_assert(pointer_type not_eq UNIQUE); assume_assert(other->pointer_type not_eq UNIQUE);
   return true;
 }

@@ -235,6 +235,8 @@ public:
   type_singleton(char_, CHAR)
   type_singleton(string, STRING)
 #undef type_singleton
+  [[nodiscard]] static consteval PrimitiveType const* iptr_t() noexcept { return sizeof(void*) == 8 ? i64() : i32(); }
+  [[nodiscard]] static consteval PrimitiveType const* uptr_t() noexcept { return sizeof(void*) == 8 ? u64() : u32(); }
 };
 
 eden_always_inline [[nodiscard]] constexpr bool Type::isBool()               const noexcept { return derived_type == PRIMITIVE and static_cast<PrimitiveType const*>(this)->isBool();    }

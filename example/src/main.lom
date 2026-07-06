@@ -1,9 +1,9 @@
 __C printf(raw char fmt, __va);
 
-fn foo([20]u32 array) {
+fn foo(raw [20]u32 array_p) {
     $u32 n = 0;
     while n < 20 {
-        __C.printf("%d\n", array[n]);
+        __C.printf( "%d\n", (array_p->)[n] );
         ++n;
     }
 }

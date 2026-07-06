@@ -196,15 +196,6 @@ struct Body {
     return u8_t(tu.source_files.size() - 1);
   }
 
-  // adds a new uninitialized node containing only the current file idx
-  // returns index of node
-  [[nodiscard]] sz_t
-  insertEmptyNode() noexcept {
-    auto const new_node_idx = nodes.size();
-    nodes.emplace_back().m.file_idx = current_file_idx();
-    return new_node_idx;
-  }
-
   // adds an uninitialized node containing only the current file idx and node_type
   // returns index of node
   [[nodiscard]] sz_t
@@ -214,7 +205,7 @@ struct Body {
     return new_node_idx;
   }
 
-  [[nodiscard]] ASTNode
+  eden_always_inline [[nodiscard]] ASTNode
   newNode(Token token, ASTNode::NodeType type = ASTNode::EMPTY) const noexcept {
     return ASTNode{
     ASTNode::CommonData{
@@ -223,7 +214,7 @@ struct Body {
             .length_in_file = token.length, .position_in_file = token.position}};
   }
 
-  [[nodiscard]] ASTNode
+  eden_always_inline [[nodiscard]] ASTNode
   newNode(u16_t length_in_file, u32_t position_in_file, ASTNode::NodeType type = ASTNode::EMPTY) const noexcept {
     return ASTNode{
     ASTNode::CommonData{
@@ -241,8 +232,8 @@ struct Body {
   Body(TokenView tokens, TU& tu, ExpressionTree &expression_tree)
   : tokens(tokens), tu(tu), current_file(tu.source_files.back()), expression_tree(expression_tree) {}
 
-#define pre assert(not tokens.peek_is(TokenType::LPAREN) and not tokens.peek_is(TokenType::RPAREN));
-  u32_t generateParameters() { pre
+  // opening parenthesis must be popped, and the next token must not be closing parenthesis
+  u32_t generateParameters() {
     auto const parameter = generateAssignmentExpression();
     if (tokens.pop_if(TokenType::RPAREN))
       return expression_tree.create(PLACEHOLDER_NODE, parameter, 0);
@@ -253,7 +244,6 @@ struct Body {
     report_error(current_file, tokens.peek(), "Expected comma in call expression.");
     return expression_tree.create(PLACEHOLDER_NODE, parameter, generateParameters());
   }
-#undef pre
 
 #define pre assert(tokens.peek().isLiteral());
   template <bool negate = false>
@@ -297,20 +287,20 @@ struct Body {
 #undef pre
 
   u32_t generatePrimaryExpression() {
-    if (tokens.peek().isLiteral())
-      return generateLiteral();
-
-    if (tokens.peek_is(TokenType::LPAREN)) {
+    switch (tokens.peek().type) { using enum TokenType;
+    TOKENTYPE_LITERALS_CASES return generateLiteral();
+    case LPAREN: {
       tokens.pop();
       auto const res = generateAssignmentExpression();
-      if (not tokens.pop_if(TokenType::RPAREN)) report_error(current_file, tokens.take_if_valid(), "Expected closing ).");
+      if (not tokens.pop_if(RPAREN)) report_error(current_file, tokens.take_if_valid(), "Expected closing ).");
       return res;
     }
 
-    if (tokens.peek_is(TokenType::IDENTIFIER) or tokens.peek_is(TokenType::DUNDER_CEXTERN)) {
-      auto const identifier_idx = expression_tree.create(newNode(tokens.take(), ASTNode::IDENTIFIER));
+    case IDENTIFIER:
+    case DUNDER_CEXTERN: {
+      auto const identifier_idx = expression_tree.create( newNode(tokens.take(), ASTNode::IDENTIFIER) );
 
-      if (not tokens.peek_is(TokenType::DOT))
+      if (not tokens.peek_is(DOT))
         return identifier_idx;
 
       tokens.pop();
@@ -328,9 +318,11 @@ struct Body {
       return expression_tree.create(total_data, identifier_idx, member_idx);
     }
 
-    // Throwing seems to be almost exactly as performant as just returning 0, while making things somewhat easier to reason about
-    // This does unfortunately invalidate any imperfect expressions rather than attempting to fix them
-    throw_notfound();
+    default:
+      // Throwing seems to be almost exactly as performant as just returning 0, while making things somewhat easier to reason about.
+      // This does unfortunately invalidate any imperfect expressions rather than attempting to fix them, but I probably wasn't going to do that anyways.
+      throw_notfound();
+    }
   }
 
   u32_t generatePostfixExpression() {
@@ -575,24 +567,30 @@ struct Body {
   }
 
   // don't access anything above this method directly through anything below this method or i'll hurt you
+  template <bool expression_statement = false>
   void parseExpression() noexcept {
     expression_tree.reset();
 
     try { translateExpression( generateAssignmentExpression() ); }
     catch (...) {
-      report_error(current_file, tokens.peek_ahead(1), "Expected expression.");
+      if constexpr (expression_statement) {
+        report_error(current_file, tokens.peek(), "Expected expression.");
+        tokens.set_peek(TokenType::SEMI_COLON); // trick into avoiding double error
+      }
+      else report_error(current_file, tokens.take_if_valid(), "Expected expression.");
+
       nodes.emplace_back(ASTNode::EMPTY, current_file_idx());
     }
   }
 
   void sync_to(TokenType sync_type) noexcept {
-    while (not tokens.peek_is(sync_type)) {
+    while (not tokens.pop_if(sync_type)) {
       if (tokens.peek_is(TokenType::INVALID_TOKEN)) return;
       tokens.pop();
     }
   }
 
-  void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
+  eden_always_inline void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
 
   Token parseVarDecl(sz_t decl_node_idx, QualifiedType declaration_type) noexcept {
     bool has_init;
@@ -645,7 +643,7 @@ struct Body {
       report_error(current_file, tokens.peek(), "Expected {.");
     }
 
-    sz_t num_substatements = 0;
+    auto num_substatements{0uz};
     while (not tokens.peek_is(TokenType::RBRACE)) {
       parseStatement();
       ++num_substatements;
@@ -732,10 +730,9 @@ struct Body {
       [[fallthrough]];
     default: // expression statement
       stmt_idx = nodes.size();
-      parseExpression();
+      parseExpression<true>();
       if (not tokens.peek_is(SEMI_COLON)) {
         report_error(current_file, tokens.peek(), "Expected semi-colon.");
-        sync_to_semicolon();
         final = tokens.previous();
       }
       else final = tokens.take();
@@ -999,7 +996,7 @@ void Parser::printTU([[maybe_unused]] TU const& tu) noexcept {
   }
 }
 
-void Parser::parseTokens(TU& tu, std::vector<Token> const& tokens) noexcept {
+void Parser::parseTokens(TU& tu, std::vector<Token>& tokens) noexcept {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif

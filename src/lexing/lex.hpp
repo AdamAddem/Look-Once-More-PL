@@ -90,27 +90,32 @@ struct Token {
 };
 
 class TokenView {
-  using TokenIter = std::vector<Token>::const_iterator;
+  using TokenIter = std::vector<Token>::iterator;
   TokenIter begin;
   TokenIter end;
 
 public:
-  explicit TokenView(std::vector<Token> const& tokens) noexcept
+  explicit TokenView(std::vector<Token>& tokens) noexcept
   : begin(tokens.begin()), end(tokens.end()) {}
 
   TokenView(TokenIter begin, TokenIter end) noexcept
   : begin(begin), end(end) {}
 
-  eden_always_inline [[nodiscard]] Token peek() const noexcept                     { return *begin; }
-  eden_always_inline [[nodiscard]] bool peek_is(TokenType type) const noexcept     { return begin->type == type; }
-  eden_always_inline [[nodiscard]] Token peek_ahead(long distance) const noexcept  { return *(begin + distance); }
-  eden_always_inline [[nodiscard]] Token take() noexcept                           { return *begin++; }
-  eden_always_inline [[nodiscard]] Token previous() const noexcept/* ub if first */{ return *(begin - 1); }
-  eden_always_inline void pop() noexcept                                           { ++begin; }
-  eden_always_inline bool pop_if(TokenType type) noexcept                          { if (begin->type not_eq type) return false; ++begin; return true; }
-  eden_always_inline void pop_if_valid() noexcept                                  { if (not begin->is(TokenType::INVALID_TOKEN)) ++begin; }
-  eden_always_inline void undo() noexcept                                          { --begin; }
-  [[nodiscard]] Token take_if_valid() noexcept {
+  eden_always_inline [[nodiscard]] Token  peek()                    const noexcept  { return *begin; }
+  eden_always_inline [[nodiscard]] bool   peek_is(TokenType type)   const noexcept  { return begin->type == type; }
+  eden_always_inline [[nodiscard]] Token  peek_ahead(long distance) const noexcept  { return *(begin + distance); }
+  eden_always_inline               void   set_peek(TokenType type)        noexcept  { begin->type = type; }
+  eden_always_inline [[nodiscard]] Token  take()                          noexcept  { return *begin++; }
+  eden_always_inline [[nodiscard]] Token  previous()                const noexcept  { return *(begin - 1); }
+  eden_always_inline               void   pop()                           noexcept  { ++begin; }
+  eden_always_inline               bool   pop_if(TokenType type)          noexcept  { if (begin->type not_eq type) return false; ++begin; return true; }
+  eden_always_inline               void   undo()                          noexcept  { --begin; }
+
+  void pop_if_valid() noexcept
+  { if (not begin->is(TokenType::INVALID_TOKEN)) ++begin; }
+
+  [[nodiscard]] Token
+  take_if_valid() noexcept {
     auto const res = *begin;
     if (not res.is(TokenType::INVALID_TOKEN)) ++begin;
     return res;
@@ -118,15 +123,14 @@ public:
 
   void print(File const& file) const;
 
-  [[nodiscard]] Token viewAsStringToken() const noexcept {
+  [[nodiscard]] Token
+  viewAsStringToken() const noexcept {
     return {TokenType::STRING_LITERAL,
       static_cast<u16_t>((end-1)->position - begin->position + static_cast<u32_t>(end->length)),
       begin->position
     };
   }
 
-  // return does not include the type specified
-  [[nodiscard]] TokenView getAllTokensUntilFirstOf(TokenType type);
 };
 
 inline constexpr auto INVALID_TOKEN_PADDING = 8uz;

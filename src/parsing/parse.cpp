@@ -750,10 +750,15 @@ struct Body {
   }
 
 #define pre  assert(not tokens.peek_is(TokenType::LBRACE));
-#define post assert(tokens.previous().is(TokenType::RBRACE) or tokens.previous().isInvalid());
+#define post assert(tokens.previous().is(TokenType::RBRACE) or tokens.peek().isInvalid());
   void parseStatementsBetweenBraces() { pre
-    while (not tokens.pop_if(TokenType::RBRACE) and not tokens.peek_is(TokenType::INVALID_TOKEN))
+    while (not tokens.pop_if(TokenType::RBRACE)) {
       parseStatement();
+      if (tokens.peek_is(TokenType::INVALID_TOKEN)) {
+        report_error(current_file, tokens.peek(), "Expected closing }.");
+        break;
+      }
+    }
   post }
 #undef pre
 #undef post

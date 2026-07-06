@@ -1,21 +1,20 @@
 __C printf(raw char fmt, __va);
 
-pub fn main() i32 {
-    $[20]i64 array = junk;
-
+fn foo([20]u32 array) {
     $u32 n = 0;
-    $i64 x = 0;
-    x = n;
     while n < 20 {
-        # array[n] = n;
+        __C.printf("%d\n", array[n]);
         ++n;
     }
+}
 
-    n = 0;
+pub fn main() i32 {
+    $[20]u32 array = junk;
+    $u32 n = 0;
     while n < 20 {
-        # __C.printf("%d\n", array[n]);
+        array[n] = n;
         ++n;
     }
-
+    foo(array);
     return 0;
 }

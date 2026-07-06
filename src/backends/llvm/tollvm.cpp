@@ -1,10 +1,12 @@
 #include "tollvm.hpp"
-#include "parsing/ast.hpp"
 #include "build_system/build.hpp"
 #include "error.hpp"
+#include "parsing/ast.hpp"
 #include "peepir/peepir.hpp"
 #include "settings.hpp"
+#include "edenlib/vectors/swap_vector.hpp"
 
+#include <chrono>
 #include <filesystem>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
@@ -17,7 +19,6 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
-#include <chrono>
 using namespace LOM;
 
 namespace {
@@ -131,12 +132,15 @@ class Lowerer final {
   friend struct Function;
   TU* tu;
 
-  llvm::IntegerType* i1;
-  llvm::IntegerType* i8; llvm::Value* bool_true; llvm::Value* bool_false;
+  llvm::IntegerType* i1; llvm::IntegerType* i8;
   llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
   llvm::Type* f32; llvm::Type* f64; llvm::Type* devoid; llvm::PointerType* ptr;
 
-  std::unordered_map<Type const*, llvm::Type*> type_map;
+  llvm::Value* i64_0;
+  llvm::Value* bool_true; llvm::Value* bool_false;
+
+  eden::swap_map<CustomType const*, llvm::Type*> custom_type_map;
+  eden::swap_map<FunctionType const*, llvm::Type*> function_type_map;
   std::unordered_map<SymbolTable::Function const*, llvm::Value*> imports;
 
   /* Variables used when lowering a function */
@@ -173,36 +177,71 @@ class Lowerer final {
 
   [[nodiscard]] llvm::FunctionType*
   translateFunctionType(FunctionType const* func_type) noexcept {
-    auto const element = type_map.find(func_type);
-    if (element not_eq type_map.end()) return llvm::cast<llvm::FunctionType>(element->second);
+    // search for existing
+    {
+      auto const element = function_type_map[func_type];
+      if (element) return llvm::cast<llvm::FunctionType>(element->value);
+    }
 
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
     auto num_params{0uz};
     for (auto const param_type : func_type->parameterTypes()) {
-      assert(type_map.contains(param_type));
-      arg_types[num_params] = type_map[param_type];
+      arg_types[num_params] = translateType(param_type);
       ++num_params;
     }
 
     // hack
-    auto const lom_return_type = func_type->returnType(); assert(type_map.contains(lom_return_type));
-    auto const llvm_return_type =
-      lom_return_type->isBool() ?
-      i1 :
-      type_map[lom_return_type];
+    auto const lom_return_type = func_type->returnType();
+    auto const llvm_return_type = lom_return_type->isBool() ? i1 : translateType(lom_return_type);
 
     auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, func_type->isVariadic());
-    type_map.emplace(func_type, res);
+    function_type_map.emplace_back(func_type, res);
     return res;
   }
 
   [[nodiscard]] llvm::Type*
   translateType(Type const* type) noexcept {
-    auto const element = type_map.find(type);
-    if (element not_eq type_map.end()) return element->second;
+    // translate non-custom types
+    {
+      auto const derived = type->getDerivedType();
+      switch (derived) { using enum Type::DerivedType;
 
-    assert(type->isCustom());
+      case POINTER: return ptr;
+      case DEVOID: return devoid;
+      case ARRAY: {
+        auto const array_type = type->castToArray();
+        return llvm::ArrayType::get( translateType(array_type->getSubtype()), array_type->getSize() );
+      }
+
+      case PRIMITIVE: {
+        auto const primitive = type->castToPrimitive()->getUnderlyingPrimitiveType();
+        switch (primitive) { using enum PrimitiveType::PrimitiveTypeEnum;
+        case STRING:        eden_unreachable("WIP");
+        case F32: return f32;
+        case F64: return f64;
+        case U7: case U8: case I8: case CHAR: case BOOL: return i8;
+        case U15: case U16: case I16:                    return i16;
+        case U31: case U32: case I32:                    return i32;
+        case U63: case U64: case I64:                    return i64;
+        default:
+          eden_unreachable("Invalid primitive type.");
+        }
+      }
+
+      case CUSTOM: break;
+      case FUNCTION: eden_unreachable("Functions should be translated via translateFunctionType.");
+      default: eden_unreachable("Invalid type being translated.");
+      }
+    }
+
     auto const custom_type = type->castToCustom();
+
+    // search for existing translation
+    {
+      auto const element = custom_type_map[custom_type];
+      if (element) return element->value;
+    }
+
     auto const member_table = custom_type->member_table();
     member_table->orderVariableList();
     auto const& members = member_table->getVariableList();
@@ -210,28 +249,26 @@ class Lowerer final {
     auto i{0uz};
     for (auto const& member : members) {
       auto* const member_type = member.type.type;
-      if (member_type->isCustom()) member_types[i] = translateType(member_type->castToCustom());
-      else member_types[i] = type_map[member_type];
-
+      member_types[i] = translateType(member_type);
       ++i;
     }
 
     auto const res = llvm::StructType::create(tu->context, llvm::ArrayRef(member_types, i), custom_type->nameof());
-    type_map.emplace(type, res);
+    custom_type_map.emplace_back(custom_type, res);
     return res;
   }
 
-   [[nodiscard]] llvm::Constant*
+  [[nodiscard]] llvm::Constant*
   fpConstant(llvm::Type* t, double value) const noexcept
-  {return llvm::ConstantFP::get(t, value);}
+  { return llvm::ConstantFP::get(t, value); }
 
   [[nodiscard]] llvm::Constant*
   signedConstant(llvm::Type* t, i64_t value) const noexcept
-  {return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value, true);}
+  { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value, true); }
 
   [[nodiscard]] llvm::Constant*
   unsignedConstant(llvm::Type* t, u64_t value) const noexcept
-  {return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value);}
+  { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value); }
 
   [[nodiscard]] llvm::Value*
   genUnary(PeepMIR::Instruction::Type type) noexcept {
@@ -428,34 +465,20 @@ class Lowerer final {
     case MODULE_FUNCTION:
       return getFunctionImport(instruction.module(), instruction.module_function_id());
 
-    case I8_LITERAL:
-      return llvm::ConstantInt::get(i8, instruction.value, true);
-    case I16_LITERAL:
-      return llvm::ConstantInt::get(i16, instruction.value, true);
-    case I32_LITERAL:
-      return llvm::ConstantInt::get(i32, instruction.value, true);
-    case I64_LITERAL:
-      return llvm::ConstantInt::get(i64, instruction.value, true);
-    case U8_LITERAL:
-      return llvm::ConstantInt::get(i8, instruction.value);
-    case U16_LITERAL:
-      return llvm::ConstantInt::get(i16, instruction.value);
-    case U32_LITERAL:
-      return llvm::ConstantInt::get(i32, instruction.value);
-    case U64_LITERAL:
-      return llvm::ConstantInt::get(i64, instruction.value);
-    case FLOAT_LITERAL:
-      return llvm::ConstantFP::get(f32, instruction.float_value());
-    case DOUBLE_LITERAL:
-      return llvm::ConstantFP::get(f64, instruction.double_value());
-    case BOOL_LITERAL:
-      return instruction.bool_value() ? bool_true : bool_false;
-    case CHAR_LITERAL:
-      return llvm::ConstantInt::get(i8, instruction.char_value());
-    case STRING_LITERAL:
-      return builder.CreateGlobalString(instruction.string_value());
-    case ESCAPED_STRING_LITERAL:
-      return builder.CreateGlobalString(instruction.escaped_string_value());
+    case I8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.value, true);
+    case I16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.value, true);
+    case I32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.value, true);
+    case I64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.value, true);
+    case U8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.value);
+    case U16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.value);
+    case U32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.value);
+    case U64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.value);
+    case FLOAT_LITERAL:           return llvm::ConstantFP::get(f32, instruction.float_value());
+    case DOUBLE_LITERAL:          return llvm::ConstantFP::get(f64, instruction.double_value());
+    case BOOL_LITERAL:            return instruction.bool_value() ? bool_true : bool_false;
+    case CHAR_LITERAL:            return llvm::ConstantInt::get(i8, instruction.char_value());
+    case STRING_LITERAL:          return builder.CreateGlobalString(instruction.string_value());
+    case ESCAPED_STRING_LITERAL:  return builder.CreateGlobalString(instruction.escaped_string_value());
 
     case ADD: case FADD:
     case SUB: case FSUB:
@@ -474,11 +497,17 @@ class Lowerer final {
     case BITOR:
     case BITXOR:
       return genBinary(instruction.type);
+    case SUBSCRIPT: {
+      auto const array = genRefExpression(); auto const array_type = instruction.array_type();
+      auto const index = genValueExpression();
+      auto const element_ptr = builder.CreateGEP( translateType(array_type), array, {i64_0, index} );
+      return builder.CreateLoad( translateType(array_type->getSubtype()), element_ptr );
+    }
 
-    case ASSIGN:
-      return genAssign(instruction.type);
-    case UCAST_ASSIGN: case SCAST_ASSIGN:
-      return genAssign(instruction.type, instruction.cast_assign_bitwidth());
+
+    case ASSIGN:       return genAssign(instruction.type);
+    case UCAST_ASSIGN:
+    case SCAST_ASSIGN: return genAssign(instruction.type, instruction.cast_assign_bitwidth());
 
     case PRE_INC:
     case FPRE_INC:
@@ -488,12 +517,12 @@ class Lowerer final {
       return builder.CreateLoad(var->getAllocatedType(), var);
     }
 
-    case ADDRESS_OF:
     case NEGATE: case FNEGATE:
-    case BITNOT:
     case POST_INC: case FPOST_INC:
     case POST_DEC: case FPOST_DEC:
-      return genUnary(instruction.type);
+    case ADDRESS_OF:
+    case BITNOT:    return genUnary(instruction.type);
+
     case DEREFERENCE:
       return builder.CreateLoad(
         translateType(instruction.dereference_type()),
@@ -524,8 +553,7 @@ class Lowerer final {
       }
       return builder.CreateFPCast(genValueExpression(), llvm_dest_type);
     }
-    case PCAST:
-      return genValueExpression();
+    case PCAST: return genValueExpression();
 
     case CALL: {
       auto const fn = genRefExpression();
@@ -560,13 +588,17 @@ class Lowerer final {
       assert(instruction.local_idx() < locals.size());
       return locals[instruction.local_idx()];
 
-
     case TYPE_VARIABLE: {
       auto const type = instruction.custom_type();
       auto const id = instruction.type_variable_id();
       return builder.CreateStructGEP(translateType(type), genRefExpression(), id);
     }
 
+    case SUBSCRIPT: {
+      auto const array = genRefExpression(); auto const array_type = instruction.array_type();
+      auto const index = genValueExpression();
+      return builder.CreateGEP( translateType(array_type), array, {i64_0, index} );
+    }
 
     case PRE_INC: case FPRE_INC:
     case PRE_DEC: case FPRE_DEC:
@@ -740,23 +772,21 @@ public:
   explicit Lowerer(TU* tu, TypeContext const* type_context)
   : tu(tu), builder(tu->context) {
     auto& context = tu->context;
-    type_map.reserve(type_context->totalNumberOfTypes());
     i1 = llvm::Type::getInt1Ty(context);
-    i8 = llvm::Type::getInt8Ty(context); type_map.emplace(PrimitiveType::i8(), i8); type_map.emplace(PrimitiveType::u8(), i8); type_map.emplace(PrimitiveType::char_(), i8); type_map.emplace(PrimitiveType::bool_(), i8);
+    i8 = llvm::Type::getInt8Ty(context);
     bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0);
 
-    i16 = llvm::Type::getInt16Ty(context); type_map.emplace(PrimitiveType::i16(), i16); type_map.emplace(PrimitiveType::u16(), i16);
-    i32 = llvm::Type::getInt32Ty(context); type_map.emplace(PrimitiveType::i32(), i32); type_map.emplace(PrimitiveType::u32(), i32);
-    i64 = llvm::Type::getInt64Ty(context); type_map.emplace(PrimitiveType::i64(), i64); type_map.emplace(PrimitiveType::u64(), i64);
-    f32 = llvm::Type::getFloatTy(context); type_map.emplace(PrimitiveType::f32(), f32);
-    f64 = llvm::Type::getDoubleTy(context); type_map.emplace(PrimitiveType::f64(), f64);
-    devoid = llvm::Type::getVoidTy(context); type_map.emplace(PrimitiveType::devoid(), devoid);
-    ptr = llvm::PointerType::get(context, 0); type_map.emplace(PointerType::vague(false), ptr); type_map.emplace(PointerType::vague(true), ptr);
+    i16 = llvm::Type::getInt16Ty(context);
+    i32 = llvm::Type::getInt32Ty(context);
+    i64 = llvm::Type::getInt64Ty(context); i64_0 = llvm::ConstantInt::get(i64, 0);
+    f32 = llvm::Type::getFloatTy(context);
+    f64 = llvm::Type::getDoubleTy(context);
+    devoid = llvm::Type::getVoidTy(context);
+    ptr = llvm::PointerType::get(context, 0);
 
-    for (auto pointer : type_context->getPointers()) type_map.emplace(pointer, ptr);
-    assert(type_context->getVariants().empty());
-    for (auto custom : type_context->getCustomTypes()) type_map.emplace(custom, translateType(custom));
-    for (auto func : type_context->getFunctions()) type_map.emplace(func, translateFunctionType(func)); // func should be last since it may contain anything as a subtype
+    assert(type_context->numVariantTypes() == 0);
+    custom_type_map.reserve(type_context->numCustomTypes());
+    function_type_map.reserve(type_context->numFunctionTypes());
   }
 
 };

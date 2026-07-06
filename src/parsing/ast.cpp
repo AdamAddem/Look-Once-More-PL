@@ -8,13 +8,15 @@ void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
 
   auto curr = nodes.begin();
   const auto end = nodes.end();
-  std::print("\n");
+  std::print("\n\t");
 
   while (curr not_eq end) {
     using enum ASTNode::NodeType;
     switch (curr->m.type) {
     case EMPTY: std::print("EMPTY"); break;
-    case DECLARATION: std::print("DECLARATION WITH TYPE {}", QualifiedType{(curr + 1)->declaration_identifier_val(), curr->declaration_qualifiers()}.toString()); break;
+    case DECLARATION: std::print("DECLARATION WITH TYPE {}{}",
+          QualifiedType{(curr + 1)->declaration_identifier_val(), curr->declaration_qualifiers()}.toString(),
+          curr->declaration_has_init() ? "" : ", JUNK INITIALIZED"); break;
     case IF: std::print("IF{} W/ {} SUB_STATEMENTS", curr->if_has_else() ? " W/ ELSE" : "", curr->if_numstatements()); break;
     case WHILE: std::print("WHILE W/ {} SUB_STATEMENTS", curr->while_numstatements()); break;
     case RETURN: std::print("RETURN{}", curr->return_has_value() ? "" : " W/ NO VALUE"); break;
@@ -25,6 +27,7 @@ void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
     case CALLING: std::print("CALLING W/ {} PARAMETERS", curr->parameter_count()); break;
     case IDENTIFIER: std::print("IDENTIFIER: {}", curr->identifier_val(file)); break;
     case CAST: std::print("CAST TO {}", curr->cast_type()->toString()); break;
+    case SUBSCRIPT: std::print("SUBSCRIPT"); break;
 
     case SIGNED_LITERAL: std::print("SIGNED_LITERAL: {}", curr->signed_val()); break;
     case UNSIGNED_LITERAL: std::print("UNSIGNED_LITERAL: {}", curr->unsigned_val()); break;
@@ -37,7 +40,7 @@ void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
 
     default: eden_unreachable("Invalid ASTNode Type.");
     }
-    std::println();
+    std::print("\n\t");
     ++curr;
   }
 }

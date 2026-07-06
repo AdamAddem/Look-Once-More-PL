@@ -123,6 +123,7 @@ struct ASTNode {
   struct BinaryData       { common_subsequence Operator opr; };
   struct CallingData      { common_subsequence u32_t num_parameters; };
   struct CastData         { common_subsequence Type const* cast_type; };
+  struct SubscriptData    { common_subsequence };
 
   struct IdentifierData   { common_subsequence Type const* decl_type; };
   struct SignedData       { common_subsequence i64_t value; };
@@ -150,6 +151,7 @@ struct ASTNode {
     BinaryData binary_data;
     CallingData calling_data;
     CastData cast_data;
+    SubscriptData subscript_data;
 
     IdentifierData identifier_data;
     StringData string_literal_data;
@@ -172,6 +174,7 @@ struct ASTNode {
   constexpr explicit ASTNode(CommonData data) : m(data) {}
 
   [[nodiscard]] constexpr Type::Qualifiers declaration_qualifiers()          const noexcept { assume_assert(m.type == DECLARATION); return declaration_data.qualifiers; }
+  [[nodiscard]] constexpr bool             declaration_has_init()            const noexcept { assume_assert(m.type == DECLARATION); return declaration_data.has_init; }
   [[nodiscard]] constexpr Type const*      declaration_identifier_val()      const noexcept { assume_assert(m.type == IDENTIFIER); return identifier_data.decl_type; }
 
   [[nodiscard]] constexpr bool             if_has_else()                     const noexcept { assume_assert(m.type == IF); return if_data.has_else; }

@@ -1,6 +1,5 @@
 #pragma once
 #include "edenlib/macros.hpp"
-#include "edenlib/metaprogramming/type_class.hpp"
 #include "edenlib/typedefs.hpp"
 #include "edenlib/vectors/vector.hpp"
 #include "table_and_module_sync.hpp"
@@ -101,8 +100,8 @@ public:
 
 protected:
 
-  static constexpr auto name_search = [] (auto const& e, std::string_view key) { return e.nameof() == key; };
-  static constexpr auto id_search = [] (auto const& e, u16_t id) { return e.id == id; };
+  static constexpr auto name_search = [] (auto const& e, std::string_view key) static { return e.nameof() == key; };
+  static constexpr auto id_search = [] (auto const& e, u16_t id) static { return e.id == id; };
   static constexpr auto swapvec_settings = eden::swap_vector_settings<4, true>{};
 
   // marked mutable because searches need to be possible from a const*, but searches will modify
@@ -202,10 +201,10 @@ public:
 
 class Module final : public SymbolTable {
   const char* name; u32_t name_len;
-
+  // char _pad[4];
   TypeContext* types;
 
-  [[nodiscard]] Function&
+  eden_always_inline [[nodiscard]] Function&
   current_scope() const noexcept
   { assert(not functions.empty()); return functions.back(); }
 
@@ -216,24 +215,28 @@ public:
 
   Module(Module&&) noexcept = default;
 
-  [[nodiscard]] TypeContext const*
+  eden_always_inline [[nodiscard]] TypeContext const*
   getTypeContext() const noexcept
   { return types; }
 
-  [[nodiscard]] std::string_view
+  eden_always_inline [[nodiscard]] std::string_view
   nameof() const noexcept
   { return std::string_view(name, name_len); }
 
-  [[nodiscard]] Type const*
+  eden_always_inline [[nodiscard]] PointerType const*
   getRawPointerType(QualifiedType subtype) const noexcept
   { return types->addRawPointer(subtype); }
 
-  [[nodiscard]] Type const*
+  eden_always_inline [[nodiscard]] PointerType const*
   getUniquePointerType(QualifiedType subtype) const noexcept
   { return types->addUniquePointer(subtype); }
 
-  [[nodiscard]] Type const*
-  getVariantType(std::span<const Type*> subtypes, bool nullable) const noexcept
+  eden_always_inline [[nodiscard]] ArrayType const*
+  getArrayType(u64_t array_size, Type const* subtype) const noexcept
+  { return types->addArray(array_size, subtype); }
+
+  eden_always_inline [[nodiscard]] VariantType const*
+  getVariantType(std::span<Type const*> subtypes, bool nullable) const noexcept
   { return types->addVariant(subtypes, nullable); }
 
   [[nodiscard]] FunctionType const*
@@ -256,11 +259,11 @@ public:
   }
 
   // returns nullptr if non-existent
-  [[nodiscard]] CustomType const*
+  eden_always_inline [[nodiscard]] CustomType const*
   getCustomType(std::string_view type_name) const noexcept
   { return types->getCustomType(type_name); }
 
-  [[nodiscard]] bool
+  eden_always_inline [[nodiscard]] bool
   containsLocal(std::string_view local_name) const noexcept
   { return functions.back().getVariable(local_name).has_value(); }
 
@@ -270,7 +273,7 @@ public:
     current_scope().addVariable(local_name, local_instance);
   }
 
-  [[nodiscard]] auto
+  eden_always_inline [[nodiscard]] auto
   getLocal(std::string_view local_name) const noexcept
   { return current_scope().getVariable(local_name); }
 
@@ -327,7 +330,6 @@ public:
   getFunction(u16_t function_id) const noexcept
   { return module->getFunction(function_id); }
 };
-
 
 #include "table_and_module_sync.hpp"
 static_assert(sizeof(SymbolTable) == SYMBOL_TABLE_SIZE);

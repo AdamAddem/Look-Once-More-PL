@@ -1,10 +1,8 @@
-__C printf(raw char fmt, __va); # C-Interop!
 
 pub fn main() i32 {
-    char c = 'H';
-    __C.printf("%c\n", c);
+    $[200]i32 array = junk;
 
-    $i32 arr = junk;
-    arr = arr + 2;
-    return 0;
+    # u8 idx = 150;
+    array[cast<i32> 150] = 2;
+    return array[150];
 }

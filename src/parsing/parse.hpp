@@ -33,9 +33,9 @@ struct TU {
 
 
 
-void printTU(TU const&);
+void printTU(TU const&) noexcept;
 
-void parseTokens(TU& tu, std::vector<Lexer::Token> const& tokens);
+void parseTokens(TU& tu, std::vector<Lexer::Token> const& tokens) noexcept;
 
 inline constexpr bool STRUCT_MEMBERS_START_PUBLIC = true;
 

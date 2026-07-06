@@ -23,49 +23,44 @@ namespace {
 
 [[nodiscard]] constexpr Instruction::Type
 castForType(Type const* type) noexcept {
-  if (type->isPointer())
-    return Instruction::PCAST;
+  switch (type->getDerivedType()) { using enum Type::DerivedType;
+  case ERROR: return Instruction::UCAST;
+  case POINTER: return Instruction::PCAST;
 
-  if (type->isPrimitive()) {
-    auto const primitive = type->castToPrimitive();
-    if (primitive->isString())
-      return Instruction::PCAST;
-    if (primitive->isFloating())
-      return Instruction::FCAST;
-    if (primitive->isIntegral())
-     return
-        primitive->isSignedIntegral()
-        ? Instruction::SCAST
-        : Instruction::UCAST;
-    if (primitive->isChar())
-      return Instruction::UCAST;
+  case PRIMITIVE: {
+    auto const primitive = type->castToPrimitive()->getUnderlyingPrimitiveType();
+    switch (primitive) { using enum PrimitiveType::PrimitiveTypeEnum;
+    case STRING:        return Instruction::PCAST;
+    case F32: case F64: return Instruction::FCAST;
+    case CHAR:          return Instruction::UCAST;
+
+    case I8:
+    case I16:
+    case I32:
+    case I64:           return Instruction::SCAST;
+
+    case U7: case U8:
+    case U15: case U16:
+    case U31: case U32:
+    case U63: case U64: return Instruction::UCAST;
+
+    default:
+      eden_unreachable("Invalid primitive type.");
+    }
   }
 
-  if (type == Type::error())
-    return Instruction::UCAST;
-
-  eden_unreachable("This shouldn't happen!");
+  default: eden_unreachable("This shouldn't happen!");
+  }
 }
 
 struct TreeView {
   std::vector<ASTNode>::const_iterator begin;
   std::vector<ASTNode>::const_iterator end;
 
-  [[nodiscard]] constexpr ASTNode
-  peek() const noexcept
-  { return *begin; }
-
-  [[nodiscard]] constexpr bool
-  peek_is_empty() const noexcept
-  { return begin->m.type == ASTNode::EMPTY; }
-
-  constexpr ASTNode
-  take() noexcept
-  { return *(begin++); }
-
-  constexpr void
-  pop() noexcept
-  { ++begin; }
+  eden_always_inline [[nodiscard]] constexpr ASTNode peek() const noexcept { return *begin; }
+  eden_always_inline [[nodiscard]] constexpr bool peek_is_empty() const noexcept { return begin->m.type == ASTNode::EMPTY; }
+  eden_always_inline constexpr ASTNode take() noexcept { return *(begin++); }
+  eden_always_inline constexpr void pop() noexcept { ++begin; }
 
   [[nodiscard]] constexpr bool
   pop_if_empty() noexcept {
@@ -76,18 +71,14 @@ struct TreeView {
     return false;
   }
 
-  constexpr void
-  undo() noexcept
-  { --begin; }
-
-  [[nodiscard]] constexpr bool
-  empty() const noexcept
-  {return begin == end;}
+  eden_always_inline constexpr void  undo() noexcept { --begin; }
+  eden_always_inline [[nodiscard]] constexpr bool empty() const noexcept { return begin == end; }
 };
 
 struct ExpressionResult {
   Type const* type;
-  Type::Qualifiers qualifiers;
+  Type::Qualifiers qualifiers{eden::flags::do_not_initialize};
+  // char _pad[1];
   u16_t length_in_file;
   u32_t position_in_file;
 
@@ -114,15 +105,15 @@ class Peeper {
   TreeView nodes;
   FunctionType const* current_function_type;
 
-  [[nodiscard]] constexpr Block&
+  eden_always_inline [[nodiscard]] constexpr Block&
   current_block() noexcept
   { return blocks.back(); }
 
-  [[nodiscard]] constexpr u32_t
+  eden_always_inline [[nodiscard]] constexpr u32_t
   current_block_index() const noexcept
   { return blocks.size() - 1; }
 
-  [[nodiscard]] constexpr bool
+  eden_always_inline [[nodiscard]] constexpr bool
   is_current_block_empty() const noexcept
   { return blocks.back().first_instruction_idx == instructions.size(); }
 
@@ -155,9 +146,11 @@ class Peeper {
     return true;
   }
 
+  eden_noinline_cold
   void error(auto err, std::string msg) noexcept
   { report_error(*current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
 
+  eden_noinline_cold
   void error(ASTNode err, std::string msg) noexcept
   { report_error(*current_file, err.m.length_in_file, err.m.position_in_file, std::move(msg)); has_error = true; }
 
@@ -284,6 +277,41 @@ class Peeper {
 #undef pre
 
   ExpressionResult
+  peepSubscriptExpression(ASTNode::SubscriptData data) {
+    auto const subscript_idx = instructions.size();
+    instructions.emplace_back(Instruction::SUBSCRIPT, 0);
+
+    auto const array_expr = peepExpression(); bool const is_array = array_expr.type->isArray();
+
+    [[maybe_unused]] auto const index_idx = instructions.size();
+    auto const index_expr = peepExpression(); bool const is_unsigned = index_expr.type->isUnsignedIntegral();
+    ExpressionResult res;
+
+    if (not is_array) {
+      error(array_expr, std::format("Subscript operator used on non-array type {}.", array_expr.type->toString()) );
+      res.type = Type::devoid();
+      res.qualifiers = Type::Qualifiers{};
+    }
+    else {
+      auto const array_type = array_expr.type->castToArray();
+      instructions[subscript_idx].value = std::bit_cast<u64_t>(array_type);
+      res.type = array_type->getSubtype();
+      res.qualifiers = array_expr.qualifiers;
+    }
+
+    if (not is_unsigned) {
+      error(index_expr, std::format("Expression used as array index is of signed type {}.", index_expr.type->toString()) );
+    }
+    else {
+      //coerce_if_integerliteral(instructions[index_idx], index_expr.type);
+    }
+
+    res.length_in_file = data.length_in_file;
+    res.position_in_file = data.position_in_file;
+    return res;
+  }
+
+  ExpressionResult
   peepCastExpression(ASTNode::CastData data) {
     auto const cast_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP, std::bit_cast<u64_t>(data.cast_type));
@@ -314,7 +342,7 @@ class Peeper {
       return {error_literal, called.length_in_file, called.position_in_file};
     }
 
-    assert(called.type->isFunction() or called.type == Type::error());
+    assert(called.type->isFunction() or called.type->isError());
 
     FunctionType const* function_type = called.type->castToFunction();
     auto const function_parameter_types = function_type->parameterTypes();
@@ -640,6 +668,7 @@ class Peeper {
     case CALLING:          return peepCallingExpression(node.calling_data);
     case IDENTIFIER:       return peepIdentifier(node.identifier_data);
     case CAST:             return peepCastExpression(node.cast_data);
+    case SUBSCRIPT:        return peepSubscriptExpression(node.subscript_data);
 
     case SIGNED_LITERAL:
     case UNSIGNED_LITERAL:
@@ -775,7 +804,7 @@ class Peeper {
     auto const init_expr_idx = instructions.size();
     auto const init_expr = peepExpression();
     if (not init_expr.type->coercibleTo(qualified_type.type)) {
-      error(init_expr, "Variable initialization's type is not compatible with variable type.");
+      error(init_expr, std::format("Type {} is not coercible to type {}.", init_expr.type->toString(), qualified_type.type->toString()));
       return;
     }
 
@@ -918,18 +947,17 @@ void printPeepInstruction(Instruction instruction) {
   case I16_LITERAL: return std::println("I16_LITERAL {}", instruction.int_value());
   case I32_LITERAL: return std::println("I32_LITERAL {}", instruction.int_value());
   case I64_LITERAL: return std::println("I64_LITERAL {}", instruction.int_value());
-
   case U8_LITERAL: return std::println("U8_LITERAL {}", instruction.uint_value());
   case U16_LITERAL: return std::println("U16_LITERAL {}", instruction.uint_value());
   case U32_LITERAL: return std::println("U32_LITERAL {}", instruction.uint_value());
   case U64_LITERAL: return std::println("U64_LITERAL {}", instruction.uint_value());
-
   case FLOAT_LITERAL: return std::println("FLOAT_LITERAL {}", instruction.float_value());
   case DOUBLE_LITERAL: return std::println("DOUBLE_LITERAL {}", instruction.double_value());
   case BOOL_LITERAL: return std::println("BOOL_LITERAL {}", instruction.bool_value());
   case CHAR_LITERAL: return std::println("CHAR_LITERAL {}", instruction.char_value());
   case STRING_LITERAL: return std::println("STRING_LITERAL {}", instruction.string_value());
   case ESCAPED_STRING_LITERAL: return std::println("STRING_LITERAL W/ ESCAPE_SEQUENCE {}", instruction.original_string());
+
   case ADD: return std::println("ADD");
   case FADD: return std::println("FADD");
   case SUB: return std::println("SUB");
@@ -964,6 +992,7 @@ void printPeepInstruction(Instruction instruction) {
   case BITAND: return std::println("BITAND");
   case BITOR: return std::println("BITOR");
   case BITXOR: return std::println("BITXOR");
+  case SUBSCRIPT: return std::println("SUBSCRIPT WITH ARRAY TYPE {}", instruction.array_type()->toString());
 
   case PRE_INC: return std::println("PRE_INC");
   case FPRE_INC: return std::println("FPRE_INC");

@@ -78,14 +78,14 @@ struct Token {
   originalString(File const& file) const noexcept
   { return file.view_at(length, position); }
 
-  [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept { return type == token_type; }
-  [[nodiscard]] constexpr bool isIdentifier() const noexcept           { return type == TokenType::IDENTIFIER; }
-  [[nodiscard]] constexpr bool isPrimitive() const noexcept            { return isCategoryPRIMITIVES(type); }
-  [[nodiscard]] constexpr bool isLiteral() const noexcept              { return isCategoryLITERALS(type); }
-  [[nodiscard]] constexpr bool isNumericLiteral() const noexcept       { return isCategoryNUMERIC_LITERALS(type); }
-  [[nodiscard]] constexpr bool isPointer() const noexcept              { return isCategoryPOINTERS(type); }
-  [[nodiscard]] constexpr bool isTypeQualifier() const noexcept        { return isCategoryTYPE_QUALIFIERS(type); }
-  [[nodiscard]] constexpr bool isInvalid() const noexcept              { return type == TokenType::INVALID_TOKEN; }
+  eden_always_inline [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept { return type == token_type; }
+  eden_always_inline [[nodiscard]] constexpr bool isIdentifier() const noexcept           { return type == TokenType::IDENTIFIER; }
+  eden_always_inline [[nodiscard]] constexpr bool isPrimitive() const noexcept            { return isCategoryPRIMITIVES(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isLiteral() const noexcept              { return isCategoryLITERALS(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isNumericLiteral() const noexcept       { return isCategoryNUMERIC_LITERALS(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isPointer() const noexcept              { return isCategoryPOINTERS(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isTypeQualifier() const noexcept        { return isCategoryTYPE_QUALIFIERS(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isInvalid() const noexcept              { return type == TokenType::INVALID_TOKEN; }
 
 };
 
@@ -101,21 +101,20 @@ public:
   TokenView(TokenIter begin, TokenIter end) noexcept
   : begin(begin), end(end) {}
 
-  [[nodiscard]] Token peek() const noexcept                     { return *begin; }
-  [[nodiscard]] bool peek_is(TokenType type) const noexcept     { return begin->type == type; }
-  [[nodiscard]] Token peek_ahead(long distance) const noexcept  { return *(begin + distance); }
-  [[nodiscard]] Token take() noexcept                           { return *begin++; }
-  [[nodiscard]] Token previous() const noexcept/* ub if first */{ return *(begin - 1); }
-  void pop() noexcept                                           { ++begin; }
-  bool pop_if(TokenType type) noexcept                          { if (begin->type not_eq type) return false; ++begin; return true; }
-  void pop_if_valid() noexcept                                  { if (not begin->is(TokenType::INVALID_TOKEN)) ++begin; }
-  void undo() noexcept                                          { --begin; }
+  eden_always_inline [[nodiscard]] Token peek() const noexcept                     { return *begin; }
+  eden_always_inline [[nodiscard]] bool peek_is(TokenType type) const noexcept     { return begin->type == type; }
+  eden_always_inline [[nodiscard]] Token peek_ahead(long distance) const noexcept  { return *(begin + distance); }
+  eden_always_inline [[nodiscard]] Token take() noexcept                           { return *begin++; }
+  eden_always_inline [[nodiscard]] Token previous() const noexcept/* ub if first */{ return *(begin - 1); }
+  eden_always_inline void pop() noexcept                                           { ++begin; }
+  eden_always_inline bool pop_if(TokenType type) noexcept                          { if (begin->type not_eq type) return false; ++begin; return true; }
+  eden_always_inline void pop_if_valid() noexcept                                  { if (not begin->is(TokenType::INVALID_TOKEN)) ++begin; }
+  eden_always_inline void undo() noexcept                                          { --begin; }
   [[nodiscard]] Token take_if_valid() noexcept {
     auto const res = *begin;
     if (not res.is(TokenType::INVALID_TOKEN)) ++begin;
     return res;
   }
-
 
   void print(File const& file) const;
 

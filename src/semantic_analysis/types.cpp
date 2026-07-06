@@ -75,18 +75,15 @@ bool Type::castableTo(const Type* other) const noexcept {
 
 std::string Type::toString() const noexcept {
   switch (derived_type) {
-  case DEVOID: return "devoid";
-  case ERROR: return "!ERROR!";
-  case PRIMITIVE:
-    return static_cast<const PrimitiveType*>(this)->toString();
-  case POINTER:
-    return static_cast<const PointerType*>(this)->toString();
-  case VARIANT:
-    return static_cast<const VariantType*>(this)->toString();
-  case FUNCTION:
-    return static_cast<const FunctionType*>(this)->toString();
-  case CUSTOM:
-    return static_cast<const CustomType*>(this)->toString();
+  case DEVOID:      return "devoid";
+  case PRIMITIVE:   return static_cast<PrimitiveType const*>(this)->toString();
+  case POINTER:     return static_cast<PointerType const*>(this)->toString();
+  case ARRAY:       return static_cast<ArrayType const*>(this)->toString();
+  case FUNCTION:    return static_cast<FunctionType const*>(this)->toString();
+  case CUSTOM:      return static_cast<CustomType const*>(this)->toString();
+  case VARIANT:     return static_cast<VariantType const*>(this)->toString();
+
+  case ERROR: eden_unreachable("Error type should not print.");
   default:
     eden_unreachable("Invalid derived type.");
   }

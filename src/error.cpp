@@ -23,6 +23,7 @@ bool file_has_errors(std::string_view file_path) {
   return file_to_errors_map.contains(file_path);
 }
 
+eden_noinline_cold
 std::string get_file_errors(std::string_view file_path) {
   std::string error_messages;
   auto const error_iter = file_to_errors_map.find(file_path);
@@ -54,6 +55,7 @@ std::string get_file_errors(std::string_view file_path) {
 }
 
 
+eden_noinline_cold
 void report_error(File const& file, u16_t length, u32_t position, std::string error_message) {
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
@@ -62,6 +64,7 @@ void report_error(File const& file, u16_t length, u32_t position, std::string er
     );
 }
 
+eden_noinline_cold
 void report_error(File const& file, Lexer::Token token, std::string error_message) {
   file_to_errors_map[file.path()].emplace_back(
       std::move(error_message),
@@ -70,6 +73,7 @@ void report_error(File const& file, Lexer::Token token, std::string error_messag
     );
 }
 
+eden_noinline_cold
 void report_error(File const& file, std::string_view file_substr, std::string error_message) {
   auto const [len, pos] = file.len_and_pos_from_view(file_substr);
   file_to_errors_map[file.path()].emplace_back(

@@ -174,8 +174,8 @@ void LOM::build() {
       module_name = compiled->createObjectFile(module_name);
 #endif
 #endif
-  if (not success) return;
   }
+  if (not success) return;
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();

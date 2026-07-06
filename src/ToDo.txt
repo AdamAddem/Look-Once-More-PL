@@ -1,0 +1,10 @@
+Backend:
+    -Consider using the system linker or llvm linker instead of another compiler
+
+General:
+    -Determine how to communicate pass by reference vs value
+    -Revisit the for loop
+    -Add pointer arithmetic
+    -Add array types
+    -Add variant functionality
+    -Create optimization passes

@@ -21,80 +21,115 @@ namespace {
 
 [[noreturn]] void throw_notfound() eden_throws(0 if empty) { throw 0; }
 
-[[nodiscard]] QualifiedType parseType(TokenView& tokens, TU& tu);
+[[nodiscard]] QualifiedType parseType(TokenView& tokens, TU& tu) noexcept;
+[[nodiscard]] Type const* parseUnqualifiedType(TokenView& tokens, TU& tu) noexcept;
 
-// assumes tokens starts with type qualifier
+#define pre assert(tokens.peek().isTypeQualifier());
 [[nodiscard]] Type::Qualifiers
-parseTypeQualifiers(TokenView& tokens) {
+parseTypeQualifiers(TokenView& tokens) noexcept { pre
   Type::Qualifiers qualifiers;
-  if (tokens.peek_is(TokenType::KEYWORD_MUT))
+  if (tokens.pop_if(TokenType::KEYWORD_MUT))
     qualifiers.is_mutable = true;
-  else eden_unreachable("Type modifier not supported.");
-  tokens.pop();
+  else eden_unreachable("Type qualifier not supported.");
+
   return qualifiers;
 }
+#undef pre
 
-[[nodiscard]] Type const*
-parseUnqualifiedType(TokenView& tokens, TU& tu) {
+#define pre assert(tokens.previous().is(TokenType::LBRACKET));
+[[nodiscard]] ArrayType const*
+parseArrayType(TokenView& tokens, TU& tu) noexcept { pre
   auto const& current_file = tu.source_files.back();
   auto const token = tokens.take();
-  auto const& module = *tu.module;
+  u64_t array_size;
+
+  if (not token.is(TokenType::INTEGER_LITERAL))
+    report_error(current_file, token, "Expected integer literal in array type."), array_size = 1;
+  else array_size = token.getInteger(current_file);
+
+  if (not tokens.pop_if(TokenType::RBRACKET)) {
+    report_error(current_file, tokens.peek(), "Expected ] while parsing array type.");
+    tokens.pop();
+  }
+
+  auto const subtype = parseUnqualifiedType(tokens, tu);
+  return tu.module->getArrayType(array_size, subtype);
+}
+#undef pre
+
+#define pre assert(pointer_token.isPointer());
+[[nodiscard]] PointerType const*
+parsePointerType(TokenView& tokens, TU& tu, Token pointer_token) noexcept { pre
+  if (pointer_token.is(TokenType::KEYWORD_VAGUE)) {
+    auto const subtype_qualifiers = parseTypeQualifiers(tokens);
+    return PointerType::vague(subtype_qualifiers.is_mutable);
+  }
+
+  auto const subtype_instance = parseType(tokens, tu);
+
+  switch (pointer_token.type) {
+  case TokenType::KEYWORD_RAW:    return tu.module->getRawPointerType(subtype_instance);
+  case TokenType::KEYWORD_UNIQUE: return tu.module->getUniquePointerType(subtype_instance);
+  default: eden_unreachable("Pointer type unsupported.");
+  }
+
+}
+#undef pre
+
+#define pre assert(primitive_token.isPrimitive() and not primitive_token.isPointer());
+[[nodiscard]] Type const*
+parsePrimitiveType(Token primitive_token) noexcept { pre
+  switch (primitive_token.type) {
+  case TokenType::KEYWORD_i8:     return PrimitiveType::i8();
+  case TokenType::KEYWORD_i16:    return PrimitiveType::i16();
+  case TokenType::KEYWORD_i32:    return PrimitiveType::i32();
+  case TokenType::KEYWORD_i64:    return PrimitiveType::i64();
+  case TokenType::KEYWORD_u8:     return PrimitiveType::u8();
+  case TokenType::KEYWORD_u16:    return PrimitiveType::u16();
+  case TokenType::KEYWORD_u32:    return PrimitiveType::u32();
+  case TokenType::KEYWORD_u64:    return PrimitiveType::u64();
+  case TokenType::KEYWORD_f32:    return PrimitiveType::f32();
+  case TokenType::KEYWORD_f64:    return PrimitiveType::f64();
+
+  case TokenType::KEYWORD_CHAR:   return PrimitiveType::char_();
+  case TokenType::KEYWORD_BOOL:   return PrimitiveType::bool_();
+  case TokenType::KEYWORD_STRING: return PrimitiveType::string();
+  case TokenType::KEYWORD_DEVOID: return Type::devoid();
+  default:
+  eden_unreachable("Pointer type not supported.");
+  }
+}
+#undef pre
+
+[[nodiscard]] Type const*
+parseUnqualifiedType(TokenView& tokens, TU& tu) noexcept {
+  auto const& current_file = tu.source_files.back();
+  auto const token = tokens.take();
 
   static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_RAW));
+  static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_UNIQUE));
   static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_VAGUE));
-  if (token.isPrimitive()) {
-    if (token.isPointer()) {
 
-      if (token.is(TokenType::KEYWORD_VAGUE)) {
-        auto const subtype_qualifiers = parseTypeQualifiers(tokens);
-        return PointerType::vague(subtype_qualifiers.is_mutable);
-      }
+  switch (token.type) { using enum TokenType;
+  TOKENTYPE_PRIMITIVES_CASES
+      if (token.isPointer()) return parsePointerType(tokens, tu, token);
+      return parsePrimitiveType(token);
 
-      auto const subtype_instance = parseType(tokens, tu);
-
-      switch (token.type) {
-      case TokenType::KEYWORD_RAW:    return module.getRawPointerType(subtype_instance);
-      case TokenType::KEYWORD_UNIQUE: return module.getUniquePointerType(subtype_instance);
-      default: eden_unreachable("Pointer type unsupported.");
-      }
+  case IDENTIFIER: {
+      Type const* type = tu.module->getCustomType(token.getString(current_file));
+      if (type == nullptr)
+        type = Type::error(), report_error(current_file, token, "Expected typename.");
+      return type;
     }
 
-    switch (token.type) {
-    case TokenType::KEYWORD_i8:     return PrimitiveType::i8();
-    case TokenType::KEYWORD_i16:    return PrimitiveType::i16();
-    case TokenType::KEYWORD_i32:    return PrimitiveType::i32();
-    case TokenType::KEYWORD_i64:    return PrimitiveType::i64();
-    case TokenType::KEYWORD_u8:     return PrimitiveType::u8();
-    case TokenType::KEYWORD_u16:    return PrimitiveType::u16();
-    case TokenType::KEYWORD_u32:    return PrimitiveType::u32();
-    case TokenType::KEYWORD_u64:    return PrimitiveType::u64();
-    case TokenType::KEYWORD_f32:    return PrimitiveType::f32();
-    case TokenType::KEYWORD_f64:    return PrimitiveType::f64();
-
-    case TokenType::KEYWORD_CHAR:   return PrimitiveType::char_();
-    case TokenType::KEYWORD_BOOL:   return PrimitiveType::bool_();
-    case TokenType::KEYWORD_STRING: return PrimitiveType::string();
-    case TokenType::KEYWORD_DEVOID: return Type::devoid();
-    default:
-      eden_unreachable("Pointer type not supported.");
-    }
+  case LBRACKET: return parseArrayType(tokens, tu);
+  default:
+    report_error(current_file, token, "Expected typename.");
+    return Type::error();
   }
-
-  if (token.isIdentifier()) {
-    const Type* type = module.getCustomType(token.getString(current_file));
-    if (type == nullptr)
-      type = Type::error(), report_error(current_file, token, "Expected typename.");
-
-    return type;
-  }
-
-  report_error(current_file, token, "Expected typename.");
-  return Type::error();
 }
 
-template <bool allow_qualifiers>
-[[maybe_unused]] [[nodiscard]] auto
-parseTypeList(TokenView& tokens, TU& tu) {
+template <bool allow_qualifiers> [[maybe_unused]] [[nodiscard]] auto parseTypeList(TokenView& tokens, TU& tu) {
   using type = std::conditional_t<allow_qualifiers, QualifiedType, Type const*>;
   std::vector<type> list;
   list.reserve(2);
@@ -111,7 +146,7 @@ parseTypeList(TokenView& tokens, TU& tu) {
 }
 
 [[nodiscard]] QualifiedType
-parseType(TokenView& tokens, TU& tu) {
+parseType(TokenView& tokens, TU& tu) noexcept {
   Type::Qualifiers qualifiers;
   if (tokens.peek().isTypeQualifier())
     qualifiers = parseTypeQualifiers(tokens);
@@ -120,13 +155,11 @@ parseType(TokenView& tokens, TU& tu) {
 
 [[nodiscard]] std::string_view
 parseIdentifier(TokenView& tokens, TU const& tu) noexcept {
-  auto const token = tokens.take();
-  if (not token.is(TokenType::IDENTIFIER)) {
-    report_error(tu.source_files.back(), token, "Expected identifier.");
+  if (not tokens.peek_is(TokenType::IDENTIFIER)) {
+    report_error(tu.source_files.back(), tokens.take_if_valid(), "Expected identifier.");
     return "?";
   }
-
-  return token.getString(tu.source_files.back());
+  return tokens.take().getString(tu.source_files.back());
 }
 
 struct Expression {
@@ -324,7 +357,21 @@ struct Body {
           );
         continue;
 
-      case TokenType::LBRACKET: throw std::runtime_error("Subscript unsupported.");
+      case TokenType::LBRACKET:
+        tokens.pop();
+        left = expression_tree.create(
+          newNode(token, ASTNode::SUBSCRIPT),
+          left,
+          generateAssignmentExpression()
+          );
+
+        if (not tokens.pop_if(TokenType::RBRACKET)) {
+          report_error(current_file, tokens.take_if_valid(), "Expected closing ].");
+          sync_to_semicolon();
+        }
+
+        continue;
+
       default: return left;
       }
 
@@ -487,7 +534,7 @@ struct Body {
       translateExpression(expression.left_idx);
       return;
 
-    case BINARY: case MEMBER_ACCESS:
+    case BINARY: case MEMBER_ACCESS: case SUBSCRIPT:
       nodes.emplace_back(expression.node);
       translateExpression(expression.left_idx);
       translateExpression(expression.right_idx);
@@ -547,8 +594,7 @@ struct Body {
 
   void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
 
-  Token parseVarDecl(sz_t decl_node_idx) noexcept {
-    auto const declaration_type = parseType(tokens, tu);
+  Token parseVarDecl(sz_t decl_node_idx, QualifiedType declaration_type) noexcept {
     bool has_init;
 
     // identifier
@@ -676,12 +722,12 @@ struct Body {
 
     case LBRACKET:
     TOKENTYPE_PRIMITIVES_CASES
-    TOKENTYPE_TYPE_QUALIFIERS_CASES stmt_idx = insertTypedNode(ASTNode::DECLARATION); final = parseVarDecl(stmt_idx); break;
+    TOKENTYPE_TYPE_QUALIFIERS_CASES
+                          stmt_idx = insertTypedNode(ASTNode::DECLARATION);           final = parseVarDecl(stmt_idx, parseType(tokens, tu)); break;
 
     case IDENTIFIER:
-      if (tokens.peek_ahead(1).isIdentifier()) {
-                                    stmt_idx = insertTypedNode(ASTNode::DECLARATION); final = parseVarDecl(stmt_idx); break;
-      }
+      if (tokens.peek_ahead(1).isIdentifier())
+      {                   stmt_idx = insertTypedNode(ASTNode::DECLARATION);           final = parseVarDecl(stmt_idx, parseType(tokens, tu)); break; }
 
       [[fallthrough]];
     default: // expression statement
@@ -714,7 +760,7 @@ struct Body {
 
 };
 
-void parseCExtern(TU& tu, TokenView& tokens) {
+void parseCExtern(TU& tu, TokenView& tokens) noexcept {
   auto const& current_file = tu.source_files.back();
   auto const name = parseIdentifier(tokens, tu);
   if (not tokens.pop_if(TokenType::LPAREN)) {
@@ -759,7 +805,7 @@ void parseCExtern(TU& tu, TokenView& tokens) {
   c_module->addFunction(name, parameter_span, return_type, true, is_variadic);
 }
 
-void parseStructDecl(TU& tu, TokenView& tokens) {
+void parseStructDecl(TU& tu, TokenView& tokens) noexcept {
   auto const& current_file = tu.source_files.back();
   auto const name = parseIdentifier(tokens, tu);
 
@@ -803,7 +849,7 @@ void parseStructDecl(TU& tu, TokenView& tokens) {
   tu.module->addCustomType(name, std::span(members, i));
 }
 
-void parseImports(TU& tu, TokenView& tokens) {
+void parseImports(TU& tu, TokenView& tokens) noexcept {
   auto const& current_file = tu.source_files.back();
   while (tokens.pop_if(TokenType::KEYWORD_IMPORT)) {
     auto name_token = tokens.take();
@@ -821,7 +867,7 @@ void parseImports(TU& tu, TokenView& tokens) {
   }
 }
 
-Function parseFunction(TU& tu, Body& global_body) {
+Function parseFunction(TU& tu, Body& global_body) noexcept {
   auto& tokens = global_body.tokens;
   auto const& current_file = tu.source_files.back();
 
@@ -895,7 +941,7 @@ Function parseFunction(TU& tu, Body& global_body) {
   return current_function;
 }
 
-void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& functions) {
+void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& functions) noexcept {
   auto& tokens = global_body.tokens;
 
   while (not tokens.peek_is(TokenType::INVALID_TOKEN)) {
@@ -909,7 +955,7 @@ void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& 
 
 }
 
-void printFunction(Function const& func, TU const& tu) {
+void printFunction(Function const& func, TU const& tu) noexcept {
   auto const function = tu.module->getFunction(func.nameof());
 
   auto const parameters = function->parameters();
@@ -938,7 +984,7 @@ void printFunction(Function const& func, TU const& tu) {
 
 } // namespace
 
-void Parser::printTU([[maybe_unused]] TU const& tu) {
+void Parser::printTU([[maybe_unused]] TU const& tu) noexcept {
   for (auto const& import : tu.imports)
     std::println("import {};", import);
 
@@ -948,7 +994,7 @@ void Parser::printTU([[maybe_unused]] TU const& tu) {
   }
 }
 
-void Parser::parseTokens(TU& tu, std::vector<Token> const& tokens) {
+void Parser::parseTokens(TU& tu, std::vector<Token> const& tokens) noexcept {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif

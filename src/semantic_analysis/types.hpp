@@ -511,6 +511,7 @@ static constexpr QualifiedType unsignedToLiteralInstance(u64_t val) {
 
 class TypeContext {
   static constexpr auto search_pred = [] (auto* type, auto&&... args) { return type->sameAs(std::forward<decltype(args)>(args)...); };
+  static constexpr auto named_search_pred = [] (auto* type, std::string_view name) { return type->nameof() == name; };
 
   eden::Arena<> type_arena;
   eden::swap_vector<PointerType*>  pointers;
@@ -530,7 +531,7 @@ class TypeContext {
     auto res = types.search(search_pred, std::forward<Args>(args)...);
     if (res) return *res;
 
-    const auto new_type = allocateAndConstruct<T>(std::forward<Args>(args)...);
+    auto const new_type = allocateAndConstruct<T>(std::forward<Args>(args)...);
     types.push_back(new_type);
     return new_type;
   }
@@ -586,16 +587,8 @@ public:
   // returns nullptr if not found
   [[nodiscard]] CustomType const*
   getCustomType(std::string_view name) noexcept {
-    auto curr = custom_types.rbegin();
-    const auto end = custom_types.rend();
-    while (curr not_eq end) {
-      const auto type = *curr;
-      if (type->nameof() == name) {
-        std::swap(custom_types.back(), *curr);
-        return type;
-      }
-      ++curr;
-    }
+    auto const res = custom_types.search(named_search_pred, name);
+    if (res) return *res;
     return nullptr;
   }
 

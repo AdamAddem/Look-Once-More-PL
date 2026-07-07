@@ -33,4 +33,10 @@ inline constexpr std::string_view external_compiler;
 // #define PROFILE
 // #define STAGE_BENCHMARKS
 
+#ifndef PROFILE
+#ifndef STAGE_BENCHMARKS
+#define NO_MEASUREMENT
+#endif
+#endif
+
 }

@@ -1,11 +1,16 @@
-__C printf(raw char fmt, __va);
+__C printf(raw char fmt, __va); # C-Interop!
 
 fib(i32 n) i32 {
     if n <= 1 { return n; }
-
     return fib(n-1) + fib(n-2);
 }
 
 pub main() i32 {
-    return fib(8);
+
+    $i32 n = 0;
+    while n++ < 10 {
+        __C.printf("Fibonacci number %d: %d\n", n, fib(n));
+    }
+
+    return 0;
 }

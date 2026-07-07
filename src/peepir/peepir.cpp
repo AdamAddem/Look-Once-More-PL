@@ -799,7 +799,7 @@ class Peeper {
   void peepStatement() {
     auto const node = nodes.take();
     switch (node.m.type) { using enum ASTNode::NodeType;
-    case EMPTY:        eden_unreachable("");
+    case EMPTY:        eden_unreachable("Empty node peeped in peepStatement.");
     case DECLARATION:  return peepVarDeclaration(node.declaration_data);
     case IF:           return peepIfStatement(node.if_numstatements());
     case WHILE:        return peepWhileLoop(node.while_numstatements());

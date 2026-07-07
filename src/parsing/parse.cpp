@@ -21,147 +21,6 @@ namespace {
 
 [[noreturn]] void throw_notfound() eden_throws(0 if empty) { throw 0; }
 
-[[nodiscard]] QualifiedType parseType(TokenView& tokens, TU& tu) noexcept;
-[[nodiscard]] Type const* parseUnqualifiedType(TokenView& tokens, TU& tu) noexcept;
-
-#define pre assert(tokens.peek().isTypeQualifier());
-[[nodiscard]] Type::Qualifiers
-parseTypeQualifiers(TokenView& tokens) noexcept { pre
-  Type::Qualifiers qualifiers;
-  if (tokens.pop_if(TokenType::KEYWORD_MUT))
-    qualifiers.is_mutable = true;
-  else eden_unreachable("Type qualifier not supported.");
-
-  return qualifiers;
-}
-#undef pre
-
-#define pre assert(tokens.previous().is(TokenType::LBRACKET));
-[[nodiscard]] ArrayType const*
-parseArrayType(TokenView& tokens, TU& tu) noexcept { pre
-  auto const& current_file = tu.source_files.back();
-  auto const token = tokens.take();
-  u64_t array_size;
-
-  if (not token.is(TokenType::INTEGER_LITERAL))
-    report_error(current_file, token, "Expected integer literal in array type."), array_size = 1;
-  else array_size = token.getInteger(current_file);
-
-  if (not tokens.pop_if(TokenType::RBRACKET)) {
-    report_error(current_file, tokens.peek(), "Expected ] while parsing array type.");
-    tokens.pop();
-  }
-
-  auto const subtype = parseUnqualifiedType(tokens, tu);
-  return tu.module->getArrayType(array_size, subtype);
-}
-#undef pre
-
-#define pre assert(pointer_token.isPointer());
-[[nodiscard]] PointerType const*
-parsePointerType(TokenView& tokens, TU& tu, Token pointer_token) noexcept { pre
-  if (pointer_token.is(TokenType::KEYWORD_VAGUE)) {
-    auto const subtype_qualifiers = parseTypeQualifiers(tokens);
-    return PointerType::vague(subtype_qualifiers.is_mutable);
-  }
-
-  auto const subtype_instance = parseType(tokens, tu);
-
-  switch (pointer_token.type) {
-  case TokenType::KEYWORD_RAW:    return tu.module->getRawPointerType(subtype_instance);
-  case TokenType::KEYWORD_UNIQUE: return tu.module->getUniquePointerType(subtype_instance);
-  default: eden_unreachable("Pointer type unsupported.");
-  }
-
-}
-#undef pre
-
-#define pre assert(primitive_token.isPrimitive() and not primitive_token.isPointer());
-[[nodiscard]] Type const*
-parsePrimitiveType(Token primitive_token) noexcept { pre
-  switch (primitive_token.type) {
-  case TokenType::KEYWORD_i8:     return PrimitiveType::i8();
-  case TokenType::KEYWORD_i16:    return PrimitiveType::i16();
-  case TokenType::KEYWORD_i32:    return PrimitiveType::i32();
-  case TokenType::KEYWORD_i64:    return PrimitiveType::i64();
-  case TokenType::KEYWORD_u8:     return PrimitiveType::u8();
-  case TokenType::KEYWORD_u16:    return PrimitiveType::u16();
-  case TokenType::KEYWORD_u32:    return PrimitiveType::u32();
-  case TokenType::KEYWORD_u64:    return PrimitiveType::u64();
-  case TokenType::KEYWORD_f32:    return PrimitiveType::f32();
-  case TokenType::KEYWORD_f64:    return PrimitiveType::f64();
-
-  case TokenType::KEYWORD_CHAR:   return PrimitiveType::char_();
-  case TokenType::KEYWORD_BOOL:   return PrimitiveType::bool_();
-  case TokenType::KEYWORD_STRING: return PrimitiveType::string();
-  case TokenType::KEYWORD_DEVOID: return Type::devoid();
-  default:
-  eden_unreachable("Pointer type not supported.");
-  }
-}
-#undef pre
-
-[[nodiscard]] Type const*
-parseUnqualifiedType(TokenView& tokens, TU& tu) noexcept {
-  auto const& current_file = tu.source_files.back();
-  auto const token = tokens.take();
-
-  static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_RAW));
-  static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_UNIQUE));
-  static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_VAGUE));
-
-  switch (token.type) { using enum TokenType;
-  TOKENTYPE_PRIMITIVES_CASES
-      if (token.isPointer()) return parsePointerType(tokens, tu, token);
-      return parsePrimitiveType(token);
-
-  case IDENTIFIER: {
-      Type const* type = tu.module->getCustomType(token.getString(current_file));
-      if (type == nullptr)
-        type = Type::error(), report_error(current_file, token, "Expected typename.");
-      return type;
-    }
-
-  case LBRACKET: return parseArrayType(tokens, tu);
-  default:
-    report_error(current_file, token, "Expected typename.");
-    return Type::error();
-  }
-}
-
-template <bool allow_qualifiers> [[maybe_unused]] [[nodiscard]] auto parseTypeList(TokenView& tokens, TU& tu) {
-  using type = std::conditional_t<allow_qualifiers, QualifiedType, Type const*>;
-  std::vector<type> list;
-  list.reserve(2);
-
-  do {
-    if constexpr (allow_qualifiers) list.emplace_back(parseType(tokens, tu));
-    else                            list.emplace_back(parseUnqualifiedType(tokens, tu));
-  } while (tokens.pop_if(TokenType::COMMA));
-
-  if (not tokens.pop_if(TokenType::GTR))
-    report_error(tu.source_files.back(), tokens.peek(), "Expected closing > in type list.");
-
-  return list;
-}
-
-[[nodiscard]] QualifiedType
-parseType(TokenView& tokens, TU& tu) noexcept {
-  Type::Qualifiers qualifiers;
-  if (tokens.peek().isTypeQualifier())
-    qualifiers = parseTypeQualifiers(tokens);
-  return {parseUnqualifiedType(tokens, tu), qualifiers};
-}
-
-[[nodiscard]] std::string_view
-parseIdentifier(TokenView& tokens, TU const& tu) noexcept {
-  if (not tokens.peek_is(TokenType::IDENTIFIER)) {
-    report_error(tu.source_files.back(), tokens.take_if_valid(), "Expected identifier.");
-    return "?";
-  }
-  return tokens.take().getString(tu.source_files.back());
-}
-
 struct Expression {
   u32_t left_idx;
   u32_t right_idx; // unary expressions do not contain right_idx
@@ -223,6 +82,11 @@ class ParserBody {
       .length_in_file = length_in_file, .position_in_file = position_in_file}};
   }
 
+  eden_noinline_cold void
+  error(Token err, std::string_view msg) noexcept {
+    report_error(current_file, err, std::string(msg)); has_errors = true;
+  }
+
   std::vector<ASTNode> nodes;
   TokenView tokens;
   File current_file;
@@ -233,6 +97,128 @@ class ParserBody {
   ParserBody(std::vector<Token>& tokens, TU& tu)
   : tokens(tokens), current_file(tu.source_files.back()), tu(tu) {}
 
+  #define pre assert(tokens.peek().isTypeQualifier());
+  [[nodiscard]] Type::Qualifiers
+  parseTypeQualifiers() noexcept { pre
+    Type::Qualifiers qualifiers;
+    if (tokens.pop_if(TokenType::KEYWORD_MUT))
+      qualifiers.is_mutable = true;
+    else eden_unreachable("Type qualifier not supported.");
+
+    return qualifiers;
+  }
+  #undef pre
+
+  #define pre assert(tokens.previous().is(TokenType::LBRACKET));
+  [[nodiscard]] ArrayType const*
+  parseArrayType() noexcept { pre
+    auto const& current_file = tu.source_files.back();
+    auto const token = tokens.take();
+    u64_t array_size;
+
+    if (not token.is(TokenType::INTEGER_LITERAL))
+      error(token, "Expected integer literal in array type."), array_size = 1;
+    else array_size = token.getInteger(current_file);
+
+    if (not tokens.pop_if(TokenType::RBRACKET)) {
+      error(tokens.peek(), "Expected ] while parsing array type.");
+      tokens.pop();
+    }
+
+    auto const subtype = parseUnqualifiedType();
+    return tu.module->getArrayType(array_size, subtype);
+  }
+  #undef pre
+
+  #define pre assert(pointer_token.isPointer());
+  [[nodiscard]] PointerType const*
+  parsePointerType(Token pointer_token) noexcept { pre
+    if (pointer_token.is(TokenType::KEYWORD_VAGUE)) {
+      auto const subtype_qualifiers = parseTypeQualifiers();
+      return PointerType::vague(subtype_qualifiers.is_mutable);
+    }
+
+    auto const subtype_instance = parseType();
+
+    switch (pointer_token.type) {
+    case TokenType::KEYWORD_RAW:    return tu.module->getRawPointerType(subtype_instance);
+    case TokenType::KEYWORD_UNIQUE: return tu.module->getUniquePointerType(subtype_instance);
+    default: eden_unreachable("Pointer type unsupported.");
+    }
+
+  }
+  #undef pre
+
+  #define pre assert(primitive_token.isPrimitive() and not primitive_token.isPointer());
+  [[nodiscard]] Type const*
+  parsePrimitiveType(Token primitive_token) noexcept { pre
+    switch (primitive_token.type) {
+    case TokenType::KEYWORD_i8:     return PrimitiveType::i8();
+    case TokenType::KEYWORD_i16:    return PrimitiveType::i16();
+    case TokenType::KEYWORD_i32:    return PrimitiveType::i32();
+    case TokenType::KEYWORD_i64:    return PrimitiveType::i64();
+    case TokenType::KEYWORD_u8:     return PrimitiveType::u8();
+    case TokenType::KEYWORD_u16:    return PrimitiveType::u16();
+    case TokenType::KEYWORD_u32:    return PrimitiveType::u32();
+    case TokenType::KEYWORD_u64:    return PrimitiveType::u64();
+    case TokenType::KEYWORD_f32:    return PrimitiveType::f32();
+    case TokenType::KEYWORD_f64:    return PrimitiveType::f64();
+
+    case TokenType::KEYWORD_CHAR:   return PrimitiveType::char_();
+    case TokenType::KEYWORD_BOOL:   return PrimitiveType::bool_();
+    case TokenType::KEYWORD_STRING: return PrimitiveType::string();
+    case TokenType::KEYWORD_DEVOID: return Type::devoid();
+    default:
+    eden_unreachable("Pointer type not supported.");
+    }
+  }
+  #undef pre
+
+  [[nodiscard]] Type const*
+  parseUnqualifiedType() noexcept {
+    auto const& current_file = tu.source_files.back();
+    auto const token = tokens.take();
+
+    static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_RAW));
+    static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_UNIQUE));
+    static_assert(isCategoryPRIMITIVES(TokenType::KEYWORD_VAGUE));
+
+    switch (token.type) { using enum TokenType;
+    TOKENTYPE_PRIMITIVES_CASES
+        if (token.isPointer()) return parsePointerType(token);
+        return parsePrimitiveType(token);
+
+    case IDENTIFIER: {
+        Type const* type = tu.module->getCustomType(token.getString(current_file));
+        if (type == nullptr)
+          type = Type::error(), error(token, "Expected typename.");
+        return type;
+      }
+
+    case LBRACKET: return parseArrayType();
+    default:
+      error(token, "Expected typename.");
+      return Type::error();
+    }
+  }
+
+  [[nodiscard]] QualifiedType
+  parseType() noexcept {
+    Type::Qualifiers qualifiers;
+    if (tokens.peek().isTypeQualifier())
+      qualifiers = parseTypeQualifiers();
+    return {parseUnqualifiedType(), qualifiers};
+  }
+
+  [[nodiscard]] std::string_view
+  parseIdentifier() noexcept {
+    if (not tokens.peek_is(TokenType::IDENTIFIER)) {
+      error(tokens.take_if_valid(), "Expected identifier.");
+      return "?";
+    }
+    return tokens.take().getString(tu.source_files.back());
+  }
+
   // opening parenthesis must be popped, and the next token must not be closing parenthesis
   u32_t generateParameters() {
     auto const parameter = generateAssignmentExpression();
@@ -242,7 +228,7 @@ class ParserBody {
     if (tokens.pop_if(TokenType::COMMA))
       return expression_tree.create(PLACEHOLDER_NODE, parameter, generateParameters());
 
-    report_error(current_file, tokens.peek(), "Expected comma in call expression.");
+    error(tokens.peek(), "Expected comma in call expression.");
     return expression_tree.create(PLACEHOLDER_NODE, parameter, generateParameters());
   }
 
@@ -293,7 +279,7 @@ class ParserBody {
     case LPAREN: {
       tokens.pop();
       auto const res = generateAssignmentExpression();
-      if (not tokens.pop_if(RPAREN)) report_error(current_file, tokens.take_if_valid(), "Expected closing ).");
+      if (not tokens.pop_if(RPAREN)) error(tokens.take_if_valid(), "Expected closing ).");
       return res;
     }
 
@@ -341,6 +327,11 @@ class ParserBody {
         left = expression_tree.create(newNode(token, ASTNode::MEMBER_ACCESS), left, generatePrimaryExpression()); // identifier following arrow should only occur when accessing a member
         continue;
 
+        case TokenType::DOT:
+        tokens.pop();
+        left = expression_tree.create(newNode(token, ASTNode::MEMBER_ACCESS), left, generatePostfixExpression());
+        continue;
+
       case TokenType::LPAREN:
         tokens.pop();
         left = expression_tree.create(
@@ -359,7 +350,7 @@ class ParserBody {
           );
 
         if (not tokens.pop_if(TokenType::RBRACKET)) {
-          report_error(current_file, tokens.take_if_valid(), "Expected closing ].");
+          error(tokens.take_if_valid(), "Expected closing ].");
           sync_to_semicolon();
         }
 
@@ -385,9 +376,9 @@ class ParserBody {
     case TokenType::KEYWORD_BITNOT:     opr = Operator::BITNOT; break;
     case TokenType::KEYWORD_CAST: {
       auto node = newNode(token, ASTNode::CAST); tokens.pop();
-      if (not tokens.pop_if(TokenType::LESS)) report_error(current_file, tokens.peek(), "Expected opening < in cast.");
-      node.cast_data.cast_type = parseUnqualifiedType(tokens, tu);
-      if (not tokens.pop_if(TokenType::GTR)) report_error(current_file, tokens.peek(), "Expected opening > in cast.");
+      if (not tokens.pop_if(TokenType::LESS)) error(tokens.peek(), "Expected opening < in cast.");
+      node.cast_data.cast_type = parseUnqualifiedType();
+      if (not tokens.pop_if(TokenType::GTR)) error(tokens.peek(), "Expected opening > in cast.");
 
       return expression_tree.create(node, generatePrefixExpression(), 0);
     }
@@ -576,10 +567,10 @@ class ParserBody {
     try { translateExpression( generateAssignmentExpression() ); }
     catch (...) {
       if constexpr (expression_statement) {
-        report_error(current_file, tokens.peek(), "Expected expression.");
+        error(tokens.peek(), "Expected expression.");
         tokens.set_peek(TokenType::SEMI_COLON); // trick into avoiding double error
       }
-      else report_error(current_file, tokens.take_if_valid(), "Expected expression.");
+      else error(tokens.take_if_valid(), "Expected expression.");
 
       nodes.emplace_back(ASTNode::EMPTY, current_file_idx());
     }
@@ -601,7 +592,7 @@ class ParserBody {
     {
       auto const identifier_token = tokens.take();
       if (not identifier_token.is(TokenType::IDENTIFIER)) {
-        report_error(current_file, identifier_token, "Expected identifier in variable declaration.");
+        error(identifier_token, "Expected identifier in variable declaration.");
         sync_to(TokenType::SEMI_COLON);
         return identifier_token;
       }
@@ -613,7 +604,7 @@ class ParserBody {
 
     if (not tokens.pop_if(TokenType::ASSIGN)) {
       auto err = tokens.peek();
-      report_error(current_file, err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
+      error(err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
       sync_to_semicolon();
       return err;
     }
@@ -627,7 +618,7 @@ class ParserBody {
 
     if (not tokens.peek_is(TokenType::SEMI_COLON)) {
       auto const err = tokens.peek();
-      report_error(current_file, err, "Expected semicolon ending variable declaration.");
+      error(err, "Expected semicolon ending variable declaration.");
       sync_to_semicolon();
       return err;
     }
@@ -642,7 +633,7 @@ class ParserBody {
   Token parseIf(sz_t if_node_idx) { pre
     parseExpression();
     if (not tokens.pop_if(TokenType::LBRACE)) {
-      report_error(current_file, tokens.peek(), "Expected {.");
+      error(tokens.peek(), "Expected {.");
     }
 
     auto num_substatements{0uz};
@@ -650,7 +641,7 @@ class ParserBody {
       parseStatement();
       ++num_substatements;
       if (tokens.peek().isInvalid()) {
-        report_error(current_file, tokens.peek(), "Expected closing } in scoped statement.");
+        error(tokens.peek(), "Expected closing } in scoped statement.");
         break;
       }
     }
@@ -673,7 +664,7 @@ class ParserBody {
   Token parseWhile(sz_t while_node_idx) { pre
     parseExpression();
     if (not tokens.pop_if(TokenType::LBRACE)) {
-      report_error(current_file, tokens.peek(), "Expected {.");
+      error(tokens.peek(), "Expected {.");
     }
 
     sz_t num_substatements = 0;
@@ -681,7 +672,7 @@ class ParserBody {
       parseStatement();
       ++num_substatements;
       if (tokens.peek().isInvalid()) {
-        report_error(current_file, tokens.peek(), "Expected closing } in scoped statement.");
+        error(tokens.peek(), "Expected closing } in scoped statement.");
         break;
       }
     }
@@ -702,7 +693,7 @@ class ParserBody {
     return_data.has_value = true;
     parseExpression();
     if (not tokens.peek_is(TokenType::SEMI_COLON)) {
-      report_error(current_file, tokens.peek(), "Expected semi-colon.");
+      error(tokens.peek(), "Expected semi-colon.");
       return tokens.peek();
     }
 
@@ -725,18 +716,18 @@ class ParserBody {
     case LBRACKET:
     TOKENTYPE_PRIMITIVES_CASES
     TOKENTYPE_TYPE_QUALIFIERS_CASES
-                          stmt_idx = insertTypedNode(ASTNode::DECLARATION);           final = parseVarDecl(stmt_idx, parseType(tokens, tu)); break;
+                          stmt_idx = insertTypedNode(ASTNode::DECLARATION);           final = parseVarDecl(stmt_idx, parseType()); break;
 
     case IDENTIFIER:
       if (tokens.peek_ahead(1).isIdentifier())
-      {                   stmt_idx = insertTypedNode(ASTNode::DECLARATION);           final = parseVarDecl(stmt_idx, parseType(tokens, tu)); break; }
+      {                   stmt_idx = insertTypedNode(ASTNode::DECLARATION);           final = parseVarDecl(stmt_idx, parseType()); break; }
 
       [[fallthrough]];
     default: // expression statement
       stmt_idx = nodes.size();
       parseExpression<true>();
       if (not tokens.peek_is(SEMI_COLON)) {
-        report_error(current_file, tokens.peek(), "Expected semi-colon.");
+        error(tokens.peek(), "Expected semi-colon.");
         final = tokens.previous();
       }
       else { final = tokens.previous(); tokens.pop(); }
@@ -756,7 +747,7 @@ class ParserBody {
     while (not tokens.pop_if(TokenType::RBRACE)) {
       parseStatement();
       if (tokens.peek_is(TokenType::INVALID_TOKEN)) {
-        report_error(current_file, tokens.peek(), "Expected closing }.");
+        error(tokens.peek(), "Expected closing }.");
         break;
       }
     }
@@ -766,10 +757,9 @@ class ParserBody {
 
 #define pre assert(tokens.previous().is(TokenType::DUNDER_CEXTERN));
 void parseCExtern() noexcept { pre
-  auto const& current_file = tu.source_files.back();
-  auto const name = parseIdentifier(tokens, tu);
+  auto const name = parseIdentifier();
   if (not tokens.pop_if(TokenType::LPAREN)) {
-    report_error(current_file, tokens.peek(), "Expected opening ( for parameter list.");
+    error(tokens.peek(), "Expected opening ( for parameter list.");
     has_errors = true;
   }
 
@@ -784,13 +774,13 @@ void parseCExtern() noexcept { pre
       break;
     }
 
-    auto type = parseType(tokens, tu);
-    parameters[num_parameters] = {type, parseIdentifier(tokens, tu), false};
+    auto type = parseType();
+    parameters[num_parameters] = {type, parseIdentifier(), false};
     ++num_parameters;
 
     if (not tokens.pop_if(TokenType::COMMA)) break;
     if (num_parameters >= Settings::MAX_FUNCTION_PARAMETERS) {
-      report_error(tu.source_files.back(), tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
+      error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
       has_errors = true;
       break;
     }
@@ -798,17 +788,15 @@ void parseCExtern() noexcept { pre
 
   end_params:
   if (not tokens.pop_if(TokenType::RPAREN)) {
-    report_error(current_file, tokens.peek(), "Expected closing parenthesis in parameter list.");
-    has_errors = true;
+    error(tokens.peek(), "Expected closing parenthesis in parameter list.");
   }
 
   Type const* return_type = Type::devoid();
   if (not tokens.peek_is(TokenType::SEMI_COLON))
-    return_type = parseUnqualifiedType(tokens, tu);
+    return_type = parseUnqualifiedType();
 
   if (not tokens.pop_if(TokenType::SEMI_COLON)) {
-    report_error(current_file, tokens.peek(), "Expected semi-colon.");
-    has_errors = true;
+    error(tokens.peek(), "Expected semi-colon.");
     return;
   }
 
@@ -820,14 +808,12 @@ void parseCExtern() noexcept { pre
 
 #define pre assert(tokens.previous().is(TokenType::KEYWORD_STRUCT));
 void parseStructDecl() noexcept { pre
-  auto const& current_file = tu.source_files.back();
-  auto const name = parseIdentifier(tokens, tu);
+  auto const name = parseIdentifier();
 
   SymbolTable::Variable members[Settings::MAX_STRUCT_MEMBER_VARIABLES];
 
   if (not tokens.pop_if(TokenType::LBRACE)) {
-    report_error(current_file, tokens.peek(), "Expected opening curly brace in struct definition.");
-    has_errors = true;
+    error(tokens.peek(), "Expected opening curly brace in struct definition.");
   }
 
   auto i{0uz};
@@ -839,8 +825,7 @@ void parseStructDecl() noexcept { pre
     if (in_pub_block) {
       if (tokens.pop_if(TokenType::COLON)) {
         if (not tokens.pop_if(TokenType::KEYWORD_PUB)) {
-          report_error(current_file, tokens.peek(), "Expected closing 'pub' in 'pub:  :pub' block.");
-          has_errors = true;
+          error(tokens.peek(), "Expected closing 'pub' in 'pub:  :pub' block.");
         }
 
         if (tokens.peek_is(TokenType::RBRACE)) break;
@@ -849,23 +834,21 @@ void parseStructDecl() noexcept { pre
     } else {
       if (tokens.pop_if(TokenType::KEYWORD_PUB)) {
         if (not tokens.pop_if(TokenType::COLON)) {
-          report_error(current_file, tokens.peek(), "Expected opening colon in 'pub:  :pub' block.");
-          has_errors = true;
+          error(tokens.peek(), "Expected opening colon in 'pub:  :pub' block.");
         }
 
         in_pub_block = true;
       }
     }
 
-    auto member_type = parseUnqualifiedType(tokens, tu);
-    auto member_name = parseIdentifier(tokens, tu);
+    auto member_type = parseUnqualifiedType();
+    auto member_name = parseIdentifier();
     members[i] = {member_type, member_name, in_pub_block};
     ++i;
   } while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
 
   if (not tokens.pop_if(TokenType::RBRACE)) {
-    report_error(current_file, tokens.peek(), "Expected closing curly brace after struct definition.");
-    has_errors = true;
+    error(tokens.peek(), "Expected closing curly brace after struct definition.");
   }
 
   tu.module->addCustomType(name, std::span(members, i));
@@ -877,22 +860,19 @@ void parseImport() noexcept { pre
   auto const& current_file = tu.source_files.back();
   auto const name_token = tokens.take();
   if (not name_token.isIdentifier()) {
-    report_error(current_file, name_token, "Expected module name.");
-    has_errors = true;
+    error(name_token, "Expected module name.");
     return;
   }
 
   auto name = name_token.getString(current_file);
   if (tu.module->nameof() == name) {
-    report_error(current_file, name_token, "Cannot import from current module.");
-    has_errors = true;
+    error(name_token, "Cannot import from current module.");
   }
   else
     tu.imports.emplace_back(name);
 
   if (not tokens.pop_if(TokenType::SEMI_COLON)) {
-    report_error(current_file, tokens.peek(), "Expected semicolon.");
-    has_errors = true;
+    error(tokens.peek(), "Expected semicolon.");
   }
 
 }
@@ -911,14 +891,13 @@ void parseFunction() noexcept { pre
 
   // name
   {
-    auto const function_name = parseIdentifier(tokens, tu);
+    auto const function_name = parseIdentifier();
     current_function.name_len = function_name.length();
     current_function.name_ptr = function_name.data();
   }
 
   if (not tokens.pop_if(TokenType::LPAREN)) {
-    report_error(current_file, tokens.peek(), "Expected parameter list.");
-    has_errors = true;
+    error(tokens.peek(), "Expected parameter list.");
   }
 
   // parameters
@@ -928,27 +907,25 @@ void parseFunction() noexcept { pre
     if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
 
     while (true) {
-      auto type = parseType(tokens, tu);
-      auto name = parseIdentifier(tokens, tu);
+      auto type = parseType();
+      auto name = parseIdentifier();
       parameters[i] = {type, name, false};
       ++i;
       if (not tokens.pop_if(TokenType::COMMA)) break;
       if (i >= Settings::MAX_FUNCTION_PARAMETERS) {
-        report_error(tu.source_files.back(), tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
-        has_errors = true;
+        error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
         break;
       }
     }
 
     end_params:
     if(not tokens.pop_if(TokenType::RPAREN)) {
-      report_error(current_file, tokens.peek(), "Expected closing parenthesis in parameter list.");
-      has_errors = true;
+      error(tokens.peek(), "Expected closing parenthesis in parameter list.");
     }
 
     Type const* return_type = Type::devoid();
     if (not tokens.peek_is(TokenType::LBRACE))
-      return_type = parseUnqualifiedType(tokens, tu);
+      return_type = parseUnqualifiedType();
 
     tu.module->addFunction(
       current_function.nameof(),
@@ -959,8 +936,7 @@ void parseFunction() noexcept { pre
   }
 
   if (not tokens.pop_if(TokenType::LBRACE)) {
-    report_error(current_file, tokens.peek(), "Expected function definition.");
-    has_errors = true;
+    error(tokens.peek(), "Expected function definition.");
     tu.functions.emplace_back(current_function);
     return;
   }
@@ -987,8 +963,8 @@ public:
       case KEYWORD_PUB:
       case IDENTIFIER:                          parser.parseFunction();   break;
       default:
-        report_error(tu.source_files.back(), parser.tokens.take(), "Expected struct or function declaration.");
-        parser.has_errors = true; break;
+        parser.error(parser.tokens.take(), "Expected struct or function declaration.");
+        break;
       }
     }
 

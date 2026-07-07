@@ -620,9 +620,20 @@ class Lowerer final {
       return builder.CreateStore(right, left);
     }
 
-
     case DEREFERENCE:
       return builder.CreateLoad(ptr, genRefExpression());
+
+    case CALL: {
+      auto const fn = genRefExpression();
+      llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
+      for (auto i{0uz}; i<instruction.num_params(); ++i)
+        parameters[i] = genValueExpression();
+
+      return builder.CreateCall(
+        llvm::cast<llvm::Function>(fn),
+        {parameters, instruction.num_params()}
+        );
+    }
 
     default:
       eden_unreachable("Invalid peep instruction type.");
@@ -795,7 +806,6 @@ public:
 }
 
 std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU&& peeped_tu, std::filesystem::path const& file) {
-
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
@@ -813,5 +823,11 @@ std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU&& peeped_tu, std::filesystem
     std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
   );
 #endif
+
+#if PROFILE // free all files when profiling to prevent insane memory leaks
+  for (auto file_ : peeped_tu.source_files)
+    free_file(file_);
+#endif
+
   return backend;
 }

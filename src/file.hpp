@@ -57,6 +57,12 @@ public:
 
 };
 
+
+// Frees all text associated with this file, only call this after all compilation has finished.
+inline void free_file(File file) noexcept {
+  delete[] file.get_text().data();
+}
+
 // returns pair<length, position>
 [[nodiscard]] constexpr std::pair<u16_t, u32_t>
 combine_spans(u32_t leftmost_pos, u16_t rightmost_len, u32_t rightmost_pos) noexcept {

@@ -26,6 +26,11 @@ LOM::getModule(std::string_view name) {
 
 #ifdef PROFILE
 void LOM::reset_state() noexcept {
+  for (auto& kv : modules) {
+    if (kv.first not_eq std::string_view("__C"))
+      delete[] kv.first.data();
+  }
+
   modules.~unordered_map<std::string_view, Module>();
   main_module.~Module();
   types.~TypeContext();
@@ -61,6 +66,7 @@ print_peep(std::vector<PeepIR::TU> const& tus, std::vector<fs::path> const& path
 
 }
 
+// Print Error Output
 namespace {
 
 eden_noinline_cold void
@@ -136,7 +142,7 @@ void LOM::build() {
       if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue;
 
       module_paths.emplace_back(entry.path().stem());
-      auto ptu = parsed_tus.emplace_back();
+      auto& ptu = parsed_tus.emplace_back();
       if (lex_and_parse_module(ptu, entry)) has_error = true;
       continue;
     }
@@ -157,9 +163,9 @@ void LOM::build() {
 
 
   std::vector<PeepIR::TU> peeped_tus; peeped_tus.reserve(parsed_tus.size());
-  for (auto i{0uz}; i<parsed_tus.size(); ++i) {
+  for (auto& parsed_tu : parsed_tus) {
     auto& tu = peeped_tus.emplace_back();
-    auto const error = PeepIR::lowerToPeep(tu, std::move(parsed_tus[i]));
+    auto const error = PeepIR::lowerToPeep(tu, std::move(parsed_tu));
     if (error) print_peep_errors(tu), has_error = true;
   }
   if (has_error) std::quick_exit(1);
@@ -175,8 +181,7 @@ void LOM::build() {
       Backend::codegen( std::move(peeped), module_path )
       );
 
-#ifndef STAGE_BENCHMARKS
-#ifndef PROFILE
+#ifdef NO_MEASUREMENT
     if (Settings::do_output_asm)
       compiled->createASMFile(module_path);
     if (Settings::do_output_llvmir)
@@ -184,9 +189,7 @@ void LOM::build() {
     if (Settings::do_output_obj)
       module_path = compiled->createObjectFile(module_path);
 #endif
-#endif
   }
-
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
@@ -197,11 +200,10 @@ void LOM::build() {
   );
 #endif
 
-#ifndef STAGE_BENCHMARKS
-#ifndef PROFILE
+
+#ifdef NO_MEASUREMENT
   if (Settings::do_output_obj)
     Backend::linkObjects(module_paths);
-#endif
 #endif
 
 }

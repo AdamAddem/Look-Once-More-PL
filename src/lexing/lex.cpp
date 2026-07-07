@@ -35,7 +35,6 @@ struct Tokenizer {
 
   eden_always_inline [[nodiscard]] char peek() const noexcept { return file.get_text()[current_position]; }
   eden_always_inline [[nodiscard]] char peek_ahead(sz_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
-  eden_always_inline [[nodiscard]] char previous() const noexcept { assert(current_position not_eq 0); return file.get_text()[current_position - 1]; }
   eden_always_inline [[nodiscard]] char take() noexcept { return file.get_text()[current_position++]; }
   eden_always_inline               void pop() noexcept { ++current_position; }
   eden_always_inline               void undo() noexcept { --current_position; }
@@ -43,11 +42,6 @@ struct Tokenizer {
   eden_noinline_cold void
   error_at_currentpos(std::string_view msg) {
     report_error(file, 1, current_position, std::string(msg)); has_errors = true;
-  }
-
-  eden_noinline_cold void
-  error_at(std::string_view msg, u16_t len, u32_t pos) {
-    report_error(file, len, pos, std::string(msg)); has_errors = true;
   }
 
   // called when opening quotes already consumed
@@ -193,8 +187,8 @@ struct Tokenizer {
     undo();
 
     const std::string_view word_view{file.get_text().data() + new_token.position, new_token.length};
-    if (stringToTokenType.contains(word_view))
-      new_token.type = stringToTokenType.at(word_view);
+    if (auto const iter = stringToTokenType.find(word_view); iter not_eq stringToTokenType.end())
+      new_token.type = iter->second;
 
     else if (word_view == "elif") {
       new_token.type = TokenType::KEYWORD_ELSE; token_list.emplace_back(new_token);

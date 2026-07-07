@@ -1,20 +1,11 @@
 __C printf(raw char fmt, __va);
 
-fn foo(raw [20]u32 array_p) {
-    $u32 n = 0;
-    while n < 20 {
-        __C.printf( "%d\n", (array_p->)[n] );
-        ++n;
-    }
+fib(i32 n) i32 {
+    if n <= 1 { return n; }
+
+    return fib(n-1) + fib(n-2);
 }
 
-pub fn main() i32 {
-    $[20]u32 array = junk;
-    $u32 n = 0;
-    while n < 20 {
-        array[n] = n;
-        ++n;
-    }
-    foo(array);
-    return 0;
+pub main() i32 {
+    return fib(8);
 }

@@ -8,7 +8,7 @@
 
 using namespace LOM;
 
-std::unique_ptr<Backend> Backend::codegen(PeepMIR::TU&& vtu, const std::filesystem::path& file) {
+std::unique_ptr<Backend> Backend::codegen(PeepIR::TU&& vtu, const std::filesystem::path& file) {
   return ToLLVM::codegen(std::move(vtu), file);
 }
 

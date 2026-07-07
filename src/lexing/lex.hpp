@@ -4,6 +4,7 @@
 #include "file.hpp"
 #include "tokentype.hpp"
 
+#include <utility>
 #include <filesystem>
 #include <vector>
 
@@ -27,7 +28,7 @@ struct Token {
   [[nodiscard]] constexpr u64_t
   getInteger(File const& file) const noexcept {
     assume_assert(type == TokenType::INTEGER_LITERAL);
-    auto const begin = file.contents().data() + position;
+    auto const begin = file.get_text().data() + position;
     u64_t res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -38,7 +39,7 @@ struct Token {
   [[nodiscard]] constexpr float
   getFloat(File const& file) const noexcept {
     assume_assert(type == TokenType::FLOAT_LITERAL);
-    auto const begin = file.contents().data() + position;
+    auto const begin = file.get_text().data() + position;
     float res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -49,7 +50,7 @@ struct Token {
   [[nodiscard]] constexpr double
   getDouble(File const& file) const noexcept {
     assume_assert(type == TokenType::DOUBLE_LITERAL);
-    auto const begin = file.contents().data() + position;
+    auto const begin = file.get_text().data() + position;
     double res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -59,13 +60,13 @@ struct Token {
   [[nodiscard]] constexpr bool
   getBool(File const& file) const noexcept {
     assume_assert(type == TokenType::BOOL_LITERAL);
-    return file.contents()[position] == 't';
+    return file.get_text()[position] == 't';
   }
 
   [[nodiscard]] constexpr char
   getChar(File const& file) const noexcept {
     assume_assert(type == TokenType::CHAR_LITERAL);
-    return file.contents()[position]; //TODO: incorrect, doesn't account for escape sequences
+    return file.get_text()[position]; //TODO: incorrect, doesn't account for escape sequences
   }
 
   [[nodiscard]] constexpr std::string_view
@@ -135,10 +136,9 @@ public:
 
 inline constexpr auto INVALID_TOKEN_PADDING = 8uz;
 
-// assumes the file at file_path is not empty
-// returns the text of the file and populates out_tokens
-// out_tokens is padded with invalid tokens to prevent parser from repeatedly checking empty
-[[nodiscard]] File
-tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& file_path);
+// Returns whether an error occured.
+// Populates out_tokens and pads with invalid tokens.
+[[nodiscard]] bool
+tokenizeFile(std::vector<Token>& out_tokens, File file);
 
 }

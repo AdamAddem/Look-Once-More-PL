@@ -4,7 +4,6 @@
 
 namespace LOM::Settings {
 
-extern bool const& do_output_lexer;
 extern bool const& do_output_parser;
 extern bool const& do_output_peep;
 extern bool const& do_output_validation;

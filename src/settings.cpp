@@ -11,7 +11,6 @@
 namespace {
 
 enum class Args {
-  OUTPUT_LEXER,
   OUTPUT_PARSER,
   OUTPUT_PEEP,
   OUTPUT_VALIDATION,
@@ -27,7 +26,7 @@ enum class Args {
 };
 
 const std::unordered_map<std::string, Args> stringToArgs{
-	      {"-emit-lexer", Args::OUTPUT_LEXER}, {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
+	       {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
               {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
               {"-o", Args::EXECUTABLE_NAME},{"build", Args::BUILD},
               {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2}, {"-O3", Args::O3},
@@ -35,7 +34,7 @@ const std::unordered_map<std::string, Args> stringToArgs{
 
 constexpr std::string_view hello_world = {
   "__C puts(raw char str) i32;"
-  "\npub fn main() i32 {"
+  "\npub main() i32 {"
   "\n\t__C.puts(\"Hello, World!\");"
   "\n\treturn 0;"
   "\n}"
@@ -45,7 +44,6 @@ constexpr std::string_view hello_world = {
 
 namespace LOM::Settings {
 
-static bool output_lexer_flag{false};       bool const& do_output_lexer = output_lexer_flag;
 static bool output_parser_flag{false};      bool const& do_output_parser = output_parser_flag;
 static bool output_peep_flag{false};        bool const& do_output_peep = output_peep_flag;
 static bool output_validation_flag{false};  bool const& do_output_validation = output_validation_flag;
@@ -91,7 +89,6 @@ void setArgs(unsigned argc, const char* argv[]) {
 
     auto const arg = arg_iter->second;
     switch (arg) {
-    case Args::OUTPUT_LEXER:      output_lexer_flag = true; break;
     case Args::OUTPUT_PARSER:     output_parser_flag = true; break;
     case Args::OUTPUT_PEEP:       output_peep_flag = true; break;
     case Args::OUTPUT_VALIDATION: output_validation_flag = true; break;
@@ -126,7 +123,7 @@ void setArgs(unsigned argc, const char* argv[]) {
     output_name = "lom.out";
 #endif
 
-  do_linking_flag = not output_obj_flag and not output_asm_flag and not output_llvmir_flag and not output_lexer_flag and not output_parser_flag and not output_peep_flag;
+  do_linking_flag = not output_obj_flag and not output_asm_flag and not output_llvmir_flag and not output_parser_flag and not output_peep_flag;
   output_obj_flag = output_obj_flag or do_linking_flag;
 }
 

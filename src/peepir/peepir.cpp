@@ -14,7 +14,7 @@
 #include <chrono>
 
 using namespace LOM;
-using namespace LOM::PeepMIR;
+using namespace LOM::PeepIR;
 using namespace LOM::AST;
 
 namespace {
@@ -93,27 +93,18 @@ struct ExpressionResult {
 class Peeper {
   Module* module;
   File const* current_file;
-  bool has_error{false};
+  TreeView nodes;
+  FunctionType const* current_function_type;
 
   eden::swap_vector<Module*> imports;
   std::vector<Type const*> locals;
   std::vector<Instruction> instructions;
   std::vector<Block> blocks;
+  bool has_error{};
 
-  TreeView nodes;
-  FunctionType const* current_function_type;
-
-  eden_always_inline [[nodiscard]] constexpr Block&
-  current_block() noexcept
-  { return blocks.back(); }
-
-  eden_always_inline [[nodiscard]] constexpr u32_t
-  current_block_index() const noexcept
-  { return blocks.size() - 1; }
-
-  eden_always_inline [[nodiscard]] constexpr bool
-  is_current_block_empty() const noexcept
-  { return blocks.back().first_instruction_idx == instructions.size(); }
+  eden_always_inline [[nodiscard]] constexpr Block& current_block() noexcept { return blocks.back(); }
+  eden_always_inline [[nodiscard]] constexpr u32_t current_block_index() const noexcept { return blocks.size() - 1; }
+  eden_always_inline [[nodiscard]] constexpr bool is_current_block_empty() const noexcept { return blocks.back().first_instruction_idx == instructions.size(); }
 
   // creates a br that goes to the next block, as if it had fallen through (does not create next block)
   // does nothing if current block is empty
@@ -131,9 +122,7 @@ class Peeper {
       blocks.emplace_back(instructions.size(), Block::Terminator::NONE);
   }
 
-  constexpr void
-  force_new_block() noexcept
-  { blocks.emplace_back(instructions.size(), Block::Terminator::NONE); }
+  constexpr void force_new_block() noexcept { blocks.emplace_back(instructions.size(), Block::Terminator::NONE); }
 
   constexpr bool // returns whether coersion was successful
   coerce_if_integerliteral(Instruction& possible_literal, Type const* expected_type) const noexcept {
@@ -144,13 +133,7 @@ class Peeper {
     return true;
   }
 
-  eden_noinline_cold
-  void error(auto err, std::string msg) noexcept
-  { report_error(*current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
-
-  eden_noinline_cold
-  void error(ASTNode err, std::string msg) noexcept
-  { report_error(*current_file, err.m.length_in_file, err.m.position_in_file, std::move(msg)); has_error = true; }
+  eden_noinline_cold void error(auto err, std::string msg) noexcept { report_error(*current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
 
   ExpressionResult
   peepLiteral(ASTNode node) {
@@ -213,7 +196,7 @@ class Peeper {
         return {{member_function->type, {}}, data.length_in_file, data.position_in_file};
       }
 
-      error(member_node, "Identifier is not a public member of module.");
+      error(member_node.m, "Identifier is not a public member of module.");
       return {error_literal, member_node};
     }
 
@@ -246,7 +229,7 @@ class Peeper {
 
     new (member_access_instruction) Instruction(Instruction::UCAST, 0); // this is only here to avoid the UB from double destruction once this returns
 
-    error(identifier_node,"Identifier is not a public member of type.");
+    error(identifier_node.m,"Identifier is not a public member of type.");
     return {error_literal, identifier_node};
   }
 
@@ -693,10 +676,9 @@ class Peeper {
   void peepReturnStatement(bool return_has_value) {
     auto const return_type = current_function_type->returnType();
     if (not return_has_value) {
-      if (not return_type->isDevoid()) {
-        auto const empty_return = nodes.take();
-        return error(empty_return,"Non-devoid function expects return value.");
-      }
+      if (not return_type->isDevoid())
+        return error(nodes.take().m,"Non-devoid function expects return value.");
+
 
       current_block().set_ret();
       new_block();
@@ -788,7 +770,7 @@ class Peeper {
     locals.emplace_back(type);
 
     if (module->containsLocal(declared_name)) {
-      error(declared, "Redefinition of symbol name in variable declaration.");
+      error(declared.m, "Redefinition of symbol name in variable declaration.");
       if (data.has_init) (void)peepExpression();
       return;
     }
@@ -817,8 +799,7 @@ class Peeper {
   void peepStatement() {
     auto const node = nodes.take();
     switch (node.m.type) { using enum ASTNode::NodeType;
-    case EMPTY:
-      assert(false);
+    case EMPTY:        eden_unreachable("");
     case DECLARATION:  return peepVarDeclaration(node.declaration_data);
     case IF:           return peepIfStatement(node.if_numstatements());
     case WHILE:        return peepWhileLoop(node.while_numstatements());
@@ -891,7 +872,8 @@ class Peeper {
 public:
 
   // peeps parsed_functions and fills peeped_tu.functions
-  static void peepFunctions(TU& peep_tu, std::vector<Parser::Function> const& parsed_functions) {
+  [[nodiscard]] static bool
+  peepFunctions(TU& peep_tu, std::vector<Parser::Function> const& parsed_functions) {
     Peeper peeper;
     peeper.module = peep_tu.module;
     peeper.imports = std::move(peep_tu.imports);
@@ -923,7 +905,7 @@ public:
     }
 
     peep_tu.imports = std::move(peeper.imports);
-    peep_tu.has_errors = peeper.has_error;
+    return peeper.has_error;
   }
 
 };
@@ -1058,7 +1040,7 @@ void printPeepBlocks(std::vector<Block> const& blocks, std::vector<Instruction> 
 
 }
 
-void PeepMIR::printPeep(TU const& tu) {
+void PeepIR::printPeep(TU const& tu) {
   for (auto const& func : tu.functions) {
     std::println("{}fn {}{} {{",
     func.is_public ? "pub " : "",
@@ -1076,13 +1058,12 @@ void PeepMIR::printPeep(TU const& tu) {
   }
 }
 
-TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
+bool PeepIR::lowerToPeep(TU& tu, Parser::TU&& parsed_tu) {
 
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
-  TU tu;
   tu.source_files = std::move(parsed_tu.source_files);
   tu.module = parsed_tu.module;
   tu.functions.reserve(parsed_tu.functions.size());
@@ -1092,9 +1073,7 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
   for (auto const import_name : parsed_tu.imports)
     tu.imports.emplace_back(getModule(import_name));
 
-  Peeper::peepFunctions(tu, parsed_tu.functions);
-
-
+  bool const has_error = Peeper::peepFunctions(tu, parsed_tu.functions);
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("Peeping {}: {} | {} | {}",
@@ -1104,5 +1083,5 @@ TU PeepMIR::lowerToPeep(Parser::TU&& parsed_tu) {
     std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
   );
 #endif
-  return tu;
+  return has_error;
 }

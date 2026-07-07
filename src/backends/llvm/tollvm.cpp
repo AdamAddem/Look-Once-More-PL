@@ -107,6 +107,7 @@ struct TU : Backend {
     static const llvm::TargetOptions opt;
     auto const target_machine = target->createTargetMachine(
       target_triple, CPU, Features, opt, llvm::Reloc::PIC_);
+    target_machine->Options.MCOptions.AsmVerbose = true;
     module.setDataLayout(target_machine->createDataLayout());
 
     std::error_code EC;
@@ -149,8 +150,8 @@ class Lowerer final {
   llvm::IRBuilder<> builder;
   std::vector<llvm::AllocaInst*> locals;
 
-  std::vector<PeepMIR::Instruction> instructions; sz_t instruction_idx{};
-  std::vector<PeepMIR::Block> mir_blocks;
+  std::vector<PeepIR::Instruction> instructions; sz_t instruction_idx{};
+  std::vector<PeepIR::Block> mir_blocks;
   std::vector<llvm::BasicBlock*> llvm_blocks;
   /* Variables used when lowering a function */
 
@@ -271,10 +272,10 @@ class Lowerer final {
   { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value); }
 
   [[nodiscard]] llvm::Value*
-  genUnary(PeepMIR::Instruction::Type type) noexcept {
+  genUnary(PeepIR::Instruction::Type type) noexcept {
     llvm::Value* res{};
     switch (type) {
-    using enum PeepMIR::Instruction::Type;
+    using enum PeepIR::Instruction::Type;
     case PRE_INC: {
       auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
       auto const var_type = var->getAllocatedType();
@@ -357,11 +358,11 @@ class Lowerer final {
   }
 
   [[nodiscard]] llvm::Value*
-  genBinary(PeepMIR::Instruction::Type type) noexcept {
+  genBinary(PeepIR::Instruction::Type type) noexcept {
     auto const left = genValueExpression();
     auto const right = genValueExpression();
 
-    switch (type) { using enum PeepMIR::Instruction::Type;
+    switch (type) { using enum PeepIR::Instruction::Type;
     case ADD: return builder.CreateAdd(left, right);
     case FADD: return builder.CreateFAdd(left, right);
     case SUB: return builder.CreateSub(left, right);
@@ -415,11 +416,11 @@ class Lowerer final {
   }
 
   [[nodiscard]] llvm::Value*
-  genAssign(PeepMIR::Instruction::Type type, u64_t bitwidth = 0) noexcept {
+  genAssign(PeepIR::Instruction::Type type, u64_t bitwidth = 0) noexcept {
     auto const left = genRefExpression();
     llvm::Value* right;
     switch (type) {
-      using enum PeepMIR::Instruction::Type;
+      using enum PeepIR::Instruction::Type;
     case ASSIGN:
       right = genValueExpression();
       break;
@@ -441,7 +442,7 @@ class Lowerer final {
   genValueExpression() noexcept { // only relevant for that which can be used by value, with the addition of functions
     auto const& instruction = instructions[instruction_idx++];
     switch (instruction.type) {
-      using enum PeepMIR::Instruction::Type;
+      using enum PeepIR::Instruction::Type;
     case NOOP:
       return nullptr;
     case FUNCTION: {
@@ -576,7 +577,7 @@ class Lowerer final {
   genRefExpression() noexcept { // only relevant for that which can be referenced
     auto const& instruction = instructions[instruction_idx++];
     switch (instruction.type) {
-    using enum PeepMIR::Instruction::Type;
+    using enum PeepIR::Instruction::Type;
     case FUNCTION: {
       auto const function = tu->module.getFunction(instruction.function_name()); assert(function);
       return function;
@@ -635,7 +636,7 @@ class Lowerer final {
 
     auto const& block = mir_blocks[block_idx];
     switch (block.terminator_type) {
-      using enum PeepMIR::Block::Terminator;
+      using enum PeepIR::Block::Terminator;
     case BR:
       builder.CreateBr(
         llvm_blocks[block.br.next_block_idx]);
@@ -654,7 +655,7 @@ class Lowerer final {
     }
   }
 
-  llvm::Function* compileFunction(PeepMIR::Function& func) {
+  llvm::Function* compileFunction(PeepIR::Function& func) {
     // reset state
     {
       instruction_idx = 0;
@@ -735,7 +736,7 @@ class Lowerer final {
 
 public:
 
-  void lowerToLLVM(PeepMIR::TU& tu) {
+  void lowerToLLVM(PeepIR::TU& tu) {
     // All of this is so stupid
     char buff[256];
     auto const module_name = tu.module->nameof();
@@ -793,7 +794,7 @@ public:
 
 }
 
-std::unique_ptr<Backend> ToLLVM::codegen(PeepMIR::TU&& peeped_tu, std::filesystem::path const& file) {
+std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU&& peeped_tu, std::filesystem::path const& file) {
 
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();

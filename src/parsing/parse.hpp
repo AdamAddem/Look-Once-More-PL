@@ -31,11 +31,11 @@ struct TU {
   std::vector<Function> functions;
 };
 
-
-
 void printTU(TU const&) noexcept;
 
-void parseTokens(TU& tu, std::vector<Lexer::Token>& tokens) noexcept;
+// Populates tu and returns whether an error was encountered.
+[[nodiscard]] bool
+parseTokens(TU& tu, std::vector<Lexer::Token>& tokens) noexcept;
 
 inline constexpr bool STRUCT_MEMBERS_START_PUBLIC = true;
 

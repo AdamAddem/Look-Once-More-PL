@@ -23,6 +23,9 @@ To publish a function, place the keyword 'pub' before 'fn'. <br>
 To import a module, just type 'import <module_name>;'. <br>
 Access the members of a module by appending the module name with a dot. <br>
 
+### Error messages
+Error messages are currently stage-based
+
 ### C Interop
 Calling C functions can be done using the '__C' keyword. <br>
 You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration (note, the 'fn' keyword is not needed). <br>

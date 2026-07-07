@@ -188,7 +188,7 @@ struct ExpressionTree {
   void reset() noexcept { begin = 0; }
 };
 
-struct Body {
+class ParserBody {
 
   [[nodiscard]] u8_t
   current_file_idx() const noexcept {
@@ -225,12 +225,13 @@ struct Body {
 
   std::vector<ASTNode> nodes;
   TokenView tokens;
+  File current_file;
   TU& tu;
-  File const& current_file;
-  ExpressionTree& expression_tree;
+  bool has_errors{};
+  ExpressionTree expression_tree;
 
-  Body(TokenView tokens, TU& tu, ExpressionTree &expression_tree)
-  : tokens(tokens), tu(tu), current_file(tu.source_files.back()), expression_tree(expression_tree) {}
+  ParserBody(std::vector<Token>& tokens, TU& tu)
+  : tokens(tokens), current_file(tu.source_files.back()), tu(tu) {}
 
   // opening parenthesis must be popped, and the next token must not be closing parenthesis
   u32_t generateParameters() {
@@ -506,6 +507,7 @@ struct Body {
       auto const token = tokens.take();
       auto node = newNode(token, ASTNode::BINARY);
       node.binary_data.opr = Operator::ASSIGN;
+
       return expression_tree.create(node, left, generateAssignmentExpression());
     }
 
@@ -699,8 +701,10 @@ struct Body {
 
     return_data.has_value = true;
     parseExpression();
-    if (not tokens.peek_is(TokenType::SEMI_COLON))
+    if (not tokens.peek_is(TokenType::SEMI_COLON)) {
       report_error(current_file, tokens.peek(), "Expected semi-colon.");
+      return tokens.peek();
+    }
 
     return tokens.take();
   }
@@ -735,7 +739,7 @@ struct Body {
         report_error(current_file, tokens.peek(), "Expected semi-colon.");
         final = tokens.previous();
       }
-      else final = tokens.take();
+      else { final = tokens.previous(); tokens.pop(); }
     }
 
     auto const combined = Token::combine(first, final);
@@ -760,13 +764,13 @@ struct Body {
 #undef pre
 #undef post
 
-};
-
-void parseCExtern(TU& tu, TokenView& tokens) noexcept {
+#define pre assert(tokens.previous().is(TokenType::DUNDER_CEXTERN));
+void parseCExtern() noexcept { pre
   auto const& current_file = tu.source_files.back();
   auto const name = parseIdentifier(tokens, tu);
   if (not tokens.pop_if(TokenType::LPAREN)) {
     report_error(current_file, tokens.peek(), "Expected opening ( for parameter list.");
+    has_errors = true;
   }
 
 
@@ -787,34 +791,44 @@ void parseCExtern(TU& tu, TokenView& tokens) noexcept {
     if (not tokens.pop_if(TokenType::COMMA)) break;
     if (num_parameters >= Settings::MAX_FUNCTION_PARAMETERS) {
       report_error(tu.source_files.back(), tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
+      has_errors = true;
       break;
     }
   }
 
   end_params:
-  if (not tokens.pop_if(TokenType::RPAREN))
+  if (not tokens.pop_if(TokenType::RPAREN)) {
     report_error(current_file, tokens.peek(), "Expected closing parenthesis in parameter list.");
+    has_errors = true;
+  }
 
   Type const* return_type = Type::devoid();
   if (not tokens.peek_is(TokenType::SEMI_COLON))
     return_type = parseUnqualifiedType(tokens, tu);
 
-  if (not tokens.pop_if(TokenType::SEMI_COLON))
-    return report_error(current_file, tokens.peek(), "Expected semi-colon.");
+  if (not tokens.pop_if(TokenType::SEMI_COLON)) {
+    report_error(current_file, tokens.peek(), "Expected semi-colon.");
+    has_errors = true;
+    return;
+  }
 
   auto const c_module = getModule("__C");
   auto const parameter_span = std::span(parameters, num_parameters);
   c_module->addFunction(name, parameter_span, return_type, true, is_variadic);
 }
+#undef pre
 
-void parseStructDecl(TU& tu, TokenView& tokens) noexcept {
+#define pre assert(tokens.previous().is(TokenType::KEYWORD_STRUCT));
+void parseStructDecl() noexcept { pre
   auto const& current_file = tu.source_files.back();
   auto const name = parseIdentifier(tokens, tu);
 
   SymbolTable::Variable members[Settings::MAX_STRUCT_MEMBER_VARIABLES];
 
-  if (not tokens.pop_if(TokenType::LBRACE))
+  if (not tokens.pop_if(TokenType::LBRACE)) {
     report_error(current_file, tokens.peek(), "Expected opening curly brace in struct definition.");
+    has_errors = true;
+  }
 
   auto i{0uz};
   if (tokens.pop_if(TokenType::RBRACE))
@@ -824,16 +838,20 @@ void parseStructDecl(TU& tu, TokenView& tokens) noexcept {
   do {
     if (in_pub_block) {
       if (tokens.pop_if(TokenType::COLON)) {
-        if (not tokens.pop_if(TokenType::KEYWORD_PUB))
+        if (not tokens.pop_if(TokenType::KEYWORD_PUB)) {
           report_error(current_file, tokens.peek(), "Expected closing 'pub' in 'pub:  :pub' block.");
+          has_errors = true;
+        }
 
         if (tokens.peek_is(TokenType::RBRACE)) break;
         in_pub_block = false;
       }
     } else {
       if (tokens.pop_if(TokenType::KEYWORD_PUB)) {
-        if (not tokens.pop_if(TokenType::COLON))
+        if (not tokens.pop_if(TokenType::COLON)) {
           report_error(current_file, tokens.peek(), "Expected opening colon in 'pub:  :pub' block.");
+          has_errors = true;
+        }
 
         in_pub_block = true;
       }
@@ -845,42 +863,51 @@ void parseStructDecl(TU& tu, TokenView& tokens) noexcept {
     ++i;
   } while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
 
-  if (not tokens.pop_if(TokenType::RBRACE))
+  if (not tokens.pop_if(TokenType::RBRACE)) {
     report_error(current_file, tokens.peek(), "Expected closing curly brace after struct definition.");
+    has_errors = true;
+  }
 
   tu.module->addCustomType(name, std::span(members, i));
 }
+#undef pre
 
-void parseImports(TU& tu, TokenView& tokens) noexcept {
+#define pre assert(tokens.previous().is(TokenType::KEYWORD_IMPORT));
+void parseImport() noexcept { pre
   auto const& current_file = tu.source_files.back();
-  while (tokens.pop_if(TokenType::KEYWORD_IMPORT)) {
-    auto name_token = tokens.take();
-    if (not name_token.isIdentifier())
-      return report_error(current_file, name_token, "Expected module name.");
-
-    auto name = name_token.getString(current_file);
-    if (tu.module->nameof() == name)
-      report_error(current_file, name_token, "Cannot import from current module");
-    else
-      tu.imports.emplace_back(name);
-
-    if (not tokens.pop_if(TokenType::SEMI_COLON))
-      report_error(current_file, tokens.peek(), "Expected semicolon.");
+  auto const name_token = tokens.take();
+  if (not name_token.isIdentifier()) {
+    report_error(current_file, name_token, "Expected module name.");
+    has_errors = true;
+    return;
   }
+
+  auto name = name_token.getString(current_file);
+  if (tu.module->nameof() == name) {
+    report_error(current_file, name_token, "Cannot import from current module.");
+    has_errors = true;
+  }
+  else
+    tu.imports.emplace_back(name);
+
+  if (not tokens.pop_if(TokenType::SEMI_COLON)) {
+    report_error(current_file, tokens.peek(), "Expected semicolon.");
+    has_errors = true;
+  }
+
 }
+#undef pre
 
-Function parseFunction(TU& tu, Body& global_body) noexcept {
-  auto& tokens = global_body.tokens;
-  auto const& current_file = tu.source_files.back();
-
+#define pre assert(tokens.peek().isIdentifier() or tokens.peek().is(TokenType::KEYWORD_PUB));
+void parseFunction() noexcept { pre
   Function current_function;
   current_function.file_idx = static_cast<u8_t>(tu.source_files.size() - 1);
   current_function.is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
 
-  if (not tokens.pop_if(TokenType::KEYWORD_FN)) {
+  /* if (not tokens.pop_if(TokenType::KEYWORD_FN)) {
     report_error(current_file, tokens.peek(), "Expected function declaration.");
     return current_function;
-  }
+  } */
 
   // name
   {
@@ -889,8 +916,10 @@ Function parseFunction(TU& tu, Body& global_body) noexcept {
     current_function.name_ptr = function_name.data();
   }
 
-  if (not tokens.pop_if(TokenType::LPAREN))
+  if (not tokens.pop_if(TokenType::LPAREN)) {
     report_error(current_file, tokens.peek(), "Expected parameter list.");
+    has_errors = true;
+  }
 
   // parameters
   {
@@ -906,15 +935,18 @@ Function parseFunction(TU& tu, Body& global_body) noexcept {
       if (not tokens.pop_if(TokenType::COMMA)) break;
       if (i >= Settings::MAX_FUNCTION_PARAMETERS) {
         report_error(tu.source_files.back(), tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
+        has_errors = true;
         break;
       }
     }
 
     end_params:
-    if(not tokens.pop_if(TokenType::RPAREN))
+    if(not tokens.pop_if(TokenType::RPAREN)) {
       report_error(current_file, tokens.peek(), "Expected closing parenthesis in parameter list.");
+      has_errors = true;
+    }
 
-    const Type *return_type = Type::devoid();
+    Type const* return_type = Type::devoid();
     if (not tokens.peek_is(TokenType::LBRACE))
       return_type = parseUnqualifiedType(tokens, tu);
 
@@ -923,39 +955,46 @@ Function parseFunction(TU& tu, Body& global_body) noexcept {
       std::span(parameters, i),
       return_type,
       current_function.is_public);
-
     tu.module->enterFunctionScope(current_function.nameof());
   }
 
   if (not tokens.pop_if(TokenType::LBRACE)) {
     report_error(current_file, tokens.peek(), "Expected function definition.");
-    return current_function;
+    has_errors = true;
+    tu.functions.emplace_back(current_function);
+    return;
   }
 
   // body
   {
-    Body function_body(tokens, tu, global_body.expression_tree);
-    function_body.parseStatementsBetweenBraces();
-    current_function.body = std::move(function_body.nodes);
-    tokens = function_body.tokens;
+    parseStatementsBetweenBraces();
+    current_function.body = std::move(nodes);
   }
 
-  return current_function;
+  tu.functions.emplace_back(current_function);
 }
+#undef pre
 
-void parseFunctionsAndStructs(TU& tu, Body& global_body, std::vector<Function>& functions) noexcept {
-  auto& tokens = global_body.tokens;
+public:
+  static bool parse(TU& tu, std::vector<Token>& token_list) {
+    ParserBody parser(token_list, tu);
 
-  while (not tokens.peek_is(TokenType::INVALID_TOKEN)) {
-    if (tokens.pop_if(TokenType::DUNDER_CEXTERN))
-      parseCExtern(tu, tokens);
-    else if (tokens.pop_if(TokenType::KEYWORD_STRUCT))
-      parseStructDecl(tu, tokens);
-    else
-      functions.emplace_back( parseFunction(tu, global_body) );
+    while (not parser.tokens.peek_is(TokenType::INVALID_TOKEN)) {
+      switch (parser.tokens.peek().type) { using enum TokenType;
+      case KEYWORD_IMPORT: parser.tokens.pop(); parser.parseImport();     break;
+      case DUNDER_CEXTERN: parser.tokens.pop(); parser.parseCExtern();    break;
+      case KEYWORD_STRUCT: parser.tokens.pop(); parser.parseStructDecl(); break;
+      case KEYWORD_PUB:
+      case IDENTIFIER:                          parser.parseFunction();   break;
+      default:
+        report_error(tu.source_files.back(), parser.tokens.take(), "Expected struct or function declaration.");
+        parser.has_errors = true; break;
+      }
+    }
+
+    return parser.has_errors;
   }
-
-}
+};
 
 void printFunction(Function const& func, TU const& tu) noexcept {
   auto const function = tu.module->getFunction(func.nameof());
@@ -996,27 +1035,22 @@ void Parser::printTU([[maybe_unused]] TU const& tu) noexcept {
   }
 }
 
-void Parser::parseTokens(TU& tu, std::vector<Token>& tokens) noexcept {
+bool Parser::parseTokens(TU& tu, std::vector<Token>& token_list) noexcept {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
-  ExpressionTree expression_tree; // the stack can have 6kb as a treat :)
-
-  TokenView global_view{tokens};
-  parseImports(tu, global_view);
-
-  Body global_body(global_view, tu, expression_tree);
-  parseFunctionsAndStructs(tu, global_body, tu.functions);
+  auto const has_errors = ParserBody::parse(tu, token_list);
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("Parsing {}: {} | {} | {}",
-    global_body.current_file.path(),
+    tu.source_files.back().path(),
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
     std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
   );
 #endif
+  return has_errors;
 }
 

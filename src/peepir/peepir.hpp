@@ -8,7 +8,7 @@ namespace LOM::Parser {
 struct TU;
 }
 
-namespace LOM::PeepMIR {
+namespace LOM::PeepIR {
 
 [[nodiscard]] constexpr char
 charToEscapeSequenceEquivalent(char c) {
@@ -225,12 +225,11 @@ struct TU {
   Module* module;
   eden::swap_vector<Module*> imports;
   std::vector<Function> functions;
-  bool has_errors{false};
-  //char _pad[7];
 };
 
 void printPeep(TU const&);
 
-[[nodiscard]] TU lowerToPeep(Parser::TU &&);
+// Populates tu and returns whether an error was encountered.
+[[nodiscard]] bool lowerToPeep(TU& tu, Parser::TU&& parsed_tu);
 
 };

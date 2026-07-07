@@ -10,12 +10,9 @@ struct Token;
 
 namespace LOM {
 
-eden_noinline_cold void report_error(File const& file, u16_t length, u32_t position, std::string error_message);
-eden_noinline_cold void report_error(File const& file, Lexer::Token token, std::string error_message);
-eden_noinline_cold void report_error(File const& file, std::string_view file_substr, std::string error_message);
-
-eden_noinline_cold [[nodiscard]] std::string get_file_errors(std::string_view file_path);
-
-[[nodiscard]] bool file_has_errors(std::string_view file_path);
+eden_noinline_cold [[nodiscard]] std::string get_file_errors(File file);
+eden_noinline_cold void report_error(File file, u16_t length, u32_t position, std::string error_message);
+eden_noinline_cold void report_error(File file, Lexer::Token token, std::string error_message);
+eden_noinline_cold void report_error(File file, std::string_view file_substr, std::string error_message);
 
 }

@@ -10,6 +10,7 @@
 #include <print>
 #include <chrono>
 using namespace LOM;
+namespace fs = std::filesystem;
 
 
 static TypeContext types;
@@ -35,46 +36,66 @@ void LOM::reset_state() noexcept {
 }
 #endif
 
-namespace fs = std::filesystem;
+// Print Output
+namespace {
 
-// returns whether an error occured
-[[nodiscard]] bool
-lex_and_parse_file(
-  Parser::TU& tu,
-  std::vector<Lexer::Token>& tokens,
-  fs::path const& file_path) {
-
-  auto file = Lexer::tokenizeFile(tokens, file_path);
-  if (file_has_errors(file_path.native())) {
-    std::println( "{}", get_file_errors( file_path.native() ) );
-    return false;
+eden_noinline_cold void
+print_parser(std::vector<Parser::TU> const& tus, std::vector<fs::path> const& paths) {
+  assert(tus.size() == paths.size()); assert(Settings::do_output_parser);
+  for (auto i{0uz}; i<tus.size(); ++i) {
+    std::println("\n--- Parser Output --- {}", paths[i].native());
+    Parser::printTU(tus[i]);
+    std::println("\n--- Parser Output ---");
   }
-
-  if (Settings::do_output_lexer) {
-    std::print("\n--- Lexer Output --- {}", file_path.string());
-    Lexer::TokenView(tokens).print(file);
-    std::println("\n--- Lexer Output ---");
-    return true;
-  }
-
-  tu.source_files.emplace_back(std::move(file));
-  Parser::parseTokens(tu, tokens);
-  if (file_has_errors(file_path.native())) {
-    std::println( "{}", get_file_errors( file_path.native() ) );
-    return false;
-  }
-  return true;
 }
 
-[[nodiscard]] static Parser::TU
-lex_and_parse_module(fs::path const& directory)  {
-  std::vector<Lexer::Token> tokens; tokens.reserve(64);
+eden_noinline_cold void
+print_peep(std::vector<PeepIR::TU> const& tus, std::vector<fs::path> const& paths) {
+  assert(tus.size() == paths.size()); assert(Settings::do_output_peep);
+  for (auto i{0uz}; i<tus.size(); ++i) {
+    std::println("\n--- Peep Output --- {}", paths[i].native());
+    PeepIR::printPeep(tus[i]);
+    std::println("\n--- Peep Output ---");
+  }
+}
 
-  Parser::TU tu;
+}
+
+namespace {
+
+eden_noinline_cold void
+print_lexer_errors(File file) {
+  std::println("\n--- Lexer Errors --- {}", file.path());
+  std::println("{}", get_file_errors(file));
+  std::println("\n--- Lexer Errors ---");
+}
+
+eden_noinline_cold void
+print_parser_errors(File file) {
+  std::println("\n--- Parser Errors --- {}", file.path());
+  std::println("{}", get_file_errors(file));
+  std::println("\n--- Parser Errors ---");
+}
+
+eden_noinline_cold void
+print_peep_errors(PeepIR::TU const& peep_tu) {
+  for (auto& file : peep_tu.source_files) {
+    std::println("\n--- Peepir Errors --- {}", file.path());
+    std::println("{}", get_file_errors(file));
+    std::println("\n--- Peepir Errors ---");
+  }
+}
+
+}
+
+// populates tu and returns whether an error was encountered
+[[nodiscard]] bool
+lex_and_parse_module(Parser::TU& tu, fs::path const& directory)  {
+  std::vector<Lexer::Token> tokens; tokens.reserve(64);
 
   { // set up module, this is horrible please change
     assert(not modules.contains(directory.c_str()));
-    auto const n = directory.filename().string().size() + 1; // this is so stupid i hate this language
+    auto const n = directory.filename().native().size() + 1; // this is so stupid i hate this language
     auto const module_name = new char[n]; // TODO: fix purposeful memory leak
     std::strcpy(module_name, directory.filename().c_str());
     std::string_view const key_view(module_name, n-1);
@@ -82,100 +103,90 @@ lex_and_parse_module(fs::path const& directory)  {
     tu.module = module_ptr;
   }
 
-  bool success = true;
+  bool has_error = false;
   for (auto const& entry : fs::directory_iterator{directory}) {
-    if (not entry.is_regular_file())
-      throw std::runtime_error( std::format("LookOnceMore: Sorry! Submodules not supported yet.\nModule Path: {}", entry.path().string() ));
-    if (entry.path().extension() != ".lom") continue;
-    if (is_empty(entry))
-      throw std::runtime_error( std::format("LookOnceMore: Sorry! Empty files not supported.\nFile Path: {}", entry.path().string() ));
+    auto const& path = entry.path();
+    if (not entry.is_regular_file())          throw std::runtime_error( std::format("LookOnceMore: Sorry! Submodules not supported yet.\nModule Path: {}", path.string() ));
+    if (path.extension() != ".lom") continue;
+    if (is_empty(entry))                    throw std::runtime_error( std::format("LookOnceMore: Sorry! Empty files not supported.\nFile Path: {}", path.string() ));
 
-    success = lex_and_parse_file(tu, tokens, entry.path()) and success;
+    auto const file = tu.source_files.emplace_back(path);
+    if      (Lexer::tokenizeFile(tokens, file))  print_lexer_errors(file),  has_error = true;
+    else if (Parser::parseTokens(tu, tokens)) print_parser_errors(file), has_error = true;
+
     tokens.clear();
   }
 
-  if (not success) std::quick_exit(1); //TODO: temporary
-
-
-  return tu;
+  return has_error;
 }
 
 void LOM::build() {
-  if (not fs::exists("src"))
-    throw std::runtime_error("LookOnceMore: src directory not found!");
-
+  fs::path const src_path{"src"};
+  if (not fs::exists(src_path)) throw std::runtime_error("LookOnceMore: src directory not found!");
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
-
   modules.emplace(std::pair(std::string_view("__C"), Module{"__C", &types}));
 
-  std::vector<Parser::TU> parsed_tus; parsed_tus.reserve(4);
-  std::vector<fs::path> module_paths; parsed_tus.reserve(4);
-  for (auto const& entry : fs::directory_iterator{"src"}) {
+  std::vector<Parser::TU> parsed_tus;   parsed_tus.reserve(4);
+  std::vector<fs::path> module_paths; module_paths.reserve(4);
+  bool has_error = false;
+  for (auto const& entry : fs::directory_iterator{src_path}) {
     if (entry.is_directory()) {
       if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue;
 
       module_paths.emplace_back(entry.path().stem());
-      parsed_tus.emplace_back(lex_and_parse_module(entry));
+      auto ptu = parsed_tus.emplace_back();
+      if (lex_and_parse_module(ptu, entry)) has_error = true;
       continue;
     }
 
     std::vector<Lexer::Token> main_tokens; main_tokens.reserve(64);
     Parser::TU main_tu; main_tu.module = &main_module;
-    if (lex_and_parse_file(main_tu, main_tokens, entry.path()) == false) std::quick_exit(1);
+    auto const& main_path = entry.path();
+    auto const main_file = main_tu.source_files.emplace_back(main_path);
+
+    if      (Lexer::tokenizeFile(main_tokens,  main_file))  print_lexer_errors(main_file),  has_error = true;
+    else if (Parser::parseTokens(main_tu, main_tokens))  print_parser_errors(main_file), has_error = true;
 
     module_paths.emplace_back("main.lom");
     parsed_tus.emplace_back(std::move(main_tu));
   }
+  if (has_error) std::quick_exit(1); // lex n parse errors should've been printed already
+  if (Settings::do_output_parser) return print_parser(parsed_tus, module_paths);
 
-  bool success = true;
-  std::vector<std::unique_ptr<Backend>> compiled_tus;
+
+  std::vector<PeepIR::TU> peeped_tus; peeped_tus.reserve(parsed_tus.size());
   for (auto i{0uz}; i<parsed_tus.size(); ++i) {
-    auto& module_name = module_paths[i];
+    auto& tu = peeped_tus.emplace_back();
+    auto const error = PeepIR::lowerToPeep(tu, std::move(parsed_tus[i]));
+    if (error) print_peep_errors(tu), has_error = true;
+  }
+  if (has_error) std::quick_exit(1);
+  if (Settings::do_output_peep) return print_peep(peeped_tus, module_paths);
 
-    if (Settings::do_output_parser) {
-      std::println("\n--- Parser Output --- {}", module_name.native());
-      Parser::printTU(parsed_tus[i]);
-      std::println("\n--- Parser Output ---");
-      continue;
-    }
-
-    auto peeped = PeepMIR::lowerToPeep(std::move(parsed_tus[i]));
-    if (peeped.has_errors) {
-      success = false;
-      for (auto& file : peeped.source_files) {
-        auto const fp = file.path();
-        if (file_has_errors(fp)) std::println("{}", get_file_errors(fp));
-      }
-
-      continue;
-    }
-
-    if (Settings::do_output_peep) {
-      std::println("\n--- Peep Output --- {}", module_name.native());
-      PeepMIR::printPeep(peeped);
-      std::println("\n--- Peep Output ---");
-      continue;
-    }
+  std::vector<std::unique_ptr<Backend>> compiled_tus; peeped_tus.reserve(parsed_tus.size());
+  for (auto i{0uz}; i<peeped_tus.size(); ++i) {
+    auto& module_path = module_paths[i];
+    auto& peeped = peeped_tus[i];
 
     [[maybe_unused]]
     auto const& compiled = compiled_tus.emplace_back(
-      Backend::codegen( std::move(peeped), module_name )
+      Backend::codegen( std::move(peeped), module_path )
       );
 
 #ifndef STAGE_BENCHMARKS
 #ifndef PROFILE
     if (Settings::do_output_asm)
-      compiled->createASMFile(module_name);
+      compiled->createASMFile(module_path);
     if (Settings::do_output_llvmir)
-      compiled->createIRFile(module_name);
+      compiled->createIRFile(module_path);
     if (Settings::do_output_obj)
-      module_name = compiled->createObjectFile(module_name);
+      module_path = compiled->createObjectFile(module_path);
 #endif
 #endif
   }
-  if (not success) return;
+
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
@@ -188,7 +199,7 @@ void LOM::build() {
 
 #ifndef STAGE_BENCHMARKS
 #ifndef PROFILE
-  if (Settings::do_linking or Settings::do_output_obj)
+  if (Settings::do_output_obj)
     Backend::linkObjects(module_paths);
 #endif
 #endif

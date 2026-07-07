@@ -27,31 +27,27 @@ struct Tokenizer {
   std::vector<Token>& token_list;
   File file;
   u32_t current_position{};
+  bool has_errors{};
 
   static constexpr char FILE_EOF = '\0';
-  explicit Tokenizer(std::vector<Token>& token_list, std::filesystem::path const& path)
-  : token_list(token_list), file(path) {}
+  explicit Tokenizer(std::vector<Token>& token_list, File file)
+  : token_list(token_list), file(file) {}
 
-  [[nodiscard]] char
-  peek() const noexcept { return file.contents()[current_position]; }
+  eden_always_inline [[nodiscard]] char peek() const noexcept { return file.get_text()[current_position]; }
+  eden_always_inline [[nodiscard]] char peek_ahead(sz_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
+  eden_always_inline [[nodiscard]] char previous() const noexcept { assert(current_position not_eq 0); return file.get_text()[current_position - 1]; }
+  eden_always_inline [[nodiscard]] char take() noexcept { return file.get_text()[current_position++]; }
+  eden_always_inline               void pop() noexcept { ++current_position; }
+  eden_always_inline               void undo() noexcept { --current_position; }
 
-  [[nodiscard]] char
-  peek_ahead(sz_t i = 1) const noexcept { return file.contents()[current_position + i]; }
-
-  [[nodiscard]] char
-  previous() const noexcept {
-    assert(current_position not_eq 0);
-    return file.contents()[current_position - 1];
+  eden_noinline_cold void
+  error_at_currentpos(std::string_view msg) {
+    report_error(file, 1, current_position, std::string(msg)); has_errors = true;
   }
 
-  [[nodiscard]] char
-  take() noexcept { return file.contents()[current_position++]; }
-
-  void pop() noexcept { ++current_position; }
-  void undo() noexcept { --current_position; }
-
-  void report_error_at_currentpos(const char* msg) const {
-    report_error(file, 1, current_position, msg);
+  eden_noinline_cold void
+  error_at(std::string_view msg, u16_t len, u32_t pos) {
+    report_error(file, len, pos, std::string(msg)); has_errors = true;
   }
 
   // called when opening quotes already consumed
@@ -66,7 +62,7 @@ struct Tokenizer {
       case '\"': goto ending_quote_found;
       case '\n':
       case FILE_EOF:
-        report_error_at_currentpos("Expected ending \" in string literal.");
+        error_at_currentpos("Expected ending \" in string literal.");
         goto ending_quote_found;
 
       case '\\': string_type = TokenType::ESCAPED_STRING_LITERAL; [[fallthrough]];
@@ -90,9 +86,9 @@ struct Tokenizer {
     if (c1 == '\\') {
       ++length;
       if (take() not_eq '\'')
-        report_error_at_currentpos("Expected ending ' in char literal.");
+        error_at_currentpos("Expected ending ' in char literal.");
     } else if (c2 not_eq '\'')
-        report_error_at_currentpos("Expected ending ' in char literal.");
+        error_at_currentpos("Expected ending ' in char literal.");
 
     token_list.emplace_back(TokenType::CHAR_LITERAL, length, pos);
   }
@@ -151,7 +147,7 @@ struct Tokenizer {
     default:
       type = INVALID_TOKEN;
       --current_position;
-      report_error_at_currentpos("Unrecognized symbol.");
+      error_at_currentpos("Unrecognized symbol.");
       ++current_position;
     }
 
@@ -196,7 +192,7 @@ struct Tokenizer {
     }
     undo();
 
-    const std::string_view word_view{file.contents().data() + new_token.position, new_token.length};
+    const std::string_view word_view{file.get_text().data() + new_token.position, new_token.length};
     if (stringToTokenType.contains(word_view))
       new_token.type = stringToTokenType.at(word_view);
 
@@ -248,12 +244,12 @@ struct Tokenizer {
 
 }
 
-File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path const& file_path) {
+bool Lexer::tokenizeFile(std::vector<Token>& out_tokens, File file) {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
-  Tokenizer tokenizer{out_tokens, file_path};
+  Tokenizer tokenizer{out_tokens, file};
 
   while (true) {
     tokenizer.skipWS();
@@ -279,12 +275,12 @@ File Lexer::tokenizeFile(std::vector<Token>& out_tokens, std::filesystem::path c
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("Lexing {}: {} | {} | {}",
-    file_path.native(),
+    file.path(),
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
     std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
   );
 #endif
 
-  return std::move(tokenizer.file);
+  return tokenizer.has_errors;
 }

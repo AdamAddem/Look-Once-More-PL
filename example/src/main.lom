@@ -1,23 +1,4 @@
-import operators;
-import integer_sizes;
-import statements;
-import pointers;
-
-struct Test {
-    i32 x,
-    f32 y,
-    i32 z
-}
-
 pub main() i32 {
-    integer_sizes.zeroes();
-    integer_sizes._8bit();
-    integer_sizes._16bit();
-    integer_sizes._32bit();
-    integer_sizes._64bit();
-    statements.if_statements();
-    statements.while_statements();
 
-
-    return operators.bitwise_oprs() + operators.condition_oprs() + operators.math_oprs() + pointers.ptrs();
+    return 0;
 }

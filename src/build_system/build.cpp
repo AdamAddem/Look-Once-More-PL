@@ -193,11 +193,11 @@ void LOM::build() {
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("Full: {} | {} | {}",
+  std::println("{:>10}, {:>10} | FULL",
     end_time - begin_time,
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time)
   );
+  std::println("{:>10} Full Parsing Duration.", Parser::parsing_durr);
 #endif
 
 

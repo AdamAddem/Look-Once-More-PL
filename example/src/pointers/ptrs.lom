@@ -1,0 +1,24 @@
+pub ptrs() u8 {
+    $i32 first = 0; $i32 second = 1;
+    $raw $i32 ptr = @first;
+    raw raw i32 ptr2 = @ptr;
+
+    if ptr-> not_eq 0 { return 8; }
+    if ptr2->-> not_eq 0 { return 8; }
+
+    ptr-> = 2;
+    if first not_eq 2 { return 8; }
+    if ptr-> not_eq 2 { return 8; }
+    if ptr2->-> not_eq 2 { return 8; }
+
+    ptr = @second;
+    if ptr-> not_eq 1 { return 8; }
+    if ptr2->-> not_eq 1 { return 8; }
+
+    ptr-> = 2;
+    if second not_eq 2 { return 8; }
+    if ptr-> not_eq 2 { return 8; }
+    if ptr2->-> not_eq 2 { return 8; }
+
+    return 0;
+}

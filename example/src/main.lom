@@ -1,16 +1,23 @@
-__C printf(raw char fmt, __va); # C-Interop!
+import operators;
+import integer_sizes;
+import statements;
+import pointers;
 
-fib(i32 n) i32 {
-    if n <= 1 { return n; }
-    return fib(n-1) + fib(n-2);
+struct Test {
+    i32 x,
+    f32 y,
+    i32 z
 }
 
 pub main() i32 {
+    integer_sizes.zeroes();
+    integer_sizes._8bit();
+    integer_sizes._16bit();
+    integer_sizes._32bit();
+    integer_sizes._64bit();
+    statements.if_statements();
+    statements.while_statements();
 
-    $i32 n = 0;
-    while n++ < 10 {
-        __C.printf("Fibonacci number %d: %d\n", n, fib(n));
-    }
 
-    return 0;
+    return operators.bitwise_oprs() + operators.condition_oprs() + operators.math_oprs() + pointers.ptrs();
 }

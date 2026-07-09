@@ -816,15 +816,14 @@ std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU&& peeped_tu, std::filesystem
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("LLVM {}: {} | {} | {}",
-    peeped_tu.module->nameof(),
+  std::println("{:>10}, {:>10} | LLVM {}",
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+    peeped_tu.module->nameof()
   );
 #endif
 
-#if PROFILE // free all files when profiling to prevent insane memory leaks
+#ifdef PROFILE // free all files when profiling to prevent insane memory leaks
   for (auto file_ : peeped_tu.source_files)
     free_file(file_);
 #endif

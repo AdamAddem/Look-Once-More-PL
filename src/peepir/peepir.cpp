@@ -1076,11 +1076,10 @@ bool PeepIR::lowerToPeep(TU& tu, Parser::TU&& parsed_tu) {
   bool const has_error = Peeper::peepFunctions(tu, parsed_tu.functions);
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("Peeping {}: {} | {} | {}",
-    parsed_tu.module->nameof(),
+  std::println("{:>10}, {:>10} | Peeping {}",
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+    parsed_tu.module->nameof()
   );
 #endif
   return has_error;

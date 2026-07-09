@@ -1011,6 +1011,7 @@ void Parser::printTU([[maybe_unused]] TU const& tu) noexcept {
   }
 }
 
+inline std::chrono::nanoseconds parsing_durr{};
 bool Parser::parseTokens(TU& tu, std::vector<Token>& token_list) noexcept {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
@@ -1020,11 +1021,10 @@ bool Parser::parseTokens(TU& tu, std::vector<Token>& token_list) noexcept {
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("Parsing {}: {} | {} | {}",
-    tu.source_files.back().path(),
+  std::println("{:>10}, {:>10} | Parsing {}",
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+    tu.source_files.back().path()
   );
 #endif
   return has_errors;

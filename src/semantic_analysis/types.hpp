@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include <unordered_map>
 namespace LOM {
 
 class PrimitiveType;
@@ -513,7 +514,8 @@ class TypeContext {
   static constexpr auto search_pred = [] (auto* type, auto&&... args) { return type->sameAs(std::forward<decltype(args)>(args)...); };
   static constexpr auto named_search_pred = [] (auto* type, std::string_view name) { return type->nameof() == name; };
 
-  eden::Arena<> type_arena;
+  eden::ArenaPool<> type_arena;
+
   eden::swap_vector<PointerType*>  pointers;
   eden::swap_vector<ArrayType*>    arrays;
   eden::swap_vector<FunctionType*> functions;
@@ -523,7 +525,7 @@ class TypeContext {
   template <std::derived_from<Type> T, class... Args>
   [[nodiscard]] constexpr T*
   allocateAndConstruct(Args&&... args)
-  { return new (type_arena.allocate<T>()) T (std::forward<Args>(args)...); }
+  { return new (type_arena.allocate<T>(1)) T (std::forward<Args>(args)...); }
 
   template <std::derived_from<Type> T, class... Args>
   [[nodiscard]] constexpr T*

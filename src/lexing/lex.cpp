@@ -268,11 +268,10 @@ bool Lexer::tokenizeFile(std::vector<Token>& out_tokens, File file) {
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("Lexing {}: {} | {} | {}",
-    file.path(),
+  std::println("{:>10}, {:>10} | Lexing {}",
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time)
+    file.path()
   );
 #endif
 

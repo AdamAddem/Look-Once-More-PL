@@ -13,7 +13,8 @@ extern bool const& do_output_obj;
 extern bool const& do_linking;
 extern bool const& do_build;
 
-std::string const& getExecutableName() noexcept;
+std::string_view getExecutableName() noexcept;
+std::string_view getLinkFlags() noexcept;
 u8_t getOptimizationLevel() noexcept;
 void setArgs(unsigned argc, const char* argv[]);
 

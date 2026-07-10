@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <print>
 #include <chrono>
+#include <thread>
 using namespace LOM;
 namespace fs = std::filesystem;
 
@@ -16,6 +17,8 @@ namespace fs = std::filesystem;
 static TypeContext types;
 static std::unordered_map<std::string_view, Module> modules;
 static Module main_module("", &types);
+static const fs::path src_path{"src"};
+static const fs::path extern_path{"extern"};
 
 [[nodiscard]] Module*
 LOM::getModule(std::string_view name) {
@@ -94,6 +97,34 @@ print_peep_errors(PeepIR::TU const& peep_tu) {
 
 }
 
+// LOL
+static std::vector<fs::path> extern_objects_paths;
+static void compileC() {
+  if (not fs::exists(extern_path) or is_empty(fs::directory_entry(extern_path))) return;
+
+  std::string command =
+    std::format("(cd build/obj && {} ", Settings::external_compiler);
+  switch (Settings::getOptimizationLevel()) {
+  case 0: break;
+  case 1: command.append(" -O1 "); break;
+  case 2: command.append(" -O2 "); break;
+  case 3: command.append(" -O3 "); break;
+  default: eden_unreachable("Invalid optimization level.");
+  }
+  command.append("-c ");
+  for (auto& file : fs::directory_iterator{extern_path}) {
+    if (file.path().extension() != ".c") continue;
+    extern_objects_paths.emplace_back(file.path());
+    command.append(
+      std::format("../../{} ",
+        file.path().native())
+      );
+  }
+
+  command.push_back(')');
+  system(command.c_str());
+}
+
 // populates tu and returns whether an error was encountered
 [[nodiscard]] bool
 lex_and_parse_module(Parser::TU& tu, fs::path const& directory)  {
@@ -127,8 +158,9 @@ lex_and_parse_module(Parser::TU& tu, fs::path const& directory)  {
 }
 
 void LOM::build() {
-  fs::path const src_path{"src"};
   if (not fs::exists(src_path)) throw std::runtime_error("LookOnceMore: src directory not found!");
+  std::thread comp_extern;
+  if constexpr (not Settings::external_compiler.empty()) comp_extern = std::thread(compileC);
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
@@ -158,7 +190,7 @@ void LOM::build() {
     module_paths.emplace_back("main.lom");
     parsed_tus.emplace_back(std::move(main_tu));
   }
-  if (has_error) std::quick_exit(1); // lex n parse errors should've been printed already
+  if (has_error) std::quick_exit(1);
   if (Settings::do_output_parser) return print_parser(parsed_tus, module_paths);
 
 
@@ -200,6 +232,13 @@ void LOM::build() {
   std::println("{:>10} Full Parsing Duration.", Parser::parsing_durr);
 #endif
 
+  if (comp_extern.joinable()) {
+    comp_extern.join();
+    for (auto& extern_path : extern_objects_paths) {
+      module_paths.reserve(module_paths.size() + extern_objects_paths.size());
+      module_paths.emplace_back(std::move(extern_path));
+    }
+  }
 
 #ifdef NO_MEASUREMENT
   if (Settings::do_output_obj)

@@ -34,24 +34,24 @@ Compilation speed is also a priority.
     [string first, string last] person = ["Gabe", "Newell"]; # Tuple / Anonymous struct
 * Strict and explicit global variables (planned)
     ```
-    #: 
+    #{ 
        Global variables must be declared before functions and after imports.
        Global variables may not be junk initialized.
        Global variables must be initialized at compile time.
-    :#
+    }#
 
     global $i32 x = junk;    # error
     global $f32 y = 4.0f;
   
-    fn foo() {...}  
+    foo() {...}  
     
     global i32 too_late = 5; # error
 * Strong typing and simple promotion rules
     ```
-    #:
-       No implicit conversions.
-       #: except unsigned to signed conversions where the signed type is of greater size :#
-    :#
+    #{
+       No implicit conversions,
+       With the exception of unsigned conversions where the other type is of greater size.
+    }#
   
     $i8 signed_8 = 0; $u8 unsigned_8 = 0; $i32 signed_32 = 0; $u32 unsigned_32 = 0;
     unsigned_32 = signed_8;   # error
@@ -63,13 +63,13 @@ Compilation speed is also a priority.
     unsigned_32 = cast<u32> signed_8;
     f32 res = cast<f32> (signed_8 + 3);
 * An actual module system (100% adoption rate)
-  ```
-  import whatever;
-  pub fn bar() {...}
+    ```
+    import whatever;
+    pub bar() {...}
 
-  fn foo() i32 { # visible only within current module
-    return whatever.getNum() + 2;
-  }
+    foo() i32 { # visible only within current module
+      return whatever.getNum() + 2;
+    }
 ---
 ### How to Build
 Currently the only dependencies are LLVM 22 and my own library which is included as a submodule. <br>
@@ -78,8 +78,7 @@ Clone and compile as such:
 git clone --recurse-submodules https://github.com/AdamAddem/Look-Once-More-PL
 mkdir build && cd build && cmake .. && make
 ```
-Either clang or gcc are required to support linking objects into an executable. <br> 
-Windows support hasn't been tested but feel free to try. <br>
+Either clang or gcc are required to support linking objects into an executable or compiling within the 'extern' folder. <br>
 
 ### Running
 The executable can be ran with the following arguments:
@@ -93,8 +92,7 @@ The executable can be ran with the following arguments:
     -emit-llvm           Produces the LLVM IR representation of the source code.
     -emit-asm            Produces the assembly representation of the source code.
     
-    Prints a textual representation of the respective stage to cout (Don't expect it to be pretty!).
-    -emit-<lexer, parser, peep> 
+    --extern_flags:      Will pass all remaining flags to the compiler used for linking and compiling files within the 'extern' folder.
 ```
 Visit [GettingStarted](GettingStarted.md) for more information on setting up a project.
 

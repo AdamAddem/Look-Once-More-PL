@@ -11,7 +11,6 @@ int main(int argc, const char* argv[]) {
 
   LOM::Settings::setArgs(argc, argv);
 
-
 #ifdef PROFILE
   auto begin_time = std::chrono::high_resolution_clock::now();
   for (auto i{0uz}; i<100'000; ++i) {

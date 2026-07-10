@@ -4,9 +4,10 @@
 #include <cassert>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <unordered_map>
 #include <utility>
+#include <print>
+#include <string_view>
 
 namespace {
 
@@ -25,7 +26,7 @@ enum class Args {
   O3,
 };
 
-const std::unordered_map<std::string, Args> stringToArgs{
+const std::unordered_map<std::string_view, Args> stringToArgs{
 	       {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
               {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
               {"-o", Args::EXECUTABLE_NAME},{"build", Args::BUILD},
@@ -53,16 +54,19 @@ static bool output_obj_flag{false};         bool const& do_output_obj = output_o
 static bool do_linking_flag{true};          bool const& do_linking = do_linking_flag;
 static bool do_build_flag{false};           bool const& do_build = do_build_flag;
 static u8_t optimization_level{0};
-static std::string output_name;
+static std::string_view output_name;
+static std::string link_flags;
 
-std::string const& getExecutableName() noexcept {return output_name;}
-u8_t getOptimizationLevel() noexcept            {return optimization_level;}
+std::string_view getExecutableName() noexcept   { return output_name; }
+std::string_view getLinkFlags() noexcept        { return link_flags; }
+u8_t getOptimizationLevel() noexcept            { return optimization_level; }
 
 void setArgs(unsigned argc, const char* argv[]) {
-  using Filepath = std::filesystem::path;
+  namespace fs = std::filesystem;
   if (std::string_view(argv[1]) == "init") {
-    std::filesystem::create_directory("build");
-    std::filesystem::create_directory("src");
+    fs::create_directory("build");
+    fs::create_directory("external");
+    fs::create_directory("src");
     std::ofstream main_lom_file("src/main.lom");
     main_lom_file << hello_world;
     main_lom_file.close();
@@ -70,42 +74,33 @@ void setArgs(unsigned argc, const char* argv[]) {
   }
 
   for (auto i{1uz}; i < argc; ++i) {
-    using namespace Settings;
-    auto const arg_iter = stringToArgs.find(argv[i]);
+    auto const arg_view = std::string_view(argv[i]);
+    auto const arg_iter = stringToArgs.find(arg_view);
     if (arg_iter == stringToArgs.end()) {
-      Filepath filepath = argv[i];
-      if (filepath.extension() not_eq ".lom")  {
-        if (filepath.has_extension())
-          std::cout << "File extension must be .lom: ";
-        else
-          std::cout << "Unrecognized argument: ";
-
-        std::cout << filepath << std::endl;
-        std::quick_exit(1);
+      if (arg_view == "--extern_flags:") {
+        while (++i < argc) { link_flags += argv[i]; link_flags.push_back(' '); }
+        break;
       }
 
-      continue;
+      std::println("LookOnceMore: Unrecognized argument {}.", arg_view);
+      std::quick_exit(1);
     }
 
     auto const arg = arg_iter->second;
     switch (arg) {
-    case Args::OUTPUT_PARSER:     output_parser_flag = true; break;
-    case Args::OUTPUT_PEEP:       output_peep_flag = true; break;
-    case Args::OUTPUT_VALIDATION: output_validation_flag = true; break;
-    case Args::OUTPUT_LLVMIR:     output_llvmir_flag = true; break;
-    case Args::OUTPUT_ASM:        output_asm_flag = true; break;
-    case Args::OUTPUT_OBJ:        output_obj_flag = true; break;
+    case Args::OUTPUT_PARSER:     output_parser_flag = true;      break;
+    case Args::OUTPUT_PEEP:       output_peep_flag = true;        break;
+    case Args::OUTPUT_VALIDATION: output_validation_flag = true;  break;
+    case Args::OUTPUT_LLVMIR:     output_llvmir_flag = true;      break;
+    case Args::OUTPUT_ASM:        output_asm_flag = true;         break;
+    case Args::OUTPUT_OBJ:        output_obj_flag = true;         break;
     case Args::EXECUTABLE_NAME:
-      if (++i == argc)
-        throw std::runtime_error("LookOnceMore: Expected executable name after -o.");
-
-      if (not output_name.empty())
-        throw std::runtime_error("LookOnceMore: Multiple output names specified, maybe don't do that :).");
-
-      output_name = argv[i++];
+      if (++i == argc)              throw std::runtime_error("LookOnceMore: Expected executable name after -o.");
+      if (not output_name.empty())  throw std::runtime_error("LookOnceMore: Multiple output names specified, maybe don't do that :).");
+      output_name = arg_view; ++i;
       break;
 
-    case Args::BUILD: do_build_flag = true; break;
+    case Args::BUILD: do_build_flag = true;   break;
     case Args::O0:    optimization_level = 0; break;
     case Args::O1:    optimization_level = 1; break;
     case Args::O2:    optimization_level = 2; break;

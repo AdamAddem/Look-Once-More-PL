@@ -74,6 +74,8 @@ constexpr bool isCategoryPREFIX_OPS(const Operator e) { return std::to_underlyin
 constexpr bool isCategoryPOSTFIX_OPS(const Operator e) { return std::to_underlying(e) >= 24 && std::to_underlying(e) < 28; }
 constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 28; }
 
+// raylib.Camera y = 2;
+// y: raylib.Camera = 2;
 
 // TODO: Overengineer more.
 struct ASTNode {

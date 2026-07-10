@@ -1,5 +1,14 @@
-__C foo() i32;
+__C printf(raw char fmt, __va) i32;
+
+fib(i32 n) i32 {
+
+}
 
 pub main() i32 {
-    return __C.foo();
+    __C.printf("Hello, World!\n");
+
+    n: $i32 = 3;
+    ++n;
+
+    return n;
 }

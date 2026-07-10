@@ -240,7 +240,7 @@ public:
   { return types->addVariant(subtypes, nullable); }
 
   [[nodiscard]] FunctionType const*
-  getFunctionType(std::span<Variable> parameters, const Type* return_type, bool is_variadic = false) const noexcept {
+  getFunctionType(std::span<Variable> parameters, Type const* return_type, bool is_variadic = false) const noexcept {
     const Type* parameter_types[Settings::MAX_FUNCTION_PARAMETERS];
     auto i{0uz};
     for (; i<parameters.size(); ++i)
@@ -250,7 +250,7 @@ public:
   }
 
   CustomType const*
-  addCustomType(std::string_view type_name, std::span<const Variable> members) const noexcept {
+  addCustomType(std::string_view type_name, std::span<Variable const> members) const noexcept {
     auto const custom = types->addCustomType(type_name);
     auto const custom_table = custom->member_table();
     for (auto const& member : members)

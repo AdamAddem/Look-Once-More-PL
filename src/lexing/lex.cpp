@@ -213,7 +213,7 @@ struct Tokenizer {
   void skipComments() { pre
     pop();
 
-    if (peek() not_eq ':') {
+    if (peek() not_eq '{') {
       while ( peek() not_eq '\n' and peek() not_eq FILE_EOF ) pop();
       return;
     }
@@ -224,9 +224,9 @@ struct Tokenizer {
       auto const first = peek();
       auto const second = peek_ahead();
 
-      if (first == '#' and second == ':')
+      if (first == '#' and second == '{')
         ++nested, pop();
-      else if (first == ':' and second == '#')
+      else if (first == '}' and second == '#')
         --nested, pop();
 
       pop();

@@ -585,25 +585,18 @@ class ParserBody {
 
   eden_always_inline void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
 
-  Token parseVarDecl(sz_t decl_node_idx, QualifiedType declaration_type) noexcept {
+#define pre assert(identifier_token.isIdentifier());
+  Token parseVarDecl(sz_t decl_node_idx, Token identifier_token) noexcept { pre
     bool has_init;
 
-    // identifier
-    {
-      auto const identifier_token = tokens.take();
-      if (not identifier_token.is(TokenType::IDENTIFIER)) {
-        error(identifier_token, "Expected identifier in variable declaration.");
-        sync_to(TokenType::SEMI_COLON);
-        return identifier_token;
-      }
-
-      auto identifier_node = newNode(identifier_token, ASTNode::IDENTIFIER);
-      identifier_node.identifier_data.decl_type = declaration_type.type;
-      nodes.emplace_back( identifier_node );
-    }
+    // identifier and type
+    auto identifier_node = newNode(identifier_token, ASTNode::IDENTIFIER);
+    auto qualified_type  = parseType();
+    identifier_node.identifier_data.decl_type = qualified_type.type;
+    nodes.emplace_back( identifier_node );
 
     if (not tokens.pop_if(TokenType::ASSIGN)) {
-      auto err = tokens.peek();
+      auto const err = tokens.peek();
       error(err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
       sync_to_semicolon();
       return err;
@@ -625,9 +618,10 @@ class ParserBody {
 
     auto& data = nodes[decl_node_idx].declaration_data;
     data.has_init = has_init;
-    data.qualifiers = declaration_type.qualifiers;
+    data.qualifiers = qualified_type.qualifiers;
     return tokens.take();
   }
+#undef pre
 
 #define pre assert(not tokens.peek_is(TokenType::KEYWORD_IF));
   Token parseIf(sz_t if_node_idx) { pre
@@ -713,14 +707,13 @@ class ParserBody {
     case KEYWORD_RETURN:  tokens.pop(); stmt_idx = insertTypedNode(ASTNode::RETURN);  final = parseReturn(stmt_idx); break;
     case LBRACE:          tokens.pop(); parseStatementsBetweenBraces(); return tokens.previous();
 
-    case LBRACKET:
-    TOKENTYPE_PRIMITIVES_CASES
-    TOKENTYPE_TYPE_QUALIFIERS_CASES
-                          stmt_idx = insertTypedNode(ASTNode::DECLARATION);           final = parseVarDecl(stmt_idx, parseType()); break;
-
     case IDENTIFIER:
-      if (tokens.peek_ahead(1).isIdentifier())
-      {                   stmt_idx = insertTypedNode(ASTNode::DECLARATION);           final = parseVarDecl(stmt_idx, parseType()); break; }
+      if (tokens.peek_ahead(1).is(COLON)) {
+        tokens.pop(); tokens.pop();
+        stmt_idx = insertTypedNode(ASTNode::DECLARATION);
+        final = parseVarDecl(stmt_idx, first);
+        break;
+      }
 
       [[fallthrough]];
     default: // expression statement
@@ -774,6 +767,8 @@ void parseCExtern() noexcept { pre
       break;
     }
 
+    // HERE
+    auto const identifier = parseIdenifier();
     auto type = parseType();
     parameters[num_parameters] = {type, parseIdentifier(), false};
     ++num_parameters;

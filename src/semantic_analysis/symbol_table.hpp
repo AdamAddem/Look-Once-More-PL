@@ -50,8 +50,9 @@ public:
   struct Function {
     eden::vector16<Variable> locals;
     FunctionType const* type;
-    const char* name; u32_t name_len;
+    char const* name; u32_t name_len;
     bool is_public;
+    // char _pad[1];
 
     explicit Function(std::string_view name, std::span<Variable> parameters, FunctionType const* type, bool is_public)
     : type(type), name(name.data()), name_len(name.length()), is_public(is_public), id(INVALID_ID) {
@@ -73,7 +74,7 @@ public:
 
     [[nodiscard]] std::string_view
     nameof() const noexcept
-    { return std::string_view(name, name_len); }
+    { return {name, name_len}; }
 
     void addVariable(std::string_view variable_name, QualifiedType variable_instance) noexcept {
       assert(not getVariable(variable_name));
@@ -201,8 +202,6 @@ public:
 };
 
 class Module final : public SymbolTable {
-  const char* name; u32_t name_len;
-  // char _pad[4];
   TypeContext* types;
 
   eden_always_inline [[nodiscard]] Function&
@@ -211,18 +210,14 @@ class Module final : public SymbolTable {
 
 public:
 
-  explicit Module(std::string_view module_name, TypeContext* type_context) noexcept
-  : name(module_name.data()), name_len(module_name.length()), types(type_context) {}
+  explicit Module(TypeContext* type_context) noexcept
+  : types(type_context) {}
 
   Module(Module&&) noexcept = default;
 
   eden_always_inline [[nodiscard]] TypeContext const*
   getTypeContext() const noexcept
   { return types; }
-
-  eden_always_inline [[nodiscard]] std::string_view
-  nameof() const noexcept
-  { return std::string_view(name, name_len); }
 
   eden_always_inline [[nodiscard]] PointerType const*
   getRawPointerType(Type const* subtype) const noexcept
@@ -318,10 +313,6 @@ class StabilizedModule {
   Module const* module;
 public:
   StabilizedModule(Module const* module) noexcept : module(module) {}
-
-  [[nodiscard]] std::string_view
-  nameof() const noexcept
-  { return module->nameof(); }
 
   [[nodiscard]] SymbolTable::Variable const*
   getVariable(u16_t variable_id) const noexcept

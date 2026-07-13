@@ -28,34 +28,31 @@ charToEscapeSequenceEquivalent(char c) {
 }
 
 struct Instruction {
-  enum Type : u8_t {
+  enum class InstructionType : u8_t {
     NOOP,
 
-    GLOBAL, FUNCTION,   // value is char* to name, aux_value is name length
+    GLOBAL, FUNCTION,
 
-    MODULE_GLOBAL,      // value is StabilizedModule, aux_value is order of global in module
-    MODULE_FUNCTION,    // value is StabilizedModule, aux_value is order of function in module
+    MODULE_GLOBAL,
+    MODULE_FUNCTION,
     TYPE_VARIABLE,      // value is CustomType const*, aux_value is order of variable in type
 
-    LOCAL,              // value is local idx
+    LOCAL,
 
-    // value contains bitwise representation of value
     I8_LITERAL, I16_LITERAL, I32_LITERAL, I64_LITERAL,
     U8_LITERAL, U16_LITERAL, U32_LITERAL, U64_LITERAL,
     FLOAT_LITERAL, DOUBLE_LITERAL,
     BOOL_LITERAL, CHAR_LITERAL,
 
-    STRING_LITERAL,         // value is char* to string, aux_value is string length
-    ESCAPED_STRING_LITERAL, // value is char* to string, aux_value is string length
+    STRING_LITERAL, ESCAPED_STRING_LITERAL,
 
-    // value indeterminate
     ADD, FADD,
     SUB, FSUB,
     MULT, FMULT,
     UDIV, SDIV, FDIV,
     UMOD, SMOD, FMOD,
     ASSIGN,
-    UCAST_ASSIGN, SCAST_ASSIGN, // value is the bitwidth to cast right side to
+    UCAST_ASSIGN, SCAST_ASSIGN,
     ULESS, SLESS, FLESS,
     UGTR, SGTR, FGTR,
     ULEQ, SLEQ, FLEQ,
@@ -63,9 +60,8 @@ struct Instruction {
     EQ, NEQ, AND, OR,
     BITAND, BITOR, BITXOR,
 
-    SUBSCRIPT, // value is ArrayType const*
+    SUBSCRIPT,
 
-    // value indeterminate
     PRE_INC, FPRE_INC,
     PRE_DEC, FPRE_DEC,
     ADDRESS_OF,
@@ -73,35 +69,61 @@ struct Instruction {
     BITNOT,
     POST_INC, FPOST_INC,
     POST_DEC, FPOST_DEC,
-    DEREFERENCE, // value contains pointed type
+    DEREFERENCE,
 
-    // value contains destination type
     UCAST, SCAST, FCAST, PCAST,
 
-    CALL // value equals number of parameters
+    CALL
   }type;
+  using enum InstructionType;
 
-  u8_t file_idx;
-  // char _pad[2];
-  u32_t aux_value;
-  u64_t value;
+  // structured this way to abuse the common subsequence exception for unions
+  // structs dont inherit from CommonData as that would disqualify them from being standard-layout which is a requirement for this to work
+#define common_subsequence InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
+  struct CommonData          { common_subsequence };
 
-  constexpr Instruction(Type type, u64_t value) noexcept
-  : type(type), value(value)
-  { assert( not eden::enumBetween(type, MODULE_GLOBAL, TYPE_VARIABLE) ); }
+  struct ModuleSymbolData    { common_subsequence u32_t dot_pos; u32_t idx; };
+  struct TypeMemberData      { InstructionType type; u8_t file_idx; u16_t idx_in_type; u32_t position_in_file; CustomType const* custom_type; };
+  struct LocalData           { common_subsequence u32_t idx; };
 
-  constexpr Instruction(Type type, std::string_view str) noexcept
-  : type(type), aux_value(static_cast<u32_t>(str.length())), value(std::bit_cast<u64_t>(str.data()))
-  { assert(type == GLOBAL or type == FUNCTION or type == STRING_LITERAL or type == ESCAPED_STRING_LITERAL); }
+  struct SignedLiteralData   { common_subsequence i64_t  value; };
+  struct UnsignedLiteralData { common_subsequence u64_t  value; };
+  struct FloatLiteralData    { common_subsequence float  value; };
+  struct DoubleLiteralData   { common_subsequence double value; };
+  struct BoolLiteralData     { common_subsequence bool   value; };
+  struct CharLiteralData     { common_subsequence char   value; };
 
-  constexpr Instruction(Type type, Module const* module, u32_t order) noexcept
-  : type(type), aux_value(order), value(std::bit_cast<u64_t>(module))
-  { assert( eden::enumBetween(type, MODULE_GLOBAL, MODULE_FUNCTION) ); }
+  struct CastAssignData      { common_subsequence u32_t bitwidth; };
+  struct CastData            { common_subsequence Type const* destination_type; };
+  struct SubscriptData       { common_subsequence ArrayType const* array_type;  };
+  struct DereferenceData     { common_subsequence Type const* dereference_type; };
+  struct CallData            { common_subsequence u32_t num_parameters; };
 
-  constexpr Instruction(Type type, CustomType const* table, u32_t order) noexcept
-  : type(type), aux_value(order), value(std::bit_cast<u64_t>(table))
-  { assume_assert( type == TYPE_VARIABLE ); }
+#undef common_subsequence
 
+  static_assert(alignof(QualifiedType) == 8);
+  static_assert(sizeof(QualifiedType) == 16);
+  union {
+    CommonData m;
+    ModuleSymbolData          module_symbol_data;
+    TypeMemberData            type_member_data;
+    LocalData                 local_data;
+    SignedLiteralData         signed_literal_data;
+    UnsignedLiteralData       unsigned_literal_data;
+    FloatLiteralData          float_literal_data;
+    DoubleLiteralData         double_literal_data;
+    BoolLiteralData           bool_literal_data;
+    CharLiteralData           char_literal_data;
+    CastAssignData            cast_assign_data;
+    CastData                  cast_data;
+    SubscriptData             subscript_data;
+    DereferenceData           dereference_data;
+    CallData                  call_data;
+  };
+
+
+  explicit constexpr Instruction(CommonData data) : m(data) {}
+  explicit constexpr Instruction(InstructionType type, u8_t file_idx) { m.type = type; m.file_idx = file_idx; }
   eden_always_inline [[nodiscard]] constexpr bool is_literal() const noexcept { return eden::enumBetween(type, I8_LITERAL, U64_LITERAL); }
 
   constexpr void
@@ -118,10 +140,10 @@ struct Instruction {
   }
 
   [[nodiscard]] constexpr std::string
-  escaped_string_value() const noexcept {
+  escaped_string_value(File file) const noexcept {
     assume_assert(type == ESCAPED_STRING_LITERAL);
     std::string res;
-    auto const orig = original_string();
+    auto const orig = original_string(file);
     res.reserve(orig.size() + 1);
 
     for (auto i{0uz}; i < orig.size(); ++i) {
@@ -136,36 +158,7 @@ struct Instruction {
     return res;
   }
 
-  eden_always_inline [[nodiscard]] constexpr std::string_view             global_name()          const noexcept { assume_assert(type == GLOBAL); return {std::bit_cast<const char*>(value), aux_value}; }
-  eden_always_inline [[nodiscard]] constexpr std::string_view             function_name()        const noexcept { assume_assert(type == FUNCTION); return {std::bit_cast<const char*>(value), aux_value}; }
-
-  eden_always_inline [[nodiscard]] constexpr StabilizedModule             module()               const noexcept { assert(eden::enumBetween(type, MODULE_GLOBAL, MODULE_FUNCTION));  return std::bit_cast<const Module*>(value); }
-  eden_always_inline [[nodiscard]] constexpr CustomType const*            custom_type()          const noexcept { assert(type == TYPE_VARIABLE);  return std::bit_cast<CustomType const*>(value); }
-  eden_always_inline [[nodiscard]] constexpr u16_t                        module_global_id()     const noexcept { assume_assert(type == MODULE_GLOBAL); return static_cast<u16_t>(aux_value); }
-  eden_always_inline [[nodiscard]] constexpr SymbolTable::Variable const& module_global()        const noexcept { assume_assert(type == MODULE_GLOBAL); return *module().getVariable(module_global_id()); }
-  eden_always_inline [[nodiscard]] constexpr u16_t                        module_function_id()   const noexcept { assume_assert(type == MODULE_FUNCTION); return static_cast<u16_t>(aux_value); }
-  eden_always_inline [[nodiscard]] constexpr SymbolTable::Function const& module_function()      const noexcept { assume_assert(type == MODULE_FUNCTION); return *module().getFunction(module_function_id()); }
-  eden_always_inline [[nodiscard]] constexpr u16_t                        type_variable_id()     const noexcept { assume_assert(type == TYPE_VARIABLE); return static_cast<u16_t>(aux_value); }
-  eden_always_inline [[nodiscard]] constexpr SymbolTable::Variable const& type_variable()        const noexcept { assume_assert(type == TYPE_VARIABLE); return *custom_type()->member_table()->getVariable(type_variable_id()); }
-
-  eden_always_inline [[nodiscard]] constexpr u64_t                        local_idx()            const noexcept { assume_assert(type == LOCAL); return value; }
-
-  eden_always_inline [[nodiscard]] constexpr i64_t                        int_value()            const noexcept { assert(eden::enumBetween(type, I8_LITERAL, I64_LITERAL)); return std::bit_cast<i64_t>(value); }
-  eden_always_inline [[nodiscard]] constexpr u64_t                        uint_value()           const noexcept { assert(eden::enumBetween(type, U8_LITERAL, U64_LITERAL)); return value; }
-  eden_always_inline [[nodiscard]] constexpr float                        float_value()          const noexcept { assume_assert(type == FLOAT_LITERAL); return std::bit_cast<float>(static_cast<u32_t>(value)); }
-  eden_always_inline [[nodiscard]] constexpr double                       double_value()         const noexcept { assume_assert(type == DOUBLE_LITERAL); return std::bit_cast<double>(value); }
-  eden_always_inline [[nodiscard]] constexpr bool                         bool_value()           const noexcept { assume_assert(type == BOOL_LITERAL); return value; }
-  eden_always_inline [[nodiscard]] constexpr char                         char_value()           const noexcept { assume_assert(type == CHAR_LITERAL); return static_cast<char>(value); }
-  eden_always_inline [[nodiscard]] constexpr std::string_view             string_value()         const noexcept { assume_assert(type == STRING_LITERAL); return {std::bit_cast<const char*>(value), aux_value}; }
-
-  eden_always_inline [[nodiscard]] constexpr ArrayType const*             array_type()           const noexcept { assume_assert(type == SUBSCRIPT); return std::bit_cast<ArrayType const*>(value); }
-
-  eden_always_inline [[nodiscard]] constexpr u64_t                        num_params()           const noexcept { assume_assert(type == CALL); return value; }
-  eden_always_inline [[nodiscard]] constexpr LOM::Type const*             dereference_type()     const noexcept { assume_assert(type == DEREFERENCE); return std::bit_cast<LOM::Type const*>(value); }
-  eden_always_inline [[nodiscard]] constexpr u64_t                        cast_assign_bitwidth() const noexcept { assume_assert(type == UCAST_ASSIGN or type == SCAST_ASSIGN); return value; }
-  eden_always_inline [[nodiscard]] constexpr LOM::Type const*             cast_type()            const noexcept { assert(eden::enumBetween(type, UCAST, PCAST)); return std::bit_cast<LOM::Type const*>(value); }
-
-  eden_always_inline [[nodiscard]] constexpr std::string_view             original_string() const noexcept { return {std::bit_cast<const char*>(value), aux_value}; }
+  eden_always_inline [[nodiscard]] constexpr std::string_view original_string(File file) const noexcept { return file.view_at(m.length_in_file, m.position_in_file); }
 };
 
 class Block {
@@ -223,8 +216,9 @@ struct Function {
 struct TU {
   std::vector<File> source_files;
   Module* module;
-  eden::swap_vector<Module*> imports;
+  std::vector<std::string_view> imports;
   std::vector<Function> functions;
+  std::string_view name;
 };
 
 void printPeep(TU const&);

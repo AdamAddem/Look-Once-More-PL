@@ -19,7 +19,7 @@ using namespace LOM::AST;
 
 namespace {
 
-[[nodiscard]] constexpr Instruction::Type
+[[nodiscard]] constexpr Instruction::InstructionType
 castForType(Type const* type) noexcept {
   switch (type->getDerivedType()) { using enum Type::DerivedType;
   case ERROR: return Instruction::UCAST;
@@ -96,7 +96,6 @@ class Peeper {
   TreeView nodes;
   FunctionType const* current_function_type;
 
-  eden::swap_vector<Module*> imports;
   std::vector<Type const*> locals;
   std::vector<Instruction> instructions;
   std::vector<Block> blocks;
@@ -135,32 +134,44 @@ class Peeper {
 
   eden_noinline_cold void error(auto err, std::string msg) noexcept { report_error(*current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
 
+  [[nodiscard]] static Instruction
+  newInstruction(Instruction::InstructionType type, ASTNode::CommonData data) noexcept {
+    return Instruction {
+      Instruction::CommonData {
+        .type = type,
+        .file_idx = data.file_idx,
+        .length_in_file = data.length_in_file,
+        .position_in_file = data.position_in_file
+      }
+    };
+  }
+
   ExpressionResult
   peepLiteral(ASTNode node) {
     switch (node.m.type) { using enum ASTNode::NodeType;
     case SIGNED_LITERAL:
-      instructions.emplace_back(Instruction::I8_LITERAL, std::bit_cast<u64_t>(node.signed_val())); // signed and unsigned sizes will be adjusted later
+      instructions.emplace_back(newInstruction(Instruction::I8_LITERAL, node.m));
       return {signedToLiteralInstance(node.signed_val()), node};
     case UNSIGNED_LITERAL:
-      instructions.emplace_back(Instruction::U8_LITERAL, node.unsigned_val());
+      instructions.emplace_back(newInstruction(Instruction::U8_LITERAL, node.m));
       return {unsignedToLiteralInstance(node.unsigned_val()), node};
     case FLOAT_LITERAL:
-      instructions.emplace_back(Instruction::FLOAT_LITERAL, static_cast<u64_t>(std::bit_cast<u32_t>(node.float_val())));
+      instructions.emplace_back(newInstruction(Instruction::FLOAT_LITERAL, node.m));
       return {f32_literal, node};
     case DOUBLE_LITERAL:
-      instructions.emplace_back(Instruction::DOUBLE_LITERAL, std::bit_cast<u64_t>(node.double_val()));
+      instructions.emplace_back(newInstruction(Instruction::DOUBLE_LITERAL, node.m));
       return {f64_literal, node};
     case BOOL_LITERAL:
-      instructions.emplace_back(Instruction::BOOL_LITERAL, static_cast<u64_t>(node.bool_val()));
+      instructions.emplace_back(newInstruction(Instruction::BOOL_LITERAL, node.m));
       return {bool_literal, node};
     case CHAR_LITERAL:
-      instructions.emplace_back(Instruction::CHAR_LITERAL, static_cast<u64_t>(node.char_val()));
+      instructions.emplace_back(newInstruction(Instruction::CHAR_LITERAL, node.m));
       return {char_literal, node};
     case STRING_LITERAL:
-      instructions.emplace_back(Instruction::STRING_LITERAL, node.string_val(*current_file));
+      instructions.emplace_back(newInstruction(Instruction::STRING_LITERAL, node.m));
       return {string_literal, node};
     case ESCAPED_STRING_LITERAL:
-      instructions.emplace_back(Instruction::ESCAPED_STRING_LITERAL, node.string_val(*current_file));
+      instructions.emplace_back(newInstruction(Instruction::ESCAPED_STRING_LITERAL, node.m));
       return {string_literal, node};
     default: eden_unreachable("Invalid literal type.");
     }
@@ -172,14 +183,12 @@ class Peeper {
     instructions.emplace_back(Instruction::NOOP, 0).~Instruction(); // doing this to reuse the constructor
 
     if (nodes.peek().m.type == ASTNode::IDENTIFIER) {
-      static constexpr auto module_search_predicate = [](const Module* element, std::string_view name) { return element->nameof() == name; };
-
-      auto const possible_module = imports.search(module_search_predicate, nodes.peek().identifier_val(*current_file));
+      auto const possible_module = getModule(nodes.peek().identifier_val(*current_file));
       if (possible_module == nullptr) goto not_module;
       nodes.pop();
 
       auto const member_access_instruction = &instructions[member_access_idx];
-      auto const other_module = *possible_module;
+      auto const other_module = possible_module;
 
       auto const member_node = nodes.take();
       auto const member_name = std::string_view(member_node.identifier_val(*current_file));
@@ -273,7 +282,7 @@ class Peeper {
     res.length_in_file = data.length_in_file;
     res.position_in_file = data.position_in_file;
 
-    bool const valid = is_array & is_unsigned;
+    bool const valid = is_array && is_unsigned;
     if (not valid) {
       res.type = Type::devoid();
       res.qualifiers = Type::Qualifiers{};
@@ -884,12 +893,11 @@ class Peeper {
 public:
 
   // peeps parsed_functions and fills peeped_tu.functions
+  // returns whether an error occurted
   [[nodiscard]] static bool
   peepFunctions(TU& peep_tu, std::vector<Parser::Function> const& parsed_functions) {
     Peeper peeper;
     peeper.module = peep_tu.module;
-    peeper.imports = std::move(peep_tu.imports);
-
     for (auto const& func : parsed_functions) {
       auto const function_type = peep_tu.module->enterFunctionScope(func.nameof());
       peeper.current_file = &peep_tu.source_files[func.file_idx];
@@ -916,7 +924,6 @@ public:
         });
     }
 
-    peep_tu.imports = std::move(peeper.imports);
     return peeper.has_error;
   }
 
@@ -1078,12 +1085,9 @@ bool PeepIR::lowerToPeep(TU& tu, Parser::TU&& parsed_tu) {
 
   tu.source_files = std::move(parsed_tu.source_files);
   tu.module = parsed_tu.module;
+  tu.imports = std::move(parsed_tu.imports);
   tu.functions.reserve(parsed_tu.functions.size());
-
-  tu.imports.reserve(parsed_tu.imports.size() + 1);
-  tu.imports.emplace_back(getModule("__C"));
-  for (auto const import_name : parsed_tu.imports)
-    tu.imports.emplace_back(getModule(import_name));
+  tu.name = parsed_tu.name;
 
   bool const has_error = Peeper::peepFunctions(tu, parsed_tu.functions);
 #ifdef STAGE_BENCHMARKS

@@ -123,38 +123,33 @@ struct ASTNode {
   static_assert(sizeof(QualifiedType) == 16);
   union {
     CommonData m;
-
-    DeclarationData declaration_data;
-    IfData if_data;
-    WhileData while_data;
-    ReturnData return_data;
-
-    MemberAccessData member_access_data;
-    UnaryData unary_data;
-    BinaryData binary_data;
-    CallingData calling_data;
-    CastData cast_data;
-    SubscriptData subscript_data;
-
-    IdentifierData identifier_data;
-    StringData string_literal_data;
-
-    SignedData signed_data;
-    UnsignedData unsigned_data;
-    FloatData float_data;
-    DoubleData double_data;
-    BoolData bool_data;
-    CharData char_data;
-
-    QualifiedType declaration_inst_type;
+    DeclarationData   declaration_data;
+    IfData            if_data;
+    WhileData         while_data;
+    ReturnData        return_data;
+    MemberAccessData  member_access_data;
+    UnaryData         unary_data;
+    BinaryData        binary_data;
+    CallingData       calling_data;
+    CastData          cast_data;
+    SubscriptData     subscript_data;
+    IdentifierData    identifier_data;
+    StringData        string_literal_data;
+    SignedData        signed_data;
+    UnsignedData      unsigned_data;
+    FloatData         float_data;
+    DoubleData        double_data;
+    BoolData          bool_data;
+    CharData          char_data;
+    QualifiedType     declaration_inst_type;
   };
 
   // data is purposefully uninitialized here to prevent the expression tree initializing every node when it doesn't need to
   constexpr ASTNode() noexcept {}
 
   // does not initialize anything but type and file idx
-  constexpr explicit ASTNode(NodeType type, u8_t file_idx) { m.type = type; m.file_idx = file_idx; }
-  constexpr explicit ASTNode(CommonData data) : m(data) {}
+  explicit constexpr ASTNode(NodeType type, u8_t file_idx) { m.type = type; m.file_idx = file_idx; }
+  explicit constexpr ASTNode(CommonData data) : m(data) {}
 
   [[nodiscard]] constexpr Type::Qualifiers declaration_qualifiers()          const noexcept { assume_assert(m.type == DECLARATION); return declaration_data.qualifiers; }
   [[nodiscard]] constexpr bool             declaration_has_init()            const noexcept { assume_assert(m.type == DECLARATION); return declaration_data.has_init; }

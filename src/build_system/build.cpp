@@ -16,15 +16,16 @@ namespace fs = std::filesystem;
 
 static TypeContext types;
 static std::unordered_map<std::string_view, Module> modules;
-static Module main_module("", &types);
+static Module main_module(&types);
 static const fs::path src_path{"src"};
 static const fs::path extern_path{"extern"};
 
+// returns nullptr if not found
 [[nodiscard]] Module*
 LOM::getModule(std::string_view name) {
-  if (not modules.contains(name))
-    throw std::runtime_error("Module name not found!");
-  return &modules.at(name);
+  auto const iter = modules.find(name);
+  if (iter == modules.end()) return nullptr;
+  return &iter->second;
 }
 
 #ifdef PROFILE
@@ -135,8 +136,8 @@ lex_and_parse_module(Parser::TU& tu, fs::path const& directory)  {
     auto const n = directory.filename().native().size() + 1; // this is so stupid i hate this language
     auto const module_name = new char[n]; // TODO: fix purposeful memory leak
     std::strcpy(module_name, directory.filename().c_str());
-    std::string_view const key_view(module_name, n-1);
-    auto const module_ptr = &modules.emplace(std::pair(key_view, Module{key_view, &types})).first->second;
+    tu.name = {module_name, n-1};
+    auto const module_ptr = &modules.emplace(std::pair(tu.name, Module{&types})).first->second;
     tu.module = module_ptr;
   }
 
@@ -164,7 +165,7 @@ void LOM::build() {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
-  modules.emplace(std::pair(std::string_view("__C"), Module{"__C", &types}));
+  modules.emplace(std::pair(std::string_view("__C"), Module{&types}));
 
   std::vector<Parser::TU> parsed_tus;   parsed_tus.reserve(4);
   std::vector<fs::path> module_paths; module_paths.reserve(4);

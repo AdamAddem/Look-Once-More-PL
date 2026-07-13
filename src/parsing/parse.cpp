@@ -826,9 +826,8 @@ void parseImport() noexcept { pre
   }
 
   auto name = name_token.originalString(current_file);
-  if (tu.module->nameof() == name) {
+  if (tu.name == name)
     error(name_token, "Cannot import from current module.");
-  }
   else
     tu.imports.emplace_back(name);
 
@@ -977,6 +976,8 @@ bool Parser::parseTokens(TU& tu, std::vector<Token>& token_list) noexcept {
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
+  tu.imports.reserve(2);
+  tu.imports.emplace_back("__C");
   auto const has_errors = ParserBody::parse(tu, token_list);
 
 #ifdef STAGE_BENCHMARKS

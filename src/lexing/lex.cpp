@@ -36,6 +36,7 @@ struct Tokenizer {
   eden_always_inline [[nodiscard]] char peek() const noexcept { return file.get_text()[current_position]; }
   eden_always_inline [[nodiscard]] char peek_ahead(sz_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
   eden_always_inline [[nodiscard]] char take() noexcept { return file.get_text()[current_position++]; }
+  eden_always_inline [[nodiscard]] char previous() const noexcept { return file.get_text()[current_position - 1]; }
   eden_always_inline               void pop() noexcept { ++current_position; }
   eden_always_inline               void undo() noexcept { --current_position; }
 
@@ -132,12 +133,18 @@ struct Tokenizer {
     case '@': type = ADDR; break;
     case '&': type = AMPERSAND; break;
     case ',': type = COMMA; break;
-    case '.': type = DOT; break;
     case ':': type = COLON; break;
     case '$': type = DOLLAR; break;
     case ';': type = SEMI_COLON; break;
     case '\"': return grabStringLiteral();
     case '\'': return grabCharLiteral();
+
+    case '.': {
+      type = DOT;
+      if (not isalnum(previous()) or not isalnum(peeked))
+        error_at_currentpos("Dot operator may not have any space between the preceeding and following expressions. first.second is fine, first. second or first .second is not (Sorry!).");
+      break;
+    }
 
     default:
       type = INVALID_TOKEN;
@@ -245,6 +252,11 @@ bool Lexer::tokenizeFile(std::vector<Token>& out_tokens, File file) {
 #endif
 
   Tokenizer tokenizer{out_tokens, file};
+
+  if (tokenizer.peek() == '.') {
+    tokenizer.error_at_currentpos("File may not start with . for very esoteric reasons.");
+    ++tokenizer.current_position;
+  }
 
   while (true) {
     tokenizer.skipWS();

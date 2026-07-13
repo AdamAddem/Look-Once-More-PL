@@ -30,6 +30,7 @@ struct TU {
   Module* module;
   std::vector<std::string_view> imports;
   std::vector<Function> functions;
+  std::string_view name;
 };
 
 void printTU(TU const&) noexcept;

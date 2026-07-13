@@ -5,6 +5,6 @@
 namespace LOM {
 inline constexpr auto SYMBOL_TABLE_SIZE = 48uz;
 inline constexpr auto SYMBOL_TABLE_ALIGNMENT = 8uz;
-inline constexpr auto MODULE_SIZE = 72uz;
+inline constexpr auto MODULE_SIZE = 56uz;
 inline constexpr auto MODULE_ALIGNMENT = 8uz;
 }

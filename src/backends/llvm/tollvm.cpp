@@ -272,10 +272,10 @@ class Lowerer final {
   { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value); }
 
   [[nodiscard]] llvm::Value*
-  genUnary(PeepIR::Instruction::Type type) noexcept {
+  genUnary(PeepIR::Instruction::InstructionType type) noexcept {
     llvm::Value* res{};
     switch (type) {
-    using enum PeepIR::Instruction::Type;
+    using enum PeepIR::Instruction::InstructionType;
     case PRE_INC: {
       auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
       auto const var_type = var->getAllocatedType();
@@ -358,11 +358,11 @@ class Lowerer final {
   }
 
   [[nodiscard]] llvm::Value*
-  genBinary(PeepIR::Instruction::Type type) noexcept {
+  genBinary(PeepIR::Instruction::InstructionType type) noexcept {
     auto const left = genValueExpression();
     auto const right = genValueExpression();
 
-    switch (type) { using enum PeepIR::Instruction::Type;
+    switch (type) { using enum PeepIR::Instruction::InstructionType;
     case ADD: return builder.CreateAdd(left, right);
     case FADD: return builder.CreateFAdd(left, right);
     case SUB: return builder.CreateSub(left, right);
@@ -416,11 +416,11 @@ class Lowerer final {
   }
 
   [[nodiscard]] llvm::Value*
-  genAssign(PeepIR::Instruction::Type type, u64_t bitwidth = 0) noexcept {
+  genAssign(PeepIR::Instruction::InstructionType type, u64_t bitwidth = 0) noexcept {
     auto const left = genRefExpression();
     llvm::Value* right;
     switch (type) {
-      using enum PeepIR::Instruction::Type;
+      using enum PeepIR::Instruction::InstructionType;
     case ASSIGN:
       right = genValueExpression();
       break;
@@ -442,7 +442,7 @@ class Lowerer final {
   genValueExpression() noexcept { // only relevant for that which can be used by value, with the addition of functions
     auto const& instruction = instructions[instruction_idx++];
     switch (instruction.type) {
-      using enum PeepIR::Instruction::Type;
+      using enum PeepIR::Instruction::InstructionType;
     case NOOP:
       return nullptr;
     case FUNCTION: {
@@ -459,21 +459,21 @@ class Lowerer final {
     case TYPE_VARIABLE: {
       auto const type = instruction.custom_type();
       auto const id = instruction.type_variable_id();
-      auto const& member = type->member_table()->getVariable(id);
+      auto const member = type->member_table()->getVariable(id); assume_assert(member);
       auto const member_ptr = builder.CreateStructGEP(translateType(type), genRefExpression(), id);
       return builder.CreateLoad(translateType(member->type.type), member_ptr);
     }
     case MODULE_FUNCTION:
       return getFunctionImport(instruction.module(), instruction.module_function_id());
 
-    case I8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.value, true);
-    case I16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.value, true);
-    case I32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.value, true);
-    case I64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.value, true);
-    case U8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.value);
-    case U16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.value);
-    case U32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.value);
-    case U64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.value);
+    case I8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.signed_literal_data.value, true);
+    case I16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.signed_literal_data.value, true);
+    case I32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.signed_literal_data.value, true);
+    case I64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.signed_literal_data.value, true);
+    case U8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.unsigned_literal_data.value);
+    case U16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.unsigned_literal_data.value);
+    case U32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.unsigned_literal_data.value);
+    case U64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.unsigned_literal_data.value);
     case FLOAT_LITERAL:           return llvm::ConstantFP::get(f32, instruction.float_value());
     case DOUBLE_LITERAL:          return llvm::ConstantFP::get(f64, instruction.double_value());
     case BOOL_LITERAL:            return instruction.bool_value() ? bool_true : bool_false;
@@ -577,7 +577,7 @@ class Lowerer final {
   genRefExpression() noexcept { // only relevant for that which can be referenced
     auto const& instruction = instructions[instruction_idx++];
     switch (instruction.type) {
-    using enum PeepIR::Instruction::Type;
+    using enum PeepIR::Instruction::InstructionType;
     case FUNCTION: {
       auto const function = tu->module.getFunction(instruction.function_name()); assert(function);
       return function;
@@ -750,7 +750,7 @@ public:
   void lowerToLLVM(PeepIR::TU& tu) {
     // All of this is so stupid
     char buff[256];
-    auto const module_name = tu.module->nameof();
+    auto const module_name = tu.name;
     auto i{0uz};
     if (not module_name.empty()) {
       for (auto const c : module_name) {

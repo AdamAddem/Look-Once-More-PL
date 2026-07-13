@@ -8,24 +8,33 @@ I want to prioritize improvements to the language over all else without being he
 Compilation speed is also a priority.
 
 ### Features of Look Once More (Subject to Change)
-* Improved defaults
+* Improved defaults, readonly/readwrite semantics
     ```
-    i32 const_num = 5;  
-    $i32 mutable_num = 4;
+    ro_num: i32 = 5; # (const int equivalent)
+    rw_num$ i32 = 4; # (int equivalent)
     
-    $f32 uninitialized = junk;     # explicit junk initialization required
-    $f32 not_allowed;              # error
-    f32 const_not_allowed = junk;  # error
-* Simple, intuitive pointer syntax
+    uninitialized$  f32 = junk;   # explicit junk initialization required
+    not_allowed:    f32;          # error
+    ro_not_allowed: f32 = junk;   # error, readonly variable may not be junk initialized
+  
+    # All struct members are public
+    # All members may be modified through Foo's methods if the instance is readwrite
+    struct Foo {
+        a: i32,
+        b$ i32      # readwrite members may be modified outside the class through a readwrite instance of Foo.
+    }
+
+* Simple and explicit pointer / reference syntax
     ```
-    # Pointer declarations are simply read left to right
-    raw i32 x = null;              # Raw pointer to an integer
-    vague $ z = null;              # Pointer to anything mutable (void* equivalent)
+    # References are pointers
+    x: raw i32 = ...;  # Raw keyword denotes a pointer to readwrite variable (int* const equivalent)
+    y: ref i32 = ...;  # Ref keyword denotes a pointer to readonly variable  (const int* const equivalent)
     
     # Uniform dereference syntax
-    raw $Rectangle p = @my_rect;   # GenZ address-of operator (don't @ me bro)
-    p->length = 2;                 # Dereference to access member
-    p-> = getSquare();             # Dereference to access object (*p equivalent)
+    raw_rect: raw Rectangle = @my_rect;   # GenZ address-of operator produces a pointer to readwrite variable (if possible)
+    ref_rect: ref Rectangle = &my_rect;   # Ampersand operator produces a pointer to readonly variable
+    raw_rect->length = 2;                 # Dereference to access member
+    raw_rect-> = getSquare();             # Dereference to access object (*raw_rect equivalent)
 * Native variant, tuple, and nullable types (planned)
     ```
     <string, u32> name_or_id = 5;
@@ -40,12 +49,12 @@ Compilation speed is also a priority.
        Global variables must be initialized at compile time.
     }#
 
-    global $i32 x = junk;    # error
-    global $f32 y = 4.0f;
+    global x$ i32 = junk;    # error
+    global y$ f32 = 4.0f;
   
-    foo() {...}  
+    foo() {...}
     
-    global i32 too_late = 5; # error
+    global too_late: i32 = 5; # error
 * Strong typing and simple promotion rules
     ```
     #{
@@ -53,7 +62,7 @@ Compilation speed is also a priority.
        With the exception of unsigned conversions where the other type is of greater size.
     }#
   
-    $i8 signed_8 = 0; $u8 unsigned_8 = 0; $i32 signed_32 = 0; $u32 unsigned_32 = 0;
+    signed_8$ i8 = 0; unsigned_8$ u8 = 0; signed_32$ i32 = 0; unsigned_32$ u32 = 0;
     unsigned_32 = signed_8;   # error
     unsigned_32 = unsigned_8;
     signed_32 = unsigned_8;
@@ -61,7 +70,7 @@ Compilation speed is also a priority.
   
     # Cast operator with prefix precedence
     unsigned_32 = cast<u32> signed_8;
-    f32 res = cast<f32> (signed_8 + 3);
+    res: f32 = cast<f32> (signed_8 + 3);
 * An actual module system (100% adoption rate)
     ```
     import whatever;

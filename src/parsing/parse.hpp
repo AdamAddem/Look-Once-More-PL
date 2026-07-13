@@ -38,6 +38,4 @@ void printTU(TU const&) noexcept;
 [[nodiscard]] bool
 parseTokens(TU& tu, std::vector<Lexer::Token>& tokens) noexcept;
 
-inline constexpr bool STRUCT_MEMBERS_START_PUBLIC = true;
-
 } // namespace Parser

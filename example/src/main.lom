@@ -1,14 +1,6 @@
-__C printf(raw char fmt, __va) i32;
-
-fib(i32 n) i32 {
-
-}
+__C printf(fmt: ref u8, __va);
 
 pub main() i32 {
     __C.printf("Hello, World!\n");
-
-    n: $i32 = 3;
-    ++n;
-
-    return n;
+    return 0;
 }

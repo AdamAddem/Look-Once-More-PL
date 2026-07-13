@@ -34,25 +34,13 @@ enum class Operator : u8_t {
   PRE_DECREMENT,
   UNARY_MINUS,
   ADDRESS_OF,
+  REF_TO,
   BITNOT,
   NOT,
   POST_INCREMENT,
   POST_DECREMENT,
   ARROW,
   DOT,
-};
-
-inline const std::unordered_map<std::string, Operator> stringToOperator{
-	  {"+", Operator::ADD}, {"-", Operator::SUBTRACT}, {"*", Operator::MULTIPLY},
-          {"/", Operator::DIVIDE}, {"%", Operator::MODULUS}, {"=", Operator::ASSIGN},
-          {"<", Operator::LESS}, {">", Operator::GREATER}, {"<=", Operator::LESS_EQUAL},
-          {">=", Operator::GREATER_EQUAL}, {"and", Operator::AND}, {"or", Operator::OR},
-          {"xor", Operator::XOR}, {"bitand", Operator::BITAND}, {"bitor", Operator::BITOR},
-          {"bitxor", Operator::BITXOR}, {"eq", Operator::EQUAL}, {"not_eq", Operator::NOT_EQUAL},
-          {"++", Operator::PRE_INCREMENT}, {"--", Operator::PRE_DECREMENT}, {"-", Operator::UNARY_MINUS},
-          {"@", Operator::ADDRESS_OF}, {"bitnot", Operator::BITNOT}, {"not", Operator::NOT},
-          {"++", Operator::POST_INCREMENT}, {"--", Operator::POST_DECREMENT}, {"->", Operator::ARROW},
-          {".", Operator::DOT}
 };
 
 constexpr const char* operatorToString(const Operator e) {
@@ -64,18 +52,11 @@ constexpr const char* operatorToString(const Operator e) {
     "xor","bitand","bitor",
     "bitxor","eq","not_eq",
     "++","--","-",
-    "@","bitnot","not",
+    "@", "&", "bitnot","not",
     "++","--","->", "."
 };
   return toString[std::to_underlying(e)];
 }
-constexpr bool isCategoryBINARY_OPS(const Operator e) { return std::to_underlying(e) < 18; }
-constexpr bool isCategoryPREFIX_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 24; }
-constexpr bool isCategoryPOSTFIX_OPS(const Operator e) { return std::to_underlying(e) >= 24 && std::to_underlying(e) < 28; }
-constexpr bool isCategoryUNARY_OPS(const Operator e) { return std::to_underlying(e) >= 18 && std::to_underlying(e) < 28; }
-
-// raylib.Camera y = 2;
-// y: raylib.Camera = 2;
 
 // TODO: Overengineer more.
 struct ASTNode {

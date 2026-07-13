@@ -102,11 +102,12 @@ protected:
 
   static constexpr auto name_search = [] (auto const& e, std::string_view key) static { return e.nameof() == key; };
   static constexpr auto id_search = [] (auto const& e, u16_t id) static { return e.id == id; };
-  static constexpr auto swapvec_settings = eden::swap_vector_settings<4, true>{};
 
   // marked mutable because searches need to be possible from a const*, but searches will modify
-  mutable eden::swap_vector<Variable, swapvec_settings> variables;
-  mutable eden::swap_vector<Function, swapvec_settings> functions;
+  mutable eden::swap_vector<Variable> variables;
+
+  // function vector preserves backmost element, which is the function currently being parsed
+  mutable eden::swap_vector<Function, eden::swap_vector_settings<4, true>{}> functions;
 
   // returns nullptr if non-existent.
   template<class T>
@@ -224,12 +225,12 @@ public:
   { return std::string_view(name, name_len); }
 
   eden_always_inline [[nodiscard]] PointerType const*
-  getRawPointerType(QualifiedType subtype) const noexcept
+  getRawPointerType(Type const* subtype) const noexcept
   { return types->addRawPointer(subtype); }
 
   eden_always_inline [[nodiscard]] PointerType const*
-  getUniquePointerType(QualifiedType subtype) const noexcept
-  { return types->addUniquePointer(subtype); }
+  getRefPointerType(Type const* subtype) const noexcept
+  { return types->addRefPointer(subtype); }
 
   eden_always_inline [[nodiscard]] ArrayType const*
   getArrayType(u64_t array_size, Type const* subtype) const noexcept

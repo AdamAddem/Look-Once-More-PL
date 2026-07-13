@@ -27,14 +27,14 @@ enum class Args {
 };
 
 const std::unordered_map<std::string_view, Args> stringToArgs{
-	       {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
+	      {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
               {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
               {"-o", Args::EXECUTABLE_NAME},{"build", Args::BUILD},
               {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2}, {"-O3", Args::O3},
 };
 
 constexpr std::string_view hello_world = {
-  "__C puts(raw char str) i32;"
+  "__C puts(str: ref u8) i32;"
   "\npub main() i32 {"
   "\n\t__C.puts(\"Hello, World!\");"
   "\n\treturn 0;"

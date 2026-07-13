@@ -36,8 +36,14 @@ tokentype.hpp TokenType LOM::Lexer u8_t
     LESSEQ <=
     GTREQ >=
     SEMI_COLON ;
+
+!BEGIN VAR_QUALIFIERS
     COLON :
+    DOLLAR $
+!END VAR_QUALIFIERS
+
     ADDR @
+    AMPERSAND &
     COMMA ,
     DOT .
 !END SYMBOLS
@@ -72,17 +78,12 @@ tokentype.hpp TokenType LOM::Lexer u8_t
     KEYWORD_STRING string
     KEYWORD_BOOL bool
     KEYWORD_DEVOID !
-!BEGIN POINTERS
-    KEYWORD_RAW raw
-    KEYWORD_UNIQUE unique
-    KEYWORD_VAGUE vague
-!END POINTERS
-
 !END PRIMITIVES
 
-!BEGIN TYPE_QUALIFIERS
-    KEYWORD_MUT mut
-!END TYPE_QUALIFIERS
+!BEGIN POINTERS
+    KEYWORD_RAW raw
+    KEYWORD_REF ref
+!END POINTERS
 
     KEYWORD_IF if
     KEYWORD_ELSE else

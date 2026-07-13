@@ -190,8 +190,8 @@ void LOM::build() {
     module_paths.emplace_back("main.lom");
     parsed_tus.emplace_back(std::move(main_tu));
   }
-  if (has_error) std::quick_exit(1);
-  if (Settings::do_output_parser) return print_parser(parsed_tus, module_paths);
+  if (has_error) { if (comp_extern.joinable()) comp_extern.join(); std::quick_exit(1); }
+  if (Settings::do_output_parser) { print_parser(parsed_tus, module_paths); if (comp_extern.joinable()) comp_extern.join(); return; }
 
 
   std::vector<PeepIR::TU> peeped_tus; peeped_tus.reserve(parsed_tus.size());
@@ -200,8 +200,9 @@ void LOM::build() {
     auto const error = PeepIR::lowerToPeep(tu, std::move(parsed_tu));
     if (error) print_peep_errors(tu), has_error = true;
   }
-  if (has_error) std::quick_exit(1);
-  if (Settings::do_output_peep) return print_peep(peeped_tus, module_paths);
+
+  if (has_error) { if (comp_extern.joinable()) comp_extern.join(); std::quick_exit(1); }
+  if (Settings::do_output_peep) { print_peep(peeped_tus, module_paths); if (comp_extern.joinable()) comp_extern.join(); return; }
 
   std::vector<std::unique_ptr<Backend>> compiled_tus; peeped_tus.reserve(parsed_tus.size());
   for (auto i{0uz}; i<peeped_tus.size(); ++i) {

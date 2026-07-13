@@ -130,11 +130,12 @@ struct Tokenizer {
     case '[': type = LBRACKET; break;
     case ']': type = RBRACKET; break;
     case '@': type = ADDR; break;
+    case '&': type = AMPERSAND; break;
     case ',': type = COMMA; break;
     case '.': type = DOT; break;
     case ':': type = COLON; break;
+    case '$': type = DOLLAR; break;
     case ';': type = SEMI_COLON; break;
-    case '$': type = KEYWORD_MUT; break;
     case '\"': return grabStringLiteral();
     case '\'': return grabCharLiteral();
 

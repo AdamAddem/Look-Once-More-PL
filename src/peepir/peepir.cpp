@@ -215,11 +215,14 @@ class Peeper {
 
     if (auto const member_variable = member_table->getPublicVariable(identifier)) {
       assert(member_variable->get_id() not_eq SymbolTable::INVALID_ID);
-
       new (member_access_instruction) Instruction(Instruction::TYPE_VARIABLE, custom_type, member_variable->get_id());
-      return{
-        {member_variable->type.type, object_expression.qualifiers}, // use the member's type and the object's qualifiers, member shouldn't have qualifiers regardless
-        data.length_in_file, data.position_in_file};
+
+      auto member_qualifiers = member_variable->type.qualifiers;
+      if (not object_expression.qualifiers.writable) member_qualifiers.writable = false;
+      return {
+        {member_variable->type.type, member_qualifiers},
+        data.length_in_file, data.position_in_file
+      };
     }
 
     if (auto const member_function = member_table->getPublicFunction(identifier)) {
@@ -228,7 +231,6 @@ class Peeper {
     }
 
     new (member_access_instruction) Instruction(Instruction::UCAST, 0); // this is only here to avoid the UB from double destruction once this returns
-
     error(identifier_node.m,"Identifier is not a public member of type.");
     return {error_literal, identifier_node};
   }
@@ -349,7 +351,7 @@ class Peeper {
 
       if (given_parameter.type not_eq function_parameter_type) {
         if (not given_parameter.type->coercibleTo(function_parameter_type)) {
-          error(given_parameter, std::format("Cannot convert parameter of type {} to type {}.", given_parameter.type->toString(), function_parameter_type->toString()));
+          error(given_parameter, std::format("Cannot coerce parameter of type '{}' to type '{}'.", given_parameter.type->toString(), function_parameter_type->toString()));
           return {error_literal, given_parameter.length_in_file, given_parameter.position_in_file};
         }
 
@@ -410,7 +412,7 @@ class Peeper {
         break;
       }
 
-      left.qualifiers.is_mutable = false;
+      left.qualifiers.writable = false;
       break;
 
     case Operator::LESS:
@@ -447,11 +449,11 @@ class Peeper {
         break;
       }
 
-      left.qualifiers.is_mutable = false;
+      left.qualifiers.writable = false;
       break;
 
     case Operator::ASSIGN:
-      if (not left.qualifiers.is_mutable) {
+      if (not left.qualifiers.writable) {
         error(data, "Left expression in assignment non-mutable.");
         left = {error_literal, data.length_in_file, data.position_in_file};
       }
@@ -544,12 +546,6 @@ class Peeper {
 
   ExpressionResult
   peepUnaryExpression(ASTNode::UnaryData data) {
-    if (data.opr == Operator::ADDRESS_OF) {
-      instructions.emplace_back(Instruction::ADDRESS_OF, 0);
-      auto const addressed = peepExpression();
-      return {{module->getRawPointerType(addressed.instantiated_type()), {}}, data.length_in_file, data.position_in_file };
-    }
-
     auto const instruction_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP, 0);
 
@@ -557,50 +553,62 @@ class Peeper {
     const bool float_opr = expression.type->isFloating();
     const bool arithmetic = expression.type->isArithmetic();
     switch (data.opr) {
+    case Operator::ADDRESS_OF:
+      if (not expression.qualifiers.writable)
+        error(expression, "Address-of (@) operator used on readonly expression.");
+      expression.type = module->getRawPointerType(expression.type);
+      expression.qualifiers.writable = false;
+      break;
+
+    case Operator::REF_TO:
+      expression.type = module->getRefPointerType(expression.type);
+      expression.qualifiers.writable = false;
+      break;
+
     case Operator::PRE_INCREMENT:
     case Operator::PRE_DECREMENT:
-      if (not expression.qualifiers.is_mutable) {
-        error(expression, "Prefix operator used on non-mutable expression.");
-        expression = {error_literal, expression.length_in_file, expression.position_in_file};
+      if (not expression.qualifiers.writable) {
+        error(expression, "Prefix operator used on readonly expression.");
+        expression.type = Type::error();
       }
       break;
     case Operator::UNARY_MINUS:
       if (not arithmetic) {
         error(expression, "Unary minus used on non-arithmetic expression.");
-        expression = {error_literal, expression.length_in_file, expression.position_in_file};
+        expression.type = Type::error();
         break;
       }
-      expression.qualifiers.is_mutable = false;
+      expression.qualifiers.writable = false;
       break;
     case Operator::BITNOT:
       if (not arithmetic) {
         error(expression, "bitnot operator used non-arithmetic expression.");
-        expression = {error_literal, expression.length_in_file, expression.position_in_file};
+        expression.type = Type::error();
         break;
       }
-      expression.qualifiers.is_mutable = false;
+      expression.qualifiers.writable = false;
       break;
     case Operator::NOT:
       if (not expression.type->isBool()) {
         error(expression, "not operator used on non-boolean expression.");
-        expression = {error_literal, expression.length_in_file, expression.position_in_file};
+        expression.type = Type::error();
         break;
       }
-      expression.qualifiers.is_mutable = false;
+      expression.qualifiers.writable = false;
       break;
     case Operator::POST_INCREMENT:
     case Operator::POST_DECREMENT:
-      if (not expression.qualifiers.is_mutable) {
+      if (not expression.qualifiers.writable) {
         error(expression, "Postfix decrement operator used on non-mutable expression.");
-        expression = {error_literal, expression.length_in_file, expression.position_in_file};
+        expression.type = Type::error();
         break;
       }
-      expression.qualifiers.is_mutable = false;
+      expression.qualifiers.writable = false;
       break;
     case Operator::ARROW:
       if (not expression.type->isPointer()) {
         error(expression, "Arrow operator used on non-pointer type.");
-        expression = {error_literal, expression.length_in_file, expression.position_in_file};
+        expression.type = Type::error();
         break;
       }
 
@@ -612,6 +620,10 @@ class Peeper {
 
     auto& instruction = instructions[instruction_idx];
     switch (data.opr) {
+    case Operator::ADDRESS_OF:
+    case Operator::REF_TO:
+      instruction.type = Instruction::ADDRESS_OF;
+      return expression;
     case Operator::PRE_INCREMENT:
       instruction.type = float_opr ? Instruction::FPRE_INC : Instruction::PRE_INC;
       return expression;

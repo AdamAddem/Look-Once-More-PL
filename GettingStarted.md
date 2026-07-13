@@ -37,10 +37,10 @@ Any errors occuring during parsing will prevent all other modules from entering 
 ### C Interop
 Calling C functions can be done using the '__C' keyword. <br>
 You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration. <br>
-Ex: `__C puts(raw char str) i32;` <br>
+Ex: `__C puts(str: raw u8) i32;` <br>
 This will place the function as part of the internal '__C' module, and as such only one declaration can be present throughout the entire program. <br>
 If variadic arguments are needed, use the '__va' keyword as the last parameter. <br>
-Ex: `__C printf(raw char fmt, __va) i32;` <br>
+Ex: `__C printf(fmt: raw u8, __va) i32;` <br>
 Calling these functions can be done as if through the '__C' module, which is imported by default. <br>
 C Interop using structs or arrays is untested and probably won't function as expected. I'm working on it. <br>
 

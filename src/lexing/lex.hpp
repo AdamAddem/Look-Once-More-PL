@@ -71,7 +71,7 @@ struct Token {
 
   [[nodiscard]] constexpr std::string_view
   getString(File const& file) const noexcept {
-    assume_assert(type == TokenType::STRING_LITERAL or type == TokenType::IDENTIFIER);
+    assume_assert(type == TokenType::STRING_LITERAL);
     return file.view_at(length, position);
   }
 
@@ -80,13 +80,13 @@ struct Token {
   { return file.view_at(length, position); }
 
   eden_always_inline [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept { return type == token_type; }
-  eden_always_inline [[nodiscard]] constexpr bool isIdentifier() const noexcept           { return type == TokenType::IDENTIFIER; }
-  eden_always_inline [[nodiscard]] constexpr bool isPrimitive() const noexcept            { return isCategoryPRIMITIVES(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isLiteral() const noexcept              { return isCategoryLITERALS(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isNumericLiteral() const noexcept       { return isCategoryNUMERIC_LITERALS(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isPointer() const noexcept              { return isCategoryPOINTERS(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isTypeQualifier() const noexcept        { return isCategoryTYPE_QUALIFIERS(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isInvalid() const noexcept              { return type == TokenType::INVALID_TOKEN; }
+  eden_always_inline [[nodiscard]] constexpr bool isIdentifier()           const noexcept { return type == TokenType::IDENTIFIER; }
+  eden_always_inline [[nodiscard]] constexpr bool isPrimitive()            const noexcept { return isCategoryPRIMITIVES(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isLiteral()              const noexcept { return isCategoryLITERALS(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isNumericLiteral()       const noexcept { return isCategoryNUMERIC_LITERALS(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isPointer()              const noexcept { return isCategoryPOINTERS(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isVarQualifier()         const noexcept { return isCategoryVAR_QUALIFIERS(type); }
+  eden_always_inline [[nodiscard]] constexpr bool isInvalid()              const noexcept { return type == TokenType::INVALID_TOKEN; }
 
 };
 

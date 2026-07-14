@@ -1,8 +1,8 @@
 #pragma once
 #include "edenlib/typedefs.hpp"
+#include "semantic_analysis/symbol_table.hpp"
 #include "error.hpp"
 #include "file.hpp"
-#include "semantic_analysis/symbol_table.hpp"
 
 namespace LOM::Parser {
 struct TU;
@@ -35,7 +35,7 @@ struct Instruction {
 
     MODULE_GLOBAL,
     MODULE_FUNCTION,
-    TYPE_VARIABLE,      // value is CustomType const*, aux_value is order of variable in type
+    TYPE_VARIABLE,
 
     LOCAL,
 
@@ -74,7 +74,7 @@ struct Instruction {
     UCAST, SCAST, FCAST, PCAST,
 
     CALL
-  }type;
+  };
   using enum InstructionType;
 
   // structured this way to abuse the common subsequence exception for unions
@@ -82,8 +82,9 @@ struct Instruction {
 #define common_subsequence InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
   struct CommonData          { common_subsequence };
 
-  struct ModuleSymbolData    { common_subsequence u32_t dot_pos; u32_t idx; };
-  struct TypeMemberData      { InstructionType type; u8_t file_idx; u16_t idx_in_type; u32_t position_in_file; CustomType const* custom_type; };
+  struct ModuleMemberData    { InstructionType type; u8_t file_idx; u16_t member_idx; u32_t module_position; StabilizedModule import; };
+  struct TypeMemberData      { InstructionType type; u8_t file_idx; u16_t member_idx; u32_t position_in_file; CustomType const* custom_type; };
+
   struct LocalData           { common_subsequence u32_t idx; };
 
   struct SignedLiteralData   { common_subsequence i64_t  value; };
@@ -100,12 +101,9 @@ struct Instruction {
   struct CallData            { common_subsequence u32_t num_parameters; };
 
 #undef common_subsequence
-
-  static_assert(alignof(QualifiedType) == 8);
-  static_assert(sizeof(QualifiedType) == 16);
   union {
     CommonData m;
-    ModuleSymbolData          module_symbol_data;
+    ModuleMemberData          module_member_data;
     TypeMemberData            type_member_data;
     LocalData                 local_data;
     SignedLiteralData         signed_literal_data;
@@ -121,19 +119,19 @@ struct Instruction {
     CallData                  call_data;
   };
 
-
+  explicit constexpr Instruction() {}
   explicit constexpr Instruction(CommonData data) : m(data) {}
-  explicit constexpr Instruction(InstructionType type, u8_t file_idx) { m.type = type; m.file_idx = file_idx; }
-  eden_always_inline [[nodiscard]] constexpr bool is_literal() const noexcept { return eden::enumBetween(type, I8_LITERAL, U64_LITERAL); }
+  explicit constexpr Instruction(InstructionType type) { m.type = type; }
+  eden_always_inline [[nodiscard]] constexpr bool is_literal() const noexcept { return eden::enumBetween(m.type, I8_LITERAL, U64_LITERAL); }
 
   constexpr void
   adjust_literal(u64_t bitwidth, bool make_signed) noexcept {
     assert(is_literal());
     switch (bitwidth) {
-    case 8:   type = make_signed ? I8_LITERAL : U8_LITERAL; return;
-    case 16:  type = make_signed ? I16_LITERAL : U16_LITERAL; return;
-    case 32:  type = make_signed ? I32_LITERAL : U32_LITERAL; return;
-    case 64:  type = make_signed ? I64_LITERAL : U64_LITERAL; return;
+    case 8:   m.type = make_signed ? I8_LITERAL : U8_LITERAL; return;
+    case 16:  m.type = make_signed ? I16_LITERAL : U16_LITERAL; return;
+    case 32:  m.type = make_signed ? I32_LITERAL : U32_LITERAL; return;
+    case 64:  m.type = make_signed ? I64_LITERAL : U64_LITERAL; return;
     default:
       std::unreachable();
     }
@@ -141,7 +139,7 @@ struct Instruction {
 
   [[nodiscard]] constexpr std::string
   escaped_string_value(File file) const noexcept {
-    assume_assert(type == ESCAPED_STRING_LITERAL);
+    assume_assert(m.type == ESCAPED_STRING_LITERAL);
     std::string res;
     auto const orig = original_string(file);
     res.reserve(orig.size() + 1);
@@ -158,8 +156,40 @@ struct Instruction {
     return res;
   }
 
-  eden_always_inline [[nodiscard]] constexpr std::string_view original_string(File file) const noexcept { return file.view_at(m.length_in_file, m.position_in_file); }
+  eden_always_inline [[nodiscard]] constexpr std::string_view
+  original_string(File file) const noexcept {
+    assume_assert(m.type not_eq TYPE_VARIABLE and m.type not_eq MODULE_GLOBAL and m.type not_eq MODULE_FUNCTION);
+    return file.view_at(m.length_in_file, m.position_in_file);
+  }
+
+  // somewhat expensive, use for printing primarily
+  [[nodiscard]] constexpr std::string_view
+  module_variable_name() const noexcept {
+    assume_assert(m.type == MODULE_GLOBAL);
+    auto const member = module_member_data.import.getVariable(module_member_data.member_idx); assert(member);
+    return member->nameof();
+  }
+
+  // somewhat expensive, use for printing primarily
+  [[nodiscard]] constexpr std::string_view
+  module_function_name() const noexcept {
+    assume_assert(m.type == MODULE_FUNCTION);
+    auto const member = module_member_data.import.getFunction(module_member_data.member_idx); assert(member);
+    return member->nameof();
+  }
+
+  // somewhat expensive, use for printing primarily
+  [[nodiscard]] constexpr std::string_view
+  module_name(File file) const noexcept {
+    assume_assert(m.type == MODULE_GLOBAL or m.type == MODULE_FUNCTION);
+    auto module_str = file.get_text().substr(module_member_data.module_position);
+    module_str = module_str.substr(0, module_str.find_first_of('.'));
+    return module_str;
+  }
+
 };
+static_assert(alignof(Instruction) == 8);
+static_assert(sizeof(Instruction) == 16);
 
 class Block {
   struct br_data {  u32_t next_block_idx; };
@@ -216,7 +246,6 @@ struct Function {
 struct TU {
   std::vector<File> source_files;
   Module* module;
-  std::vector<std::string_view> imports;
   std::vector<Function> functions;
   std::string_view name;
 };

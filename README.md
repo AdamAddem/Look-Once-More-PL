@@ -14,7 +14,7 @@ Compilation speed is also a priority.
     rw_num$ i32 = 4; # (int equivalent)
     
     uninitialized$  f32 = junk;   # explicit junk initialization required
-    not_allowed:    f32;          # error
+    not_allowed$    f32;          # error
     ro_not_allowed: f32 = junk;   # error, readonly variable may not be junk initialized
   
     # All struct members are public

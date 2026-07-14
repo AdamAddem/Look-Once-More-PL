@@ -17,8 +17,6 @@ namespace fs = std::filesystem;
 static TypeContext types;
 static std::unordered_map<std::string_view, Module> modules;
 static Module main_module(&types);
-static const fs::path src_path{"src"};
-static const fs::path extern_path{"extern"};
 
 // returns nullptr if not found
 [[nodiscard]] Module*
@@ -98,6 +96,9 @@ print_peep_errors(PeepIR::TU const& peep_tu) {
 
 }
 
+static const fs::path src_path{"src"};
+static const fs::path extern_path{"extern"};
+
 // LOL
 static std::vector<fs::path> extern_objects_paths;
 static void compileC() {
@@ -165,7 +166,7 @@ void LOM::build() {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
-  modules.emplace(std::pair(std::string_view("__C"), Module{&types}));
+  dunderc_module = &modules.emplace(std::pair(std::string_view("__C"), Module{&types})).first->second;
 
   std::vector<Parser::TU> parsed_tus;   parsed_tus.reserve(4);
   std::vector<fs::path> module_paths; module_paths.reserve(4);

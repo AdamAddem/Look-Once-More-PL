@@ -28,7 +28,6 @@ struct Function {
 struct TU {
   std::vector<File> source_files;
   Module* module;
-  std::vector<std::string_view> imports;
   std::vector<Function> functions;
   std::string_view name;
 };

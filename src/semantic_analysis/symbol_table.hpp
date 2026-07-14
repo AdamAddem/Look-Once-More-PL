@@ -11,122 +11,88 @@ namespace LOM {
 
 
 class SymbolTable {
+  friend class Module;
+  static constexpr auto name_search = [] (auto const& e, std::string_view key) static { return e.nameof() == key; };
+  static constexpr auto id_search = [] (auto const& e, u16_t id) static { return e.id == id; };
+  static constexpr auto get_id_of = [] (auto const& e) static { return e.id; };
+
 public:
   static constexpr u16_t INVALID_ID = u16_max;
   struct Variable {
     // members are organized in this stupid way to shave 8 bytes
     [[no_unique_address]] QualifiedType type;
     bool is_public;
-  private:
     u16_t id;
     u32_t name_len;
     char const* name;
-  public:
 
-    Variable() noexcept = default;
-    Variable(Type const* type, std::string_view name, bool is_public) noexcept
-    : type(type), is_public(is_public), id(INVALID_ID), name_len(name.length()), name(name.data()) {}
-
-    Variable(QualifiedType qualified, std::string_view name, bool is_public) noexcept
-    : type(qualified), is_public(is_public), id(INVALID_ID), name_len(name.length()), name(name.data()) {}
-
-    [[nodiscard]] std::string_view
-    nameof() const noexcept
-    { return std::string_view(name, name_len); }
-
-    [[nodiscard]] u16_t
-    get_id() const noexcept
-    { return id; }
-
-
-  private: friend class SymbolTable;
     Variable(QualifiedType qualified, std::string_view name, bool is_public, sz_t variable_insert_order) noexcept
-    : Variable(qualified, name, is_public) {
-      assume_assert(variable_insert_order <= u16_max);
-      id = static_cast<u16_t>(variable_insert_order);
-    }
+    : type(qualified), is_public(is_public), id(variable_insert_order), name_len(name.length()), name(name.data())
+    { assume_assert(variable_insert_order <= u16_max); }
+
+    eden_always_inline [[nodiscard]] std::string_view nameof() const noexcept { return std::string_view(name, name_len); }
   };
 
   struct Function {
-    eden::vector16<Variable> locals;
+    mutable eden::swap_vector16<Variable> locals;
     FunctionType const* type;
     char const* name; u32_t name_len;
     bool is_public;
-    // char _pad[1];
+    mutable bool locals_sorted{true};
+    u16_t id;
 
-    explicit Function(std::string_view name, std::span<Variable> parameters, FunctionType const* type, bool is_public)
-    : type(type), name(name.data()), name_len(name.length()), is_public(is_public), id(INVALID_ID) {
-      assert(parameters.size() == type->numParameters());
-      for (auto& var : parameters) locals.emplace_back(var);
+    explicit constexpr Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, FunctionType const* type, bool is_public)
+    : locals(std::move(parameters)), type(type), name(name.data()), name_len(name.length()), is_public(is_public), id(INVALID_ID) {
+      assert(locals.size() == type->numParameters());
+      assert(locals.is_ordered(get_id_of));
+      for (auto const& param : locals)
+        assume_assert(param.id not_eq INVALID_ID);
     }
 
-    [[nodiscard]] u16_t
-    get_id() const noexcept
-    { return id; }
+    eden_always_inline [[nodiscard]] Type const* returnType() const noexcept { return type->returnType(); }
+    eden_always_inline [[nodiscard]] std::string_view nameof() const noexcept { return {name, name_len}; }
 
-    [[nodiscard]] std::span<const Variable>
-    parameters() const noexcept
-    { return locals.to_span().subspan(0, type->numParameters()); }
-
-    [[nodiscard]] const Type*
-    returnType() const noexcept
-    { return type->returnType(); }
-
-    [[nodiscard]] std::string_view
-    nameof() const noexcept
-    { return {name, name_len}; }
-
-    void addVariable(std::string_view variable_name, QualifiedType variable_instance) noexcept {
-      assert(not getVariable(variable_name));
-      locals.emplace_back(variable_instance, variable_name, false);
+    [[nodiscard]] std::span<Variable const> parameters() const noexcept {
+      if (not locals_sorted) {
+        locals.sort_by_unique_idx(get_id_of);
+        locals_sorted = true;
+      }
+      return locals.to_span().subspan(0, type->numParameters());
     }
 
-    [[nodiscard]] std::optional<std::pair<QualifiedType, u32_t>>
-    getVariable(std::string_view variable_name) const noexcept {
-      sz_t n = locals.size();
-      while (n-- not_eq 0)
-        if (variable_name == locals[n].nameof())
-          return std::optional(std::pair(locals[n].type, n));
-      return std::nullopt;
+    void addLocal(std::string_view variable_name, QualifiedType variable_instance) noexcept {
+      assert(locals.search_noswap(name_search, variable_name) == nullptr);
+      locals.emplace_back(variable_instance, variable_name, false, locals.size());
+    }
+
+    // returns nullptr if non-existent. pointer is not stable and may be invalidated if another local is added or searched.
+    [[nodiscard]] Variable const*
+    getLocal(std::string_view variable_name) const noexcept {
+      locals_sorted = false;
+      return locals.search(name_search, variable_name);
     }
 
   private: friend class SymbolTable; friend class Module;
-    u16_t id;
-    Function(std::string_view name, std::span<Variable> parameters, FunctionType const* type, bool is_public, sz_t functon_insert_order)
-    : Function(name, parameters, type, is_public) {
-      assume_assert(functon_insert_order <= INVALID_ID);
+    Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, FunctionType const* type, bool is_public, sz_t functon_insert_order)
+    : Function(name, std::move(parameters), type, is_public) {
+      assume_assert(functon_insert_order < INVALID_ID);
+      assert(locals.size() == type->numParameters());
+      assert(locals.is_ordered(get_id_of));
+      for (auto const& param : locals)
+        assume_assert(param.id not_eq INVALID_ID);
       id = static_cast<u16_t>(functon_insert_order);
     }
   };
 
-protected:
-
-  static constexpr auto name_search = [] (auto const& e, std::string_view key) static { return e.nameof() == key; };
-  static constexpr auto id_search = [] (auto const& e, u16_t id) static { return e.id == id; };
-
-  // marked mutable because searches need to be possible from a const*, but searches will modify
+private:
   mutable eden::swap_vector<Variable> variables;
+  void overrideVariables(eden::swap_vector<Variable>&& new_variables) noexcept {
+    assert(variables.empty());
+    variables = std::move(new_variables);
+  }
 
   // function vector preserves backmost element, which is the function currently being parsed
   mutable eden::swap_vector<Function, eden::swap_vector_settings<4, true>{}> functions;
-
-  // returns nullptr if non-existent.
-  template<class T>
-  [[nodiscard]] static T*
-  search_by_id(auto& targets, u16_t target_id) noexcept {
-    if (targets.empty())
-      return nullptr;
-
-    if (targets[target_id].id == target_id)
-      return &targets[target_id];
-
-    // sorts array for each miss. should only happen at most once (ideally) after table has been sorted
-    targets.sort_by_unique_idx([](T const& e) { return e.id; });
-
-    if (targets[target_id].id == target_id)
-      return &targets[target_id];
-    return nullptr;
-  }
 
 public:
 
@@ -144,17 +110,18 @@ public:
     variables.back().id = id;
   }
 
-  // returns nullptr if non-existent. pointer is not stable and may be invalidated if another global is added or searched via name.
-  [[nodiscard]] Variable const*
-  getVariable(std::string_view variable_name) const noexcept
-  { return variables.search(name_search, variable_name); }
+  // returns nullptr if non-existent. pointer is not stable and may be invalidated if another global is added or searched.
+  eden_always_inline [[nodiscard]] Variable const* getVariable(std::string_view variable_name) const noexcept { return variables.search(name_search, variable_name); }
 
-  // returns nullptr if non-existent. pointer is not stable and may be invalidated if another global is added or searched via name.
+  // returns pointer to variable. Pointer is stable unless another variable is added or searched not using ID.
+  // Does NOT return nullptr. Variable with matching ID MUST exist.
   [[nodiscard]] Variable const*
-  getVariable(u16_t variable_id) const noexcept
-  { return search_by_id<Variable>(variables, variable_id); }
+  getVariable(u16_t variable_id) const noexcept {
+    assert(variables.search_noswap(id_search, variable_id));
+    return variables.gradual_sort_search(get_id_of, variable_id);
+  }
 
-  // returns nullptr if non-existent / not public. pointer is not stable and may be invalidated if another global is added or searched via name.
+  // returns nullptr if non-existent / not public. pointer is not stable and may be invalidated if another global is added or searched.
   [[nodiscard]] Variable const*
   getPublicVariable(std::string_view variable_name) const noexcept {
     auto const variable = variables.search(name_search, variable_name);
@@ -162,24 +129,21 @@ public:
     return variable;
   }
 
-  [[nodiscard]] auto const&
-  getVariableList() const noexcept
-  { return variables; }
+  eden_always_inline [[nodiscard]] auto const& getVariableList() const noexcept { return variables; }
+  eden_always_inline void orderVariableList() const noexcept { variables.sort_by_unique_idx(get_id_of); }
 
-  void orderVariableList() const noexcept
-  { variables.sort_by_unique_idx([](Variable const& v) { return v.get_id(); }); }
+  // returns nullptr if non-existent. pointer is not stable and may be invalidated if another function is added or searched.
+  eden_always_inline [[nodiscard]] Function const* getFunction(std::string_view function_name) const noexcept { return functions.search(name_search, function_name); }
 
-  // returns nullptr if non-existent. pointer is not stable and may be invalidated if another function is added or searched via name.
+  // returns pointer to function. Pointer is stable unless another function is added or searched not using ID.
+  // Does NOT return nullptr. Function with matching ID MUST exist.
   [[nodiscard]] Function const*
-  getFunction(std::string_view function_name) const noexcept
-  { return functions.search(name_search, function_name); }
+  getFunction(u16_t function_id) const noexcept {
+    assert(functions.search_noswap(id_search, function_id));
+    return functions.gradual_sort_search(get_id_of, function_id);
+  }
 
-  // returns nullptr if non-existent. pointer is not stable and may be invalidated if another function is added or searched via name.
-  [[nodiscard]] Function const*
-  getFunction(u16_t function_id) const noexcept
-  { return search_by_id<Function>(functions, function_id); }
-
-  // returns nullptr if non-existent / not public. pointer is not stable and may be invalidated if another function is added or searched via name.
+  // returns nullptr if non-existent / not public. pointer is not stable and may be invalidated if another function is added or searched.
   [[nodiscard]] Function const*
   getPublicFunction(std::string_view function_name) const noexcept {
     auto const function = functions.search(name_search, function_name);
@@ -189,51 +153,27 @@ public:
   }
 
   // ensure that a function with the same name does not already exist
-  void
-  addFunction(std::string_view function_name, std::span<Variable> parameters, FunctionType const* function_type, bool is_public) noexcept {
+  void addFunction(std::string_view function_name, eden::swap_vector16<Variable>&& parameters, FunctionType const* function_type, bool is_public) noexcept {
     assert(not functions.search_noswap(name_search, function_name));
-    functions.emplace_back( Function{ function_name, parameters, function_type, is_public, static_cast<u16_t>(functions.size()) } );
+    functions.emplace_back( Function{ function_name, std::move(parameters), function_type, is_public, static_cast<u16_t>(functions.size()) } );
   }
-
-  [[nodiscard]] auto const&
-  getFunctionList() const noexcept
-  { return functions; }
 
 };
 
 class Module final : public SymbolTable {
   TypeContext* types;
-
-  eden_always_inline [[nodiscard]] Function&
-  current_scope() const noexcept
-  { assert(not functions.empty()); return functions.back(); }
+  eden_always_inline [[nodiscard]] Function& current_scope() const noexcept { assert(not functions.empty()); return functions.back(); }
 
 public:
 
-  explicit Module(TypeContext* type_context) noexcept
-  : types(type_context) {}
-
+  eden_always_inline explicit Module(TypeContext* type_context) noexcept : types(type_context) {}
   Module(Module&&) noexcept = default;
 
-  eden_always_inline [[nodiscard]] TypeContext const*
-  getTypeContext() const noexcept
-  { return types; }
-
-  eden_always_inline [[nodiscard]] PointerType const*
-  getRawPointerType(Type const* subtype) const noexcept
-  { return types->addRawPointer(subtype); }
-
-  eden_always_inline [[nodiscard]] PointerType const*
-  getRefPointerType(Type const* subtype) const noexcept
-  { return types->addRefPointer(subtype); }
-
-  eden_always_inline [[nodiscard]] ArrayType const*
-  getArrayType(u64_t array_size, Type const* subtype) const noexcept
-  { return types->addArray(array_size, subtype); }
-
-  eden_always_inline [[nodiscard]] VariantType const*
-  getVariantType(std::span<Type const*> subtypes, bool nullable) const noexcept
-  { return types->addVariant(subtypes, nullable); }
+  eden_always_inline [[nodiscard]] TypeContext const* getTypeContext() const noexcept { return types; }
+  eden_always_inline [[nodiscard]] PointerType const* getRawPointerType(Type const* subtype) const noexcept { return types->addRawPointer(subtype); }
+  eden_always_inline [[nodiscard]] PointerType const* getRefPointerType(Type const* subtype) const noexcept { return types->addRefPointer(subtype); }
+  eden_always_inline [[nodiscard]] ArrayType   const* getArrayType(u64_t array_size, Type const* subtype) const noexcept { return types->addArray(array_size, subtype); }
+  eden_always_inline [[nodiscard]] VariantType const* getVariantType(std::span<Type const*> subtypes, bool nullable) const noexcept { return types->addVariant(subtypes, nullable); }
 
   [[nodiscard]] FunctionType const*
   getFunctionType(std::span<Variable> parameters, Type const* return_type, bool is_variadic = false) const noexcept {
@@ -246,44 +186,37 @@ public:
   }
 
   CustomType const*
-  addCustomType(std::string_view type_name, std::span<Variable const> members) const noexcept {
+  addCustomType(std::string_view type_name, eden::swap_vector<Variable>&& members) const noexcept {
     auto const custom = types->addCustomType(type_name);
-    auto const custom_table = custom->member_table();
-    for (auto const& member : members)
-      custom_table->addVariable(member);
+    custom->member_table()->overrideVariables(std::move(members));
     return custom;
   }
 
   // returns nullptr if non-existent
-  eden_always_inline [[nodiscard]] CustomType const*
-  getCustomType(std::string_view type_name) const noexcept
-  { return types->getCustomType(type_name); }
+  eden_always_inline [[nodiscard]] CustomType const* getCustomType(std::string_view type_name) const noexcept { return types->getCustomType(type_name); }
 
-  eden_always_inline [[nodiscard]] bool
-  containsLocal(std::string_view local_name) const noexcept
-  { return functions.back().getVariable(local_name).has_value(); }
+  eden_always_inline [[nodiscard]] bool containsLocal(std::string_view local_name) const noexcept { return current_scope().getLocal(local_name) not_eq nullptr; }
 
   // assumes the local does not already exist.
   void addLocal(std::string_view local_name, QualifiedType local_instance) noexcept {
-    assert(not current_scope().getVariable(local_name));
-    current_scope().addVariable(local_name, local_instance);
+    assert(not current_scope().getLocal(local_name));
+    current_scope().addLocal(local_name, local_instance);
   }
 
-  eden_always_inline [[nodiscard]] auto
-  getLocal(std::string_view local_name) const noexcept
-  { return current_scope().getVariable(local_name); }
+  // returns nullptr if non-existent. pointer is not stable and may be invalidated if another local is added or searched.
+  eden_always_inline [[nodiscard]] Variable const* getLocal(std::string_view local_name) const noexcept { return current_scope().getLocal(local_name); }
 
   // returns false if function already exists
-  bool
-  addFunction(std::string_view function_name, std::span<Variable> parameters, Type const* return_type, bool is_public, bool is_variadic = false) {
+  bool addFunction(std::string_view function_name, eden::swap_vector16<Variable>&& parameters, Type const* return_type, bool is_public, bool is_variadic = false) {
     auto const exists = functions.search(name_search, function_name);
     if (exists) return false;
 
     auto const function_type = getFunctionType(parameters, return_type, is_variadic);
-    functions.emplace_back( Function {function_name, parameters, function_type, is_public, static_cast<u16_t>(functions.size()) } );
+    functions.emplace_back( Function {function_name, std::move(parameters), function_type, is_public, static_cast<u16_t>(functions.size()) } );
     return true;
   }
 
+  // assumes function with name already exists
   FunctionType const*
   enterFunctionScope(std::string_view function_name) noexcept {
     auto const fn = functions.search_swapback(name_search, function_name); assert(fn);

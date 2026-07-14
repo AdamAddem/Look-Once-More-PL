@@ -34,7 +34,7 @@ struct Tokenizer {
   : token_list(token_list), file(file) {}
 
   eden_always_inline [[nodiscard]] char peek() const noexcept { return file.get_text()[current_position]; }
-  eden_always_inline [[nodiscard]] char peek_ahead(sz_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
+  eden_always_inline [[nodiscard]] char peek_ahead(i64_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
   eden_always_inline [[nodiscard]] char take() noexcept { return file.get_text()[current_position++]; }
   eden_always_inline [[nodiscard]] char previous() const noexcept { return file.get_text()[current_position - 1]; }
   eden_always_inline               void pop() noexcept { ++current_position; }
@@ -141,7 +141,7 @@ struct Tokenizer {
 
     case '.': {
       type = DOT;
-      if (not isalnum(previous()) or not isalnum(peeked))
+      if (not isalnum(peek_ahead(-2)) or not isalnum(peeked))
         error_at_currentpos("Dot operator may not have any space between the preceeding and following expressions. first.second is fine, first. second or first .second is not (Sorry!).");
       break;
     }

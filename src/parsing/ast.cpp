@@ -12,7 +12,7 @@ void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
 
   while (curr not_eq end) {
     using enum ASTNode::NodeType;
-    switch (curr->m.type) {
+    switch (curr->type) {
     case EMPTY: std::print("EMPTY"); break;
     case DECLARATION: std::print("DECLARATION WITH TYPE {}{}",
           QualifiedType{(curr + 1)->declaration_identifier_val(), curr->declaration_qualifiers()}.toString(),
@@ -22,6 +22,7 @@ void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
     case RETURN: std::print("RETURN{}", curr->return_has_value() ? "" : " W/ NO VALUE"); break;
 
     case MEMBER_ACCESS: std::print("MEMBER_ACCESS"); break;
+    case MODULE_ACCESS: std::print("SYMBOL {} FROM MODULE {}", curr->module_member_name(file), curr->module_name(file)); break;
     case UNARY: std::print("UNARY: {}", operatorToString(curr->unary_operator())); break;
     case BINARY: std::print("BINARY: {}", operatorToString(curr->binary_operator())); break;
     case CALLING: std::print("CALLING W/ {} PARAMETERS", curr->parameter_count()); break;

@@ -20,7 +20,8 @@ void setArgs(unsigned argc, const char* argv[]);
 
 inline constexpr auto MAX_FUNCTION_PARAMETERS = 8;
 inline constexpr auto MAX_TYPELIST_MEMBERS = 8;
-inline constexpr auto MAX_STRUCT_MEMBER_VARIABLES = 255;
+inline constexpr auto MAX_STRUCT_MEMBER_VARIABLES = 256;
+inline constexpr auto SUBMODULE_SUPPORT = false;
 
 // lol
 #ifdef __clang__

@@ -145,6 +145,7 @@ class Lowerer final {
   std::unordered_map<SymbolTable::Function const*, llvm::Value*> imports;
 
   /* Variables used when lowering a function */
+  File current_file;
   llvm::Type* return_type;
   llvm::Function* llvmfunc;
   llvm::IRBuilder<> builder;
@@ -156,22 +157,25 @@ class Lowerer final {
   /* Variables used when lowering a function */
 
   [[nodiscard]] llvm::Value*
-  getFunctionImport(StabilizedModule imported_module, u16_t function_id) {
-    auto const function = imported_module.getFunction(function_id); assume_assert(function);
+  getFunctionImport(PeepIR::Instruction module_function) {
+    auto const imported_module = module_function.module_member_data.import;
+    auto const function = imported_module.getFunction(module_function.module_member_data.member_idx); assume_assert(function);
     auto const element = imports.find(function);
     if (element not_eq imports.end()) return element->second;
 
-    auto const module_name = imported_module.nameof();
-    std::string function_name;
+    // this is atrocious please fix this IMMEDIATELY
+    auto const module_name = module_function.module_name(current_file);
+    std::string_view full_function_name;
     if (module_name not_eq "__C") {
-      function_name.append(module_name);
-      function_name.push_back('.');
+      full_function_name = std::string_view{module_name.data(), module_name.length() + 1 + function->name_len};
+      std::println("|{}|", full_function_name);
     }
-    function_name.append(function->nameof());
+    else
+      full_function_name = function->nameof();
 
     auto const function_type = translateFunctionType(function->type);
 
-    auto const res = tu->module.getOrInsertFunction(function_name, function_type).getCallee();
+    auto const res = tu->module.getOrInsertFunction(full_function_name, function_type).getCallee();
     imports.emplace(function, res);
     return res;
   }
@@ -441,30 +445,30 @@ class Lowerer final {
   [[nodiscard]] llvm::Value*
   genValueExpression() noexcept { // only relevant for that which can be used by value, with the addition of functions
     auto const& instruction = instructions[instruction_idx++];
-    switch (instruction.type) {
+    switch (instruction.m.type) {
       using enum PeepIR::Instruction::InstructionType;
     case NOOP:
       return nullptr;
     case FUNCTION: {
-      auto const function = tu->module.getFunction(instruction.function_name()); assert(function);
+      auto const function = tu->module.getFunction(instruction.original_string(current_file)); assert(function);
       return function;
     }
     case LOCAL: {
-      assert(instruction.local_idx() < locals.size());
-      auto const local = locals[instruction.local_idx()];
+      assert(instruction.local_data.idx < locals.size());
+      auto const local = locals[instruction.local_data.idx];
       auto const local_type = local->getAllocatedType();
       return builder.CreateLoad(local_type, local);
     }
 
     case TYPE_VARIABLE: {
-      auto const type = instruction.custom_type();
-      auto const id = instruction.type_variable_id();
+      auto const type = instruction.type_member_data.custom_type;
+      auto const id = instruction.type_member_data.member_idx;
       auto const member = type->member_table()->getVariable(id); assume_assert(member);
       auto const member_ptr = builder.CreateStructGEP(translateType(type), genRefExpression(), id);
       return builder.CreateLoad(translateType(member->type.type), member_ptr);
     }
     case MODULE_FUNCTION:
-      return getFunctionImport(instruction.module(), instruction.module_function_id());
+      return getFunctionImport(instruction);
 
     case I8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.signed_literal_data.value, true);
     case I16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.signed_literal_data.value, true);
@@ -474,12 +478,12 @@ class Lowerer final {
     case U16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.unsigned_literal_data.value);
     case U32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.unsigned_literal_data.value);
     case U64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.unsigned_literal_data.value);
-    case FLOAT_LITERAL:           return llvm::ConstantFP::get(f32, instruction.float_value());
-    case DOUBLE_LITERAL:          return llvm::ConstantFP::get(f64, instruction.double_value());
-    case BOOL_LITERAL:            return instruction.bool_value() ? bool_true : bool_false;
-    case CHAR_LITERAL:            return llvm::ConstantInt::get(i8, instruction.char_value());
-    case STRING_LITERAL:          return builder.CreateGlobalString(instruction.string_value());
-    case ESCAPED_STRING_LITERAL:  return builder.CreateGlobalString(instruction.escaped_string_value());
+    case FLOAT_LITERAL:           return llvm::ConstantFP::get(f32, instruction.float_literal_data.value);
+    case DOUBLE_LITERAL:          return llvm::ConstantFP::get(f64, instruction.double_literal_data.value);
+    case BOOL_LITERAL:            return instruction.bool_literal_data.value ? bool_true : bool_false;
+    case CHAR_LITERAL:            return llvm::ConstantInt::get(i8, instruction.char_literal_data.value);
+    case STRING_LITERAL:          return builder.CreateGlobalString(instruction.original_string(current_file));
+    case ESCAPED_STRING_LITERAL:  return builder.CreateGlobalString(instruction.escaped_string_value(current_file));
 
     case ADD: case FADD:
     case SUB: case FSUB:
@@ -497,24 +501,23 @@ class Lowerer final {
     case BITAND:
     case BITOR:
     case BITXOR:
-      return genBinary(instruction.type);
+      return genBinary(instruction.m.type);
     case SUBSCRIPT: {
-      auto const array = genRefExpression(); auto const array_type = instruction.array_type();
+      auto const array = genRefExpression(); auto const array_type = instruction.subscript_data.array_type;
       auto const index = genValueExpression();
       auto const element_ptr = builder.CreateGEP( translateType(array_type), array, {i64_0, index} );
       return builder.CreateLoad( translateType(array_type->getSubtype()), element_ptr );
     }
 
-
-    case ASSIGN:       return genAssign(instruction.type);
+    case ASSIGN:       return genAssign(instruction.m.type);
     case UCAST_ASSIGN:
-    case SCAST_ASSIGN: return genAssign(instruction.type, instruction.cast_assign_bitwidth());
+    case SCAST_ASSIGN: return genAssign(instruction.m.type, instruction.cast_assign_data.bitwidth);
 
     case PRE_INC:
     case FPRE_INC:
     case PRE_DEC:
     case FPRE_DEC: {
-      auto const var = llvm::cast<llvm::AllocaInst>(genUnary(instruction.type));
+      auto const var = llvm::cast<llvm::AllocaInst>(genUnary(instruction.m.type));
       return builder.CreateLoad(var->getAllocatedType(), var);
     }
 
@@ -522,29 +525,29 @@ class Lowerer final {
     case POST_INC: case FPOST_INC:
     case POST_DEC: case FPOST_DEC:
     case ADDRESS_OF:
-    case BITNOT:    return genUnary(instruction.type);
+    case BITNOT:    return genUnary(instruction.m.type);
 
     case DEREFERENCE:
       return builder.CreateLoad(
-        translateType(instruction.dereference_type()),
+        translateType(instruction.dereference_data.dereference_type),
         genValueExpression());
 
     case UCAST: {
-      auto const dest_type = instruction.cast_type();
+      auto const dest_type = instruction.cast_data.destination_type;
       auto const llvm_dest_type = translateType(dest_type);
       if (dest_type->isFloating())
         return builder.CreateUIToFP(genValueExpression(), llvm_dest_type);
       return builder.CreateZExtOrTrunc(genValueExpression(), llvm_dest_type);
     }
     case SCAST: {
-      auto const dest_type = instruction.cast_type();
+      auto const dest_type = instruction.cast_data.destination_type;
       auto const llvm_dest_type = translateType(dest_type);
       if (dest_type->isFloating())
         return builder.CreateSIToFP(genValueExpression(), llvm_dest_type);
       return builder.CreateSExtOrTrunc(genValueExpression(), llvm_dest_type);
     }
     case FCAST: {
-      auto const dest_type = instruction.cast_type();
+      auto const dest_type = instruction.cast_data.destination_type;
       auto const llvm_dest_type = translateType(dest_type);
       if (dest_type->isIntegral()) {
         auto const primitive_dest_type = dest_type->castToPrimitive();
@@ -559,12 +562,12 @@ class Lowerer final {
     case CALL: {
       auto const fn = genRefExpression();
       llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
-      for (auto i{0uz}; i<instruction.num_params(); ++i)
+      for (auto i{0uz}; i<instruction.call_data.num_parameters; ++i)
         parameters[i] = genValueExpression();
 
       return builder.CreateCall(
         llvm::cast<llvm::Function>(fn),
-        {parameters, instruction.num_params()}
+        {parameters, instruction.call_data.num_parameters}
         );
     }
 
@@ -576,34 +579,34 @@ class Lowerer final {
   [[nodiscard]] llvm::Value*
   genRefExpression() noexcept { // only relevant for that which can be referenced
     auto const& instruction = instructions[instruction_idx++];
-    switch (instruction.type) {
+    switch (instruction.m.type) {
     using enum PeepIR::Instruction::InstructionType;
     case FUNCTION: {
-      auto const function = tu->module.getFunction(instruction.function_name()); assert(function);
+      auto const function = tu->module.getFunction(instruction.original_string(current_file)); assume_assert(function);
       return function;
     }
     case MODULE_FUNCTION:
-      return getFunctionImport(instruction.module(), instruction.module_function_id());
+      return getFunctionImport(instruction);
 
     case LOCAL:
-      assert(instruction.local_idx() < locals.size());
-      return locals[instruction.local_idx()];
+      assert(instruction.local_data.idx < locals.size());
+      return locals[instruction.local_data.idx];
 
     case TYPE_VARIABLE: {
-      auto const type = instruction.custom_type();
-      auto const id = instruction.type_variable_id();
+      auto const type = instruction.type_member_data.custom_type;
+      auto const id = instruction.type_member_data.member_idx;
       return builder.CreateStructGEP(translateType(type), genRefExpression(), id);
     }
 
     case SUBSCRIPT: {
-      auto const array = genRefExpression(); auto const array_type = instruction.array_type();
+      auto const array = genRefExpression(); auto const array_type = instruction.subscript_data.array_type;
       auto const index = genValueExpression();
       return builder.CreateGEP( translateType(array_type), array, {i64_0, index} );
     }
 
     case PRE_INC: case FPRE_INC:
     case PRE_DEC: case FPRE_DEC:
-      return genUnary(instruction.type);
+      return genUnary(instruction.m.type);
     case ASSIGN: {
       auto const left = genRefExpression();
       auto const right = genValueExpression();
@@ -611,12 +614,12 @@ class Lowerer final {
     }
     case UCAST_ASSIGN: {
       auto const left = genRefExpression();
-      auto const right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_bitwidth()));
+      auto const right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_data.bitwidth));
       return builder.CreateStore(right, left);
     }
     case SCAST_ASSIGN: {
       auto const left = genRefExpression();
-      auto const right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_bitwidth()));
+      auto const right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_data.bitwidth));
       return builder.CreateStore(right, left);
     }
 
@@ -626,12 +629,12 @@ class Lowerer final {
     case CALL: {
       auto const fn = genRefExpression();
       llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
-      for (auto i{0uz}; i<instruction.num_params(); ++i)
+      for (auto i{0uz}; i<instruction.call_data.num_parameters; ++i)
         parameters[i] = genValueExpression();
 
       return builder.CreateCall(
         llvm::cast<llvm::Function>(fn),
-        {parameters, instruction.num_params()}
+        {parameters, instruction.call_data.num_parameters}
         );
     }
 
@@ -666,18 +669,20 @@ class Lowerer final {
     }
   }
 
-  llvm::Function* compileFunction(PeepIR::Function& func) {
+  llvm::Function* compileFunction(PeepIR::Function& func, File func_file) {
     // reset state
     {
       instruction_idx = 0;
       locals.clear();
       llvm_blocks.clear();
-      instructions = std::move(func.instructions);
-      mir_blocks = std::move(func.blocks);
     }
 
     // initialize state for new function
     {
+      instructions = std::move(func.instructions);
+      mir_blocks = std::move(func.blocks);
+      current_file = func_file;
+
       auto const func_type = translateFunctionType(func.type);
       return_type = func_type->getReturnType();
 
@@ -763,7 +768,7 @@ public:
     std::vector<llvm::Function*> public_functions;
     public_functions.reserve(tu.functions.size());
     for (auto& func : tu.functions) {
-      auto x = compileFunction(func);
+      auto x = compileFunction(func, tu.source_files[func.file_idx]);
       if (func.is_public)
         public_functions.push_back(x);
     }
@@ -781,8 +786,8 @@ public:
     }
   }
 
-  explicit Lowerer(TU* tu, TypeContext const* type_context)
-  : tu(tu), builder(tu->context) {
+  explicit Lowerer(TU* tu, PeepIR::TU const& peeped_tu)
+  : tu(tu), current_file(peeped_tu.source_files[0]), builder(tu->context) {
     auto& context = tu->context;
     i1 = llvm::Type::getInt1Ty(context);
     i8 = llvm::Type::getInt8Ty(context);
@@ -796,6 +801,7 @@ public:
     devoid = llvm::Type::getVoidTy(context);
     ptr = llvm::PointerType::get(context, 0);
 
+    auto const type_context = peeped_tu.module->getTypeContext();
     assert(type_context->numVariantTypes() == 0);
     custom_type_map.reserve(type_context->numCustomTypes());
     function_type_map.reserve(type_context->numFunctionTypes());
@@ -811,7 +817,7 @@ std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU&& peeped_tu, std::filesystem
 #endif
 
   auto backend = std::make_unique<TU>(file.native());
-  Lowerer codegen(backend.get(), peeped_tu.module->getTypeContext());
+  Lowerer codegen(backend.get(), peeped_tu);
   codegen.lowerToLLVM(peeped_tu);
 
 #ifdef STAGE_BENCHMARKS

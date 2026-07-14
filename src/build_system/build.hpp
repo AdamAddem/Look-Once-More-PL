@@ -11,7 +11,8 @@ void build();
 void reset_state() noexcept;
 #endif
 
-[[nodiscard]] Module*
-getModule(std::string_view);
+inline Module* dunderc_module;
+
+[[nodiscard]] Module* getModule(std::string_view);
 
 }

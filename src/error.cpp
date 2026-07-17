@@ -1,6 +1,7 @@
 #include "error.hpp"
 #include "lexing/lex.hpp"
 
+#include <print>
 #include <vector>
 
 namespace {
@@ -33,12 +34,13 @@ std::string get_file_errors(File file) {
   for (auto& error : error_vec) {
     error_messages.append(error.message);
     auto const beginning_line_idx = file_text.substr(0, error.position).find_last_of('\n');
-    auto const ending_line_idx = file_text.substr(error.position).find_first_of('\n');
+    auto ending_line_idx = file_text.substr(error.position).find_first_of('\n');
+    if (ending_line_idx == std::string_view::npos) ending_line_idx = file_text.substr(error.position).find_first_of('\0');
     auto const ln = std::count(file_text.begin(), file_text.begin() + error.position, '\n') + 1;
-    auto const entire_line = file_text.substr(beginning_line_idx + 1, (error.position + ending_line_idx) - beginning_line_idx);
+    auto const entire_line = file_text.substr(beginning_line_idx + 1, (error.position + ending_line_idx - 1) - beginning_line_idx);
 
     error_messages.append(
-      std::format("\n{}:{}", ln, entire_line)
+      std::format("\n{}:{}\n", ln, entire_line)
       );
 
     error_messages.append(

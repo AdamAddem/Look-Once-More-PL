@@ -25,11 +25,11 @@ void Backend::linkObjects(std::vector<std::filesystem::path> const& obj_paths) {
     compiler.append(file.string());
   }
 
-  //compiler += 0;
-
   compiler += " -o ";
   compiler += std::string_view("build/");
   compiler += Settings::getExecutableName();
+
+  compiler += Settings::getExternFlags();
 
   if (system(compiler.c_str())) {
     std::cerr << "Error calling compiler with command: " << compiler;

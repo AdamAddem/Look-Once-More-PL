@@ -43,7 +43,7 @@ enum class Operator : u8_t {
   DOT,
 };
 
-constexpr const char* operatorToString(const Operator e) {
+constexpr char const* operatorToString(const Operator e) {
   constexpr const char* toString[] = {
     "+","-","*",
     "/","%","=",

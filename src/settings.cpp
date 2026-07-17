@@ -55,10 +55,10 @@ static bool do_linking_flag{true};          bool const& do_linking = do_linking_
 static bool do_build_flag{false};           bool const& do_build = do_build_flag;
 static u8_t optimization_level{0};
 static std::string_view output_name;
-static std::string link_flags;
+static std::string extern_flags{" "};
 
 std::string_view getExecutableName() noexcept   { return output_name; }
-std::string_view getLinkFlags() noexcept        { return link_flags; }
+std::string_view getExternFlags() noexcept        { return extern_flags; }
 u8_t getOptimizationLevel() noexcept            { return optimization_level; }
 
 void setArgs(unsigned argc, const char* argv[]) {
@@ -78,7 +78,7 @@ void setArgs(unsigned argc, const char* argv[]) {
     auto const arg_iter = stringToArgs.find(arg_view);
     if (arg_iter == stringToArgs.end()) {
       if (arg_view == "--extern_flags:") {
-        while (++i < argc) { link_flags += argv[i]; link_flags.push_back(' '); }
+        while (++i < argc) { extern_flags += argv[i]; extern_flags.push_back(' '); }
         break;
       }
 

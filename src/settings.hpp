@@ -14,7 +14,7 @@ extern bool const& do_linking;
 extern bool const& do_build;
 
 std::string_view getExecutableName() noexcept;
-std::string_view getLinkFlags() noexcept;
+std::string_view getExternFlags() noexcept;
 u8_t getOptimizationLevel() noexcept;
 void setArgs(unsigned argc, const char* argv[]);
 

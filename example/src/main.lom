@@ -1,6 +1,23 @@
-__C printf(fmt: ref u8, __va);
+__C printf(fmt: ref u8, __va); # C-Interop
+
+#{ Returns the n'th fibonacci number. }#
+fib(n: u32) u32 {
+    if n <= 1 { return n; }
+    return fib(n-1) + fib(n-2);
+}
 
 pub main() i32 {
-    __C.printf("Hello, World!\n");
+    upper_bound: u32 = 10;   # readonly
+    i$ u32 = 0;              # readwrite
+    results$ [10]u32 = junk; # explicit junk initialization
+
+    while i < upper_bound {
+        results[i] = fib(i);
+        ++i;
+    }
+
+    while i-- > 0 {
+        __C.printf("Fib number %d: %d\n", i, results[i]);
+    }
     return 0;
 }

@@ -2,7 +2,6 @@
 #include "ast.hpp"
 #include "semantic_analysis/symbol_table.hpp"
 #include "file.hpp"
-#include <chrono>
 
 namespace LOM::Lexer {
 struct Token;

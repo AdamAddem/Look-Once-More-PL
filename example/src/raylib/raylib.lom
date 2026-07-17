@@ -1,8 +1,9 @@
 # Window
-__C InitWindow(w: i32, h: i32, title: raw char);
+__C InitWindow(w: i32, h: i32, title: ref u8);
 __C CloseWindow();
-__C WindowShouldClose();
+__C WindowShouldClose() bool;
 
 # Drawing
 __C BeginDrawing();
 __C EndDrawing();
+__C ClearBackground(color: u32);

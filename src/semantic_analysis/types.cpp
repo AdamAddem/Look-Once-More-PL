@@ -13,8 +13,8 @@ bool Type::coercibleTo(Type const* other) const noexcept {
   if (other == error())  return true;
 
   auto const other_type = other->derived_type;
-  assume_assert(derived_type not_eq VARIANT);
-  assume_assert(other_type not_eq VARIANT);
+  assert(derived_type not_eq VARIANT);
+  assert(other_type not_eq VARIANT);
 
   // temporary! TODO: Change
   if (other_type == POINTER and derived_type == PRIMITIVE) {
@@ -52,7 +52,7 @@ bool Type::castableTo(Type const* other) const noexcept {
   if (other == error())  return true;
 
   auto const other_type = other->derived_type;
-  assume_assert(derived_type not_eq VARIANT); assume_assert(other_type not_eq VARIANT);
+  assert(derived_type not_eq VARIANT); assert(other_type not_eq VARIANT);
 
   if (other_type == POINTER and derived_type == PRIMITIVE) {
     auto const as_primitive = castToPrimitive();

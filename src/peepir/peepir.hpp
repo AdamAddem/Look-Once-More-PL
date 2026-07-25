@@ -139,7 +139,7 @@ struct Instruction {
 
   [[nodiscard]] constexpr std::string
   escaped_string_value(File file) const noexcept {
-    assume_assert(m.type == ESCAPED_STRING_LITERAL);
+    assert(m.type == ESCAPED_STRING_LITERAL);
     std::string res;
     auto const orig = original_string(file);
     res.reserve(orig.size() + 1);
@@ -158,14 +158,14 @@ struct Instruction {
 
   eden_always_inline [[nodiscard]] constexpr std::string_view
   original_string(File file) const noexcept {
-    assume_assert(m.type not_eq TYPE_VARIABLE and m.type not_eq MODULE_GLOBAL and m.type not_eq MODULE_FUNCTION);
+    assert(m.type not_eq TYPE_VARIABLE and m.type not_eq MODULE_GLOBAL and m.type not_eq MODULE_FUNCTION);
     return file.view_at(m.length_in_file, m.position_in_file);
   }
 
   // somewhat expensive, use for printing primarily
   [[nodiscard]] constexpr std::string_view
   module_variable_name() const noexcept {
-    assume_assert(m.type == MODULE_GLOBAL);
+    assert(m.type == MODULE_GLOBAL);
     auto const member = module_member_data.import.getVariable(module_member_data.member_idx); assert(member);
     return member->nameof();
   }
@@ -173,7 +173,7 @@ struct Instruction {
   // somewhat expensive, use for printing primarily
   [[nodiscard]] constexpr std::string_view
   module_function_name() const noexcept {
-    assume_assert(m.type == MODULE_FUNCTION);
+    assert(m.type == MODULE_FUNCTION);
     auto const member = module_member_data.import.getFunction(module_member_data.member_idx); assert(member);
     return member->nameof();
   }
@@ -181,7 +181,7 @@ struct Instruction {
   // somewhat expensive, use for printing primarily
   [[nodiscard]] constexpr std::string_view
   module_name(File file) const noexcept {
-    assume_assert(m.type == MODULE_GLOBAL or m.type == MODULE_FUNCTION);
+    assert(m.type == MODULE_GLOBAL or m.type == MODULE_FUNCTION);
     auto module_str = file.get_text().substr(module_member_data.module_position);
     module_str = module_str.substr(0, module_str.find_first_of('.'));
     return module_str;

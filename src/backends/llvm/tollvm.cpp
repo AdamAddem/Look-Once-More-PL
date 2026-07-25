@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <print>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -159,7 +160,7 @@ class Lowerer final {
   [[nodiscard]] llvm::Value*
   getFunctionImport(PeepIR::Instruction module_function) {
     auto const imported_module = module_function.module_member_data.import;
-    auto const function = imported_module.getFunction(module_function.module_member_data.member_idx); assume_assert(function);
+    auto const function = imported_module.getFunction(module_function.module_member_data.member_idx); assert(function);
     auto const element = imports.find(function);
     if (element not_eq imports.end()) return element->second;
 
@@ -463,7 +464,7 @@ class Lowerer final {
     case TYPE_VARIABLE: {
       auto const type = instruction.type_member_data.custom_type;
       auto const id = instruction.type_member_data.member_idx;
-      auto const member = type->member_table()->getVariable(id); assume_assert(member);
+      auto const member = type->member_table()->getVariable(id); assert(member);
       auto const member_ptr = builder.CreateStructGEP(translateType(type), genRefExpression(), id);
       return builder.CreateLoad(translateType(member->type.type), member_ptr);
     }
@@ -582,7 +583,7 @@ class Lowerer final {
     switch (instruction.m.type) {
     using enum PeepIR::Instruction::InstructionType;
     case FUNCTION: {
-      auto const function = tu->module.getFunction(instruction.original_string(current_file)); assume_assert(function);
+      auto const function = tu->module.getFunction(instruction.original_string(current_file)); assert(function);
       return function;
     }
     case MODULE_FUNCTION:

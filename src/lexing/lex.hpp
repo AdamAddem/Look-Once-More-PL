@@ -27,7 +27,7 @@ struct Token {
   // expensive
   [[nodiscard]] constexpr u64_t
   getInteger(File const& file) const noexcept {
-    assume_assert(type == TokenType::INTEGER_LITERAL);
+    assert(type == TokenType::INTEGER_LITERAL);
     auto const begin = file.get_text().data() + position;
     u64_t res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
@@ -38,7 +38,7 @@ struct Token {
   // expensive
   [[nodiscard]] constexpr float
   getFloat(File const& file) const noexcept {
-    assume_assert(type == TokenType::FLOAT_LITERAL);
+    assert(type == TokenType::FLOAT_LITERAL);
     auto const begin = file.get_text().data() + position;
     float res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
@@ -49,7 +49,7 @@ struct Token {
   // expensive
   [[nodiscard]] constexpr double
   getDouble(File const& file) const noexcept {
-    assume_assert(type == TokenType::DOUBLE_LITERAL);
+    assert(type == TokenType::DOUBLE_LITERAL);
     auto const begin = file.get_text().data() + position;
     double res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
@@ -59,19 +59,19 @@ struct Token {
 
   [[nodiscard]] constexpr bool
   getBool(File const& file) const noexcept {
-    assume_assert(type == TokenType::BOOL_LITERAL);
+    assert(type == TokenType::BOOL_LITERAL);
     return file.get_text()[position] == 't';
   }
 
   [[nodiscard]] constexpr char
   getChar(File const& file) const noexcept {
-    assume_assert(type == TokenType::CHAR_LITERAL);
+    assert(type == TokenType::CHAR_LITERAL);
     return file.get_text()[position]; //TODO: incorrect, doesn't account for escape sequences
   }
 
   [[nodiscard]] constexpr std::string_view
   getString(File const& file) const noexcept {
-    assume_assert(type == TokenType::STRING_LITERAL);
+    assert(type == TokenType::STRING_LITERAL);
     return file.view_at(length, position);
   }
 

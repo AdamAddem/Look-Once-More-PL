@@ -12,6 +12,7 @@
 #include <span>
 #include <utility>
 #include <vector>
+#include <format>
 
 #include <unordered_map>
 namespace LOM {
@@ -299,7 +300,7 @@ class FunctionType final : public Type {
   constexpr FunctionType(std::span<Type const*> parameters, Type const* return_type, bool is_variadic)
   : Type(FUNCTION), is_variadic(is_variadic), num_parameters(parameters.size()), return_type(return_type) {
     setCallable();
-    assume_assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
+    assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
     auto i{0uz};
     for (; i<num_parameters; ++i)
       subtypes[i] = parameters[i];
@@ -373,7 +374,7 @@ class VariantType final : public Type {
 
   constexpr VariantType(std::span<Type const*> variant_subtypes, bool nullable)
   : Type(VARIANT), is_nullable(nullable), num_subtypes(variant_subtypes.size()) {
-    assume_assert(num_subtypes <= Settings::MAX_TYPELIST_MEMBERS);
+    assert(num_subtypes <= Settings::MAX_TYPELIST_MEMBERS);
 
     for (auto i{0uz}; i<variant_subtypes.size(); ++i) {
       const auto subtype = variant_subtypes[i];
@@ -411,12 +412,12 @@ Type::bitwidth() const noexcept {
   }
 }
 
-eden_always_inline [[nodiscard]] constexpr PrimitiveType const* Type::castToPrimitive()  const noexcept { assume_assert(derived_type == PRIMITIVE); return static_cast<PrimitiveType const*>(this); }
-eden_always_inline [[nodiscard]] constexpr PointerType   const* Type::castToPointer()    const noexcept { assume_assert(derived_type == POINTER);   return static_cast<PointerType   const*>(this); }
-eden_always_inline [[nodiscard]] constexpr ArrayType     const* Type::castToArray()      const noexcept { assume_assert(derived_type == ARRAY);     return static_cast<ArrayType     const*>(this); }
-eden_always_inline [[nodiscard]] constexpr FunctionType  const* Type::castToFunction()   const noexcept { assume_assert(derived_type == FUNCTION);  return static_cast<FunctionType  const*>(this); }
-eden_always_inline [[nodiscard]] constexpr CustomType    const* Type::castToCustom()     const noexcept { assume_assert(derived_type == CUSTOM);    return static_cast<CustomType    const*>(this); }
-eden_always_inline [[nodiscard]] constexpr VariantType   const* Type::castToVariant()    const noexcept { assume_assert(derived_type == VARIANT);   return static_cast<VariantType   const*>(this); }
+eden_always_inline [[nodiscard]] constexpr PrimitiveType const* Type::castToPrimitive()  const noexcept { assert(derived_type == PRIMITIVE); return static_cast<PrimitiveType const*>(this); }
+eden_always_inline [[nodiscard]] constexpr PointerType   const* Type::castToPointer()    const noexcept { assert(derived_type == POINTER);   return static_cast<PointerType   const*>(this); }
+eden_always_inline [[nodiscard]] constexpr ArrayType     const* Type::castToArray()      const noexcept { assert(derived_type == ARRAY);     return static_cast<ArrayType     const*>(this); }
+eden_always_inline [[nodiscard]] constexpr FunctionType  const* Type::castToFunction()   const noexcept { assert(derived_type == FUNCTION);  return static_cast<FunctionType  const*>(this); }
+eden_always_inline [[nodiscard]] constexpr CustomType    const* Type::castToCustom()     const noexcept { assert(derived_type == CUSTOM);    return static_cast<CustomType    const*>(this); }
+eden_always_inline [[nodiscard]] constexpr VariantType   const* Type::castToVariant()    const noexcept { assert(derived_type == VARIANT);   return static_cast<VariantType   const*>(this); }
 
 static constexpr QualifiedType devoid_literal{Type::devoid(), {}};
 static constexpr QualifiedType error_literal{Type::error(), true};

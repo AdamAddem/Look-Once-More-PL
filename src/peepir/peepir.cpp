@@ -174,7 +174,7 @@ class Peeper {
   }
 
 
-#define pre assume_assert(module_access_node.type == ASTNode::MODULE_ACCESS);
+#define pre assert(module_access_node.type == ASTNode::MODULE_ACCESS);
   QualifiedType
   peepModuleAccess(ASTNode module_access_node) { pre
     Instruction module_symbol = newInstruction(module_access_node);
@@ -184,11 +184,11 @@ class Peeper {
     instructions.emplace_back(Instruction::NOOP);
     QualifiedType res;
 
-    auto const module = getModule(module_access_node.module_name(*current_file)); assume_assert(module);
+    auto const module = getModule(module_access_node.module_name(*current_file)); assert(module);
     module_symbol.module_member_data.import = module;
 
     auto const member_name = module_access_node.module_member_name(*current_file);
-    assume_assert(module_access_node.length_in_file == 1);
+    assert(module_access_node.length_in_file == 1);
 
     if (auto const member_variable = module->getPublicVariable(member_name)) {
       eden_unreachable("Globals unimplemented.");
@@ -221,7 +221,7 @@ class Peeper {
   }
 #undef pre
 
-#define pre assume_assert(member_access_node.type == ASTNode::MEMBER_ACCESS);
+#define pre assert(member_access_node.type == ASTNode::MEMBER_ACCESS);
   QualifiedType
   peepMemberAccess(ASTNode member_access_node) { pre
     Instruction type_member = newInstruction(member_access_node, Instruction::TYPE_VARIABLE);
@@ -266,7 +266,7 @@ class Peeper {
   }
 #undef pre
 
-#define pre assume_assert(identifier_node.type == ASTNode::IDENTIFIER);
+#define pre assert(identifier_node.type == ASTNode::IDENTIFIER);
   QualifiedType
   peepIdentifier(ASTNode identifier_node) { pre
     Instruction identifier_instructon = newInstruction(identifier_node);
@@ -296,7 +296,7 @@ class Peeper {
   }
 #undef pre
 
-#define pre assume_assert(subscript_node.type == ASTNode::SUBSCRIPT);
+#define pre assert(subscript_node.type == ASTNode::SUBSCRIPT);
   QualifiedType
   peepSubscriptExpression(ASTNode subscript_node) { pre
     Instruction subscript_instruction = newInstruction(subscript_node, Instruction::SUBSCRIPT);
@@ -333,7 +333,7 @@ class Peeper {
   }
 #undef pre
 
-#define pre assume_assert(cast_node.type == ASTNode::CAST);
+#define pre assert(cast_node.type == ASTNode::CAST);
   QualifiedType
   peepCastExpression(ASTNode cast_node) { pre
     Instruction cast_instruction = newInstruction(cast_node);
@@ -361,7 +361,7 @@ class Peeper {
   }
 #undef pre
 
-#define pre assume_assert(calling_node.type == ASTNode::CALLING);
+#define pre assert(calling_node.type == ASTNode::CALLING);
   QualifiedType
   peepCallingExpression(ASTNode calling_node) { pre
     auto const num_parameters = calling_node.call_data.num_parameters;
@@ -432,7 +432,7 @@ class Peeper {
 #undef pre
 
   //TODO: Add Short Circuiting
-#define pre assume_assert(binary_node.type == ASTNode::BINARY);
+#define pre assert(binary_node.type == ASTNode::BINARY);
   QualifiedType
   peepBinaryExpression(ASTNode binary_node) { pre
     Instruction binary_instruction = newInstruction(binary_node);
@@ -611,7 +611,7 @@ class Peeper {
   }
 #undef pre
 
-#define pre assume_assert(unary_node.type == ASTNode::UNARY);
+#define pre assert(unary_node.type == ASTNode::UNARY);
   QualifiedType
   peepUnaryExpression(ASTNode unary_node) { pre
     Instruction unary_instruction = newInstruction(unary_node);
@@ -747,7 +747,7 @@ class Peeper {
     }
   }
 
-#define pre assume_assert(return_node.type == ASTNode::RETURN);
+#define pre assert(return_node.type == ASTNode::RETURN);
   void peepReturnStatement(ASTNode return_node) { pre
     auto const return_type = current_function_type->returnType();
     if (not return_node.return_data.has_value) {
@@ -792,7 +792,7 @@ class Peeper {
       peepStatement();
   }
 
-#define pre assume_assert(while_node.type == ASTNode::WHILE);
+#define pre assert(while_node.type == ASTNode::WHILE);
   void peepWhileLoop(ASTNode while_node) { pre
     br_fallthrough();
     new_block();
@@ -816,7 +816,7 @@ class Peeper {
   }
 #undef pre
 
-#define pre assume_assert(if_node.type == ASTNode::IF);
+#define pre assert(if_node.type == ASTNode::IF);
   void peepIfStatement(ASTNode if_node) { pre
     auto const condition = peepExpression();
     if (not condition.type->isBool()) {
@@ -844,7 +844,7 @@ class Peeper {
   }
 #undef pre
 
-#define pre assume_assert(decl_node.type == ASTNode::DECLARATION);
+#define pre assert(decl_node.type == ASTNode::DECLARATION);
   void peepVarDeclaration(ASTNode decl_node) { pre
     auto const declared = nodes.take();
     auto const declared_name = declared.identifier_val(*current_file);

@@ -28,7 +28,7 @@ public:
 
     Variable(QualifiedType qualified, std::string_view name, bool is_public, sz_t variable_insert_order) noexcept
     : type(qualified), is_public(is_public), id(variable_insert_order), name_len(name.length()), name(name.data())
-    { assume_assert(variable_insert_order <= u16_max); }
+    { assert(variable_insert_order <= u16_max); }
 
     eden_always_inline [[nodiscard]] std::string_view nameof() const noexcept { return std::string_view(name, name_len); }
   };
@@ -46,7 +46,7 @@ public:
       assert(locals.size() == type->numParameters());
       assert(locals.is_ordered(get_id_of));
       for (auto const& param : locals)
-        assume_assert(param.id not_eq INVALID_ID);
+        assert(param.id not_eq INVALID_ID);
     }
 
     eden_always_inline [[nodiscard]] Type const* returnType() const noexcept { return type->returnType(); }
@@ -75,11 +75,11 @@ public:
   private: friend class SymbolTable; friend class Module;
     Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, FunctionType const* type, bool is_public, sz_t functon_insert_order)
     : Function(name, std::move(parameters), type, is_public) {
-      assume_assert(functon_insert_order < INVALID_ID);
+      assert(functon_insert_order < INVALID_ID);
       assert(locals.size() == type->numParameters());
       assert(locals.is_ordered(get_id_of));
       for (auto const& param : locals)
-        assume_assert(param.id not_eq INVALID_ID);
+        assert(param.id not_eq INVALID_ID);
       id = static_cast<u16_t>(functon_insert_order);
     }
   };

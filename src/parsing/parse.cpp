@@ -34,8 +34,8 @@ struct ExpressionTree {
   u64_t begin{};
 
   u32_t create(ASTNode node, u32_t left_idx = 0, u32_t right_idx = 0) noexcept {
-    assume_assert(left_idx < max_expressiontree_size); assume_assert(right_idx < max_expressiontree_size);
-    ++begin; assume_assert(begin < max_expressiontree_size);
+    assert(left_idx < max_expressiontree_size); assert(right_idx < max_expressiontree_size);
+    ++begin; assert(begin < max_expressiontree_size);
 
     auto& expr = data[begin];
     expr.left_idx = left_idx;

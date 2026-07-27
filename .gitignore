@@ -2,3 +2,4 @@ builds/
 example/build/
 tests/
 .idea/
+compile_flags.txt

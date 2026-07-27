@@ -1,5 +1,5 @@
 #pragma once
-#include "edenlib/arena.hpp"
+#include "edenlib/allocators/arena.hpp"
 #include "edenlib/enum_utils.hpp"
 #include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"

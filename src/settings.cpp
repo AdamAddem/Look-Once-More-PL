@@ -35,7 +35,7 @@ const std::unordered_map<std::string_view, Args> stringToArgs{
 
 constexpr std::string_view hello_world = {
   "__C puts(str: ref u8) i32;"
-  "\npub main() i32 {"
+  "\npub main: () i32 {"
   "\n\t__C.puts(\"Hello, World!\");"
   "\n\treturn 0;"
   "\n}"

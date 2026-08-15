@@ -10,7 +10,6 @@
 #include <numeric>
 #include <print>
 #include <utility>
-#include <chrono>
 
 using namespace LOM;
 using namespace LOM::Lexer;
@@ -19,7 +18,7 @@ using namespace LOM::AST;
 
 namespace {
 
-[[noreturn]] void throw_notfound() eden_throws(0 if empty) { throw 0; }
+[[noreturn]] void throw_notfound() eden_throws(0) { throw 0; }
 
 struct Expression {
   u32_t left_idx;
@@ -89,7 +88,10 @@ class ParserBody {
   ExpressionTree expression_tree;
 
   ParserBody(std::vector<Token>& tokens, TU& tu)
-  : tokens(tokens), current_file(tu.source_files.back()), tu(tu) {}
+  : tokens(tokens), current_file(tu.source_files.back()), tu(tu) {
+    imports.reserve(2);
+    imports.emplace_back("__C");
+  }
 
   #define pre assert(tokens.previous().is(TokenType::LBRACKET));
   [[nodiscard]] ArrayType const*
@@ -557,7 +559,6 @@ class ParserBody {
 
   eden_always_inline void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
 
-
   // parses  name: qualified_type
   // returns name_token and qualified_type
   template <bool is_parameter = false>
@@ -746,178 +747,173 @@ class ParserBody {
 #undef post
 
 #define pre assert(tokens.previous().is(TokenType::DUNDER_CEXTERN));
-void parseCExtern() noexcept { pre
-  auto const name = parseIdentifier();
-  if (not tokens.pop_if(TokenType::LPAREN)) {
-    error(tokens.peek(), "Expected opening ( for parameter list.");
-    return sync_to_semicolon();
-  }
-
-  eden::swap_vector16<Module::Variable> parameters; parameters.reserve(4);
-  bool is_variadic = false;
-  if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
-
-  while (true) {
-    if (tokens.pop_if(TokenType::DUNDER_VA)) {
-      is_variadic = true;
-      break;
+  void parseCExtern() noexcept { pre
+    auto const name = parseIdentifier();
+    if (not tokens.pop_if(TokenType::LPAREN)) {
+      error(tokens.peek(), "Expected opening ( for parameter list.");
+      return sync_to_semicolon();
     }
 
-    auto const [identifier_token, type] = parseHalfDeclaration<true>();
-    auto const parameter_idx = parameters.size();
-    parameters.emplace_back(type, identifier_token.originalString(current_file), false, parameter_idx);
-
-    if (not tokens.pop_if(TokenType::COMMA)) break;
-    if (parameter_idx + 1 == Settings::MAX_FUNCTION_PARAMETERS) {
-      error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
-      sync_to_semicolon();
-      return;
-    }
-  }
-
-  end_params:
-  if (not tokens.pop_if(TokenType::RPAREN))
-    error(tokens.peek(), "Expected closing parenthesis in parameter list.");
-
-  auto return_type = Type::devoid();
-  if (not tokens.peek_is(TokenType::SEMI_COLON))
-    return_type = parseType();
-
-  if (not tokens.pop_if(TokenType::SEMI_COLON))
-    return error(tokens.peek(), "Expected semi-colon.");
-
-  dunderc_module->addFunction(name, std::move(parameters), return_type, true, is_variadic);
-}
-#undef pre
-
-#define pre assert(tokens.previous().is(TokenType::KEYWORD_STRUCT));
-void parseStructDecl() noexcept { pre
-  auto const name = parseIdentifier();
-
-  if (not tokens.pop_if(TokenType::LBRACE))
-    error(tokens.peek(), "Expected opening curly brace in struct definition.");
-
-  if (tokens.pop_if(TokenType::RBRACE))
-    return (void)tu.module->addCustomType(name, {});
-
-  eden::swap_vector<SymbolTable::Variable> members; members.reserve(2);
-  do {
-    auto const [member_name, member_type] = parseHalfDeclaration();
-    members.emplace_back(member_type, member_name.originalString(current_file), true, members.size());
-  } while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
-
-  if (not tokens.pop_if(TokenType::RBRACE))
-    error(tokens.peek(), "Expected closing curly brace after struct definition.");
-
-  tu.module->addCustomType(name, std::move(members));
-}
-#undef pre
-
-#define pre assert(tokens.previous().is(TokenType::KEYWORD_IMPORT));
-void parseImport() noexcept { pre
-  auto const& current_file = tu.source_files.back();
-  auto const name_token = tokens.take();
-  if (not name_token.isIdentifier()) {
-    error(name_token, "Expected module name.");
-    return;
-  }
-
-  auto name = name_token.originalString(current_file);
-  if (tu.name == name)
-    error(name_token, "Cannot import from current module.");
-  else
-    imports.emplace_back(name);
-
-  if (not tokens.pop_if(TokenType::SEMI_COLON)) {
-    error(tokens.peek(), "Expected semicolon.");
-  }
-
-}
-#undef pre
-
-#define pre assert(tokens.peek().isIdentifier() or tokens.peek().is(TokenType::KEYWORD_PUB));
-void parseFunction() noexcept { pre
-  Function current_function;
-  current_function.file_idx = static_cast<u8_t>(tu.source_files.size() - 1);
-  current_function.is_public = tokens.pop_if(TokenType::KEYWORD_PUB);
-
-  /* if (not tokens.pop_if(TokenType::KEYWORD_FN)) {
-    report_error(current_file, tokens.peek(), "Expected function declaration.");
-    return current_function;
-  } */
-
-  // name
-  {
-    auto const function_name = parseIdentifier();
-    current_function.name_len = function_name.length();
-    current_function.name_ptr = function_name.data();
-  }
-
-  if (not tokens.pop_if(TokenType::LPAREN)) {
-    error(tokens.peek(), "Expected parameter list.");
-  }
-
-  // parameters
-  {
-    eden::swap_vector16<SymbolTable::Variable> parameters; parameters.reserve(4);
+    eden::swap_vector16<Module::Variable> parameters; parameters.reserve(4);
+    bool is_variadic = false;
     if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
 
     while (true) {
-      auto const [name_token, type] = parseHalfDeclaration<true>();
+      if (tokens.pop_if(TokenType::DUNDER_VA)) {
+        is_variadic = true;
+        break;
+      }
+
+      auto const [identifier_token, type] = parseHalfDeclaration<true>();
       auto const parameter_idx = parameters.size();
-      parameters.emplace_back(type, name_token.originalString(current_file), false, parameter_idx);
+      parameters.emplace_back(type, identifier_token.originalString(current_file), false, parameter_idx);
+
       if (not tokens.pop_if(TokenType::COMMA)) break;
       if (parameter_idx + 1 == Settings::MAX_FUNCTION_PARAMETERS) {
         error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
-        break;
+        sync_to_semicolon();
+        return;
       }
     }
 
     end_params:
-    if(not tokens.pop_if(TokenType::RPAREN))
+    if (not tokens.pop_if(TokenType::RPAREN))
       error(tokens.peek(), "Expected closing parenthesis in parameter list.");
 
-    Type const* return_type = Type::devoid();
-    if (not tokens.peek_is(TokenType::LBRACE))
+    auto return_type = Type::devoid();
+    if (not tokens.peek_is(TokenType::SEMI_COLON))
       return_type = parseType();
 
-    tu.module->addFunction(
-      current_function.nameof(),
-      std::move(parameters),
-      return_type,
-      current_function.is_public);
-    tu.module->enterFunctionScope(current_function.nameof());
-  }
+    if (not tokens.pop_if(TokenType::SEMI_COLON))
+      return error(tokens.peek(), "Expected semi-colon.");
 
-  if (not tokens.pop_if(TokenType::LBRACE)) {
-    error(tokens.peek(), "Expected function definition.");
-    tu.functions.emplace_back(current_function);
-    return;
+    dunderc_module->addFunction(name, std::move(parameters), return_type, true, is_variadic);
   }
-
-  // body
-  {
-    parseStatementsBetweenBraces();
-    current_function.body = std::move(nodes);
-  }
-
-  tu.functions.emplace_back(current_function);
-}
 #undef pre
 
+#define pre assert(tokens.previous().is(TokenType::KEYWORD_IMPORT));
+  void parseImport() noexcept { pre
+    auto const& current_file = tu.source_files.back();
+    auto const name_token = tokens.take();
+    if (not name_token.isIdentifier()) {
+      error(name_token, "Expected module name.");
+      return;
+    }
+
+    auto name = name_token.originalString(current_file);
+    if (tu.name == name)
+      error(name_token, "Cannot import from current module.");
+    else
+      imports.emplace_back(name);
+
+    if (not tokens.pop_if(TokenType::SEMI_COLON)) {
+      error(tokens.peek(), "Expected semicolon.");
+    }
+
+  }
+#undef pre
+
+#define pre assert(tokens.previous().isVarQualifier());
+  void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
+    if (tokens.pop_if(TokenType::RBRACE))
+      return (void)tu.module->addCustomType(name, {});
+
+    eden::swap_vector<SymbolTable::Variable> members; members.reserve(2);
+    do {
+      auto const [member_name, member_type] = parseHalfDeclaration();
+      members.emplace_back(member_type, member_name.originalString(current_file), true, members.size());
+    } while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
+
+    if (not tokens.pop_if(TokenType::RBRACE))
+      error(tokens.peek(), "Expected closing curly brace after struct definition.");
+
+    tu.module->addCustomType(name, std::move(members));
+  }
+
+  void parseFunctionDecl(std::string_view name, bool is_public) noexcept { pre
+    Function current_function;
+    current_function.file_idx = static_cast<u8_t>(tu.source_files.size() - 1);
+    current_function.is_public = is_public;
+    current_function.name_len = name.length();
+    current_function.name_ptr = name.data();
+
+    if (not tokens.pop_if(TokenType::LPAREN))
+      error(tokens.peek(), "Expected parameter list.");
+
+    // parameters
+    {
+      eden::swap_vector16<SymbolTable::Variable> parameters; parameters.reserve(4);
+      if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
+
+      while (true) {
+        auto const [name_token, type] = parseHalfDeclaration<true>();
+        auto const parameter_idx = parameters.size();
+        parameters.emplace_back(type, name_token.originalString(current_file), false, parameter_idx);
+        if (not tokens.pop_if(TokenType::COMMA)) break;
+        if (parameter_idx + 1 == Settings::MAX_FUNCTION_PARAMETERS) {
+          error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
+          break;
+        }
+      }
+
+      end_params:
+      if(not tokens.pop_if(TokenType::RPAREN))
+        error(tokens.peek(), "Expected closing parenthesis in parameter list.");
+
+      Type const* return_type = Type::devoid();
+      if (not tokens.peek_is(TokenType::LBRACE))
+        return_type = parseType();
+
+      tu.module->addFunction(
+        current_function.nameof(),
+        std::move(parameters),
+        return_type,
+        current_function.is_public);
+      tu.module->enterFunctionScope(current_function.nameof());
+    }
+
+    if (not tokens.pop_if(TokenType::LBRACE)) {
+      error(tokens.peek(), "Expected function definition.");
+      tu.functions.emplace_back(current_function);
+      return;
+    }
+
+    // body
+    {
+      parseStatementsBetweenBraces();
+      current_function.body = std::move(nodes);
+    }
+
+    tu.functions.emplace_back(current_function);
+  }
+#undef pre
+
+  void parseGlobalLevelDeclaration(bool is_public) noexcept {
+      auto const name = parseIdentifier();
+      if (not tokens.peek().isVarQualifier())
+        error(tokens.peek(), "Expected declaration qualifier ( : or $ ).");
+      else if (tokens.peek_is(TokenType::DOLLAR))
+        error(tokens.take(), "$ qualifiers currently not supported on functions or structs, sorry!");
+      else
+        tokens.pop();
+
+      if (tokens.pop_if(TokenType::LBRACE))
+        parseStructDecl(name, is_public);
+      else
+        parseFunctionDecl(name, is_public);
+  }
+
 public:
-  static bool parse(TU& tu, std::vector<Token>& token_list) {
+  [[nodiscard]] static bool
+  parse(TU& tu, std::vector<Token>& token_list) {
     ParserBody parser(token_list, tu);
-    parser.imports.reserve(2);
-    parser.imports.emplace_back("__C");
 
     while (not parser.tokens.peek_is(TokenType::INVALID_TOKEN)) {
       switch (parser.tokens.peek().type) { using enum TokenType;
-      case KEYWORD_IMPORT: parser.tokens.pop(); parser.parseImport();     break;
-      case DUNDER_CEXTERN: parser.tokens.pop(); parser.parseCExtern();    break;
-      case KEYWORD_STRUCT: parser.tokens.pop(); parser.parseStructDecl(); break;
-      case KEYWORD_PUB:
-      case IDENTIFIER:                          parser.parseFunction();   break;
+      case KEYWORD_IMPORT: parser.tokens.pop(); parser.parseImport(); break;
+      case DUNDER_CEXTERN: parser.tokens.pop(); parser.parseCExtern(); break;
+      case KEYWORD_PUB:    parser.tokens.pop(); parser.parseGlobalLevelDeclaration(true); break;
+      case IDENTIFIER:     parser.parseGlobalLevelDeclaration(false); break;
       default:
         parser.error(parser.tokens.take(), "Expected struct or function declaration.");
         break;
@@ -964,7 +960,11 @@ void Parser::printTU(TU const& tu) noexcept {
   }
 }
 
-inline std::chrono::nanoseconds parsing_durr{};
+
+#ifdef STAGE_BENCHMARKS
+  #include <chrono>
+  static inline std::chrono::nanoseconds parsing_durr{};
+#endif
 bool Parser::parseTokens(TU& tu, std::vector<Token>& token_list) noexcept {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();

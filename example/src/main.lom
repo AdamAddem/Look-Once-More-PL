@@ -1,23 +1,24 @@
-__C printf(fmt: ref u8, __va); # C-Interop
+# Window
+__C InitWindow(w: i32, h: i32, title: ref u8);
+__C CloseWindow();
+__C WindowShouldClose() bool;
 
-#{ Returns the n'th fibonacci number. }#
-fib(n: u32) u32 {
-    if n <= 1 { return n; }
-    return fib(n-1) + fib(n-2);
-}
+# Drawing
+__C BeginDrawing();
+__C EndDrawing();
+__C ClearBackground(color: u32);
+__C DrawLine(x1: i32, y1: i32, x2: i32, y2: i32, color: u32);
 
-pub main() i32 {
-    upper_bound: u32 = 10;   # readonly
-    i$ u32 = 0;              # readwrite
-    results$ [10]u32 = junk; # explicit junk initialization
+pub main: () i32 {
+    __C.InitWindow(1280, 720, "Cube");
+    bg_color: u32 = cast<u32>(0) - 1;
 
-    while i < upper_bound {
-        results[i] = fib(i);
-        ++i;
+    while not __C.WindowShouldClose() {
+        __C.BeginDrawing();
+        __C.ClearBackground( bg_color );
+        __C.EndDrawing();
     }
 
-    while i-- > 0 {
-        __C.printf("Fib number %d: %d\n", i, results[i]);
-    }
+    __C.CloseWindow();
     return 0;
 }

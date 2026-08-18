@@ -554,7 +554,8 @@ class Lowerer final {
         auto const primitive_dest_type = dest_type->castToPrimitive();
         if (primitive_dest_type->isSignedIntegral())
           return builder.CreateFPToSI(genValueExpression(), llvm_dest_type);
-        return builder.CreateSIToFP(genValueExpression(), llvm_dest_type);
+        else
+          return builder.CreateFPToUI(genValueExpression(), llvm_dest_type);
       }
       return builder.CreateFPCast(genValueExpression(), llvm_dest_type);
     }

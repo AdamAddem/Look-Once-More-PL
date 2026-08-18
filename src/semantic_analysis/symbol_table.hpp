@@ -45,8 +45,10 @@ public:
     : locals(std::move(parameters)), type(type), name(name.data()), name_len(name.length()), is_public(is_public), id(INVALID_ID) {
       assert(locals.size() == type->numParameters());
       assert(locals.is_ordered(get_id_of));
+#ifndef NDEBUG
       for (auto const& param : locals)
         assert(param.id not_eq INVALID_ID);
+#endif
     }
 
     eden_always_inline [[nodiscard]] Type const* returnType() const noexcept { return type->returnType(); }
@@ -78,8 +80,11 @@ public:
       assert(functon_insert_order < INVALID_ID);
       assert(locals.size() == type->numParameters());
       assert(locals.is_ordered(get_id_of));
+
+#ifndef NDEBUG
       for (auto const& param : locals)
         assert(param.id not_eq INVALID_ID);
+#endif
       id = static_cast<u16_t>(functon_insert_order);
     }
   };

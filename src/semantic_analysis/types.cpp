@@ -58,7 +58,7 @@ bool Type::castableTo(Type const* other) const noexcept {
     auto const as_primitive = castToPrimitive();
     if (not as_primitive->isString()) return false;
 
-    auto const other_as_pointer = castToPointer();
+    auto const other_as_pointer = other->castToPointer();
     auto const other_subtype = other_as_pointer->getSubtype();
     if (other_subtype.qualifiers.writable) return false;
     return other_subtype.type == PrimitiveType::u8();

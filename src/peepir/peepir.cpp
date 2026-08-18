@@ -115,7 +115,8 @@ class Peeper {
     return true;
   }
 
-  eden_noinline_cold void error(auto err, std::string msg) noexcept
+  eden_noinline_cold void
+  error(auto err, std::string msg) noexcept
   requires requires {
     err.length_in_file;
     err.position_in_file;

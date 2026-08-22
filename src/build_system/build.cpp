@@ -104,8 +104,7 @@ static std::vector<fs::path> extern_objects_paths;
 static void compileC() {
   if (not fs::exists(extern_path) or is_empty(fs::directory_entry(extern_path))) return;
 
-  std::string command =
-    std::format("(cd build/obj && {} ", Settings::external_compiler);
+  std::string command = std::format("(cd build/obj && {} ", Settings::external_compiler);
   switch (Settings::getOptimizationLevel()) {
   case 0: break;
   case 1: command.append(" -O1 "); break;
@@ -113,13 +112,14 @@ static void compileC() {
   case 3: command.append(" -O3 "); break;
   default: eden_unreachable("Invalid optimization level.");
   }
+
   command.append("-c ");
   for (auto& file : fs::directory_iterator{extern_path}) {
     if (file.path().extension() != ".c") continue;
-    extern_objects_paths.emplace_back(file.path());
+    extern_objects_paths.emplace_back(
+      file.path().filename()).replace_extension(obj_extension);
     command.append(
-      std::format("../../{} ",
-        file.path().native())
+      std::format("../../{} ", file.path().native())
       );
   }
 
@@ -145,13 +145,12 @@ lex_and_parse_module(Parser::TU& tu, fs::path const& directory)  {
   bool has_error = false;
   for (auto const& entry : fs::directory_iterator{directory}) {
     auto const& path = entry.path();
-    if (not entry.is_regular_file())          throw std::runtime_error( std::format("LookOnceMore: Sorry! Submodules not supported yet.\nModule Path: {}", path.string() ));
-    if (path.extension() != ".lom") continue;
-    if (is_empty(entry))                    throw std::runtime_error( std::format("LookOnceMore: Sorry! Empty files not supported.\nFile Path: {}", path.string() ));
+    if (not entry.is_regular_file()) throw std::runtime_error( std::format("LookOnceMore: Sorry! Submodules not supported yet.\nModule Path: {}", path.string() ));
+    if (path.extension() != ".lom")  continue;
 
     auto const file = tu.source_files.emplace_back(path);
     if      (Lexer::tokenizeFile(tokens, file))  print_lexer_errors(file),  has_error = true;
-    else if (Parser::parseTokens(tu, tokens)) print_parser_errors(file), has_error = true;
+    else if (Parser::parseTokens(tu, tokens))    print_parser_errors(file), has_error = true;
 
     tokens.clear();
   }
@@ -162,7 +161,11 @@ lex_and_parse_module(Parser::TU& tu, fs::path const& directory)  {
 void LOM::build() {
   if (not fs::exists(src_path)) throw std::runtime_error("LookOnceMore: src directory not found!");
   std::thread comp_extern;
-  if constexpr (not Settings::external_compiler.empty()) comp_extern = std::thread(compileC);
+  if constexpr (not Settings::external_compiler.empty()) {
+    if (Settings::do_output_obj)
+      comp_extern = std::thread(compileC);
+  }
+
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
@@ -237,14 +240,13 @@ void LOM::build() {
 
   if (comp_extern.joinable()) {
     comp_extern.join();
-    for (auto& extern_path : extern_objects_paths) {
-      module_paths.reserve(module_paths.size() + extern_objects_paths.size());
+    module_paths.reserve(module_paths.size() + extern_objects_paths.size());
+    for (auto& extern_path : extern_objects_paths)
       module_paths.emplace_back(std::move(extern_path));
-    }
   }
 
 #ifdef NO_MEASUREMENT
-  if (Settings::do_output_obj)
+  if (Settings::do_linking)
     Backend::linkObjects(module_paths);
 #endif
 

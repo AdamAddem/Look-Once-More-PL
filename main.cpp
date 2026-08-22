@@ -1,8 +1,9 @@
 #include "build_system/build.hpp"
 #include "settings.hpp"
 
-#include <print>
 #include <chrono>
+#include <filesystem>
+#include <print>
 int main(int argc, const char* argv[]) {
   if (argc < 2) {
     std::println("LookOnceMore: Arguments required.");
@@ -10,6 +11,9 @@ int main(int argc, const char* argv[]) {
   }
 
   LOM::Settings::setArgs(argc, argv);
+
+  if (LOM::Settings::do_output_obj)
+    std::filesystem::create_directories("build/obj");
 
 #ifdef PROFILE
   auto begin_time = std::chrono::high_resolution_clock::now();

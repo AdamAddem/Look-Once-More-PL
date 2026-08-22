@@ -77,11 +77,7 @@ struct TU : Backend {
     std::filesystem::path obj_path = object_folder;
     obj_path.append(output_path.string());
     std::filesystem::create_directories(obj_path.parent_path());
-#ifdef _WIN32
-    obj_path.replace_extension(".obj");
-#else
-    obj_path.replace_extension(".o");
-#endif
+    obj_path.replace_extension(obj_extension);
 
     createFile(obj_path, llvm::CodeGenFileType::ObjectFile);
     return obj_path;

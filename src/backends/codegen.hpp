@@ -23,4 +23,11 @@ public:
 
   virtual ~Backend() = default;
 };
+
+#ifdef _WIN32
+inline constexpr std::string_view obj_extension = ".obj";
+#else
+inline constexpr std::string_view obj_extension = ".o";
+#endif
+
 }

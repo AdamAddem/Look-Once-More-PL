@@ -3,3 +3,5 @@ example/build/
 tests/
 .idea/
 compile_flags.txt
+.codex/
+.agents/

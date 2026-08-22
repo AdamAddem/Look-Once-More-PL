@@ -58,14 +58,14 @@ static std::string_view output_name;
 static std::string extern_flags{" "};
 
 std::string_view getExecutableName() noexcept   { return output_name; }
-std::string_view getExternFlags() noexcept        { return extern_flags; }
+std::string_view getExternFlags() noexcept      { return extern_flags; }
 u8_t getOptimizationLevel() noexcept            { return optimization_level; }
 
 void setArgs(unsigned argc, const char* argv[]) {
   namespace fs = std::filesystem;
   if (std::string_view(argv[1]) == "init") {
     fs::create_directory("build");
-    fs::create_directory("external");
+    fs::create_directory("extern");
     fs::create_directory("src");
     std::ofstream main_lom_file("src/main.lom");
     main_lom_file << hello_world;
@@ -97,7 +97,7 @@ void setArgs(unsigned argc, const char* argv[]) {
     case Args::EXECUTABLE_NAME:
       if (++i == argc)              throw std::runtime_error("LookOnceMore: Expected executable name after -o.");
       if (not output_name.empty())  throw std::runtime_error("LookOnceMore: Multiple output names specified, maybe don't do that :).");
-      output_name = arg_view; ++i;
+      output_name = argv[i];
       break;
 
     case Args::BUILD: do_build_flag = true;   break;

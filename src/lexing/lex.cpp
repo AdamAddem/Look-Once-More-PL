@@ -163,22 +163,22 @@ struct Tokenizer {
 
     while (peek() not_eq '\0') {
       auto const c = take();
-      if (c == 'f') {
-        newtoken_type = TokenType::FLOAT_LITERAL;
-        break;
-      }
-      if (c == '.') {
+      switch (c) {
+      case 'f': newtoken_type = TokenType::FLOAT_LITERAL; goto leave_loop;
+      case '.':
+        if (newtoken_type == TokenType::DOUBLE_LITERAL)
+          error_at_currentpos("Repeated decimal point in float literal.");
         newtoken_type = TokenType::DOUBLE_LITERAL;
-        continue;
-      }
-      if (not is_num(c)) {
-        undo();
-        break;
-      }
+        [[fallthrough]];
+      case '0': case '1': case '2':
+      case '3': case '4': case '5':
+      case '6': case '7': case '8':
+      case '9': ++newtoken_length; break;
 
-      ++newtoken_length;
+      default: undo(); goto leave_loop;
+      }
     }
-
+    leave_loop:
     token_list.emplace_back(newtoken_type, newtoken_length, newtoken_pos);
   }
 
@@ -250,9 +250,7 @@ bool Lexer::tokenizeFile(std::vector<Token>& out_tokens, File file) {
 #ifdef STAGE_BENCHMARKS
   auto begin_time = std::chrono::high_resolution_clock::now();
 #endif
-
   Tokenizer tokenizer{out_tokens, file};
-
   if (tokenizer.peek() == '.') {
     tokenizer.error_at_currentpos("File may not start with . for very esoteric reasons.");
     ++tokenizer.current_position;
@@ -272,12 +270,15 @@ bool Lexer::tokenizeFile(std::vector<Token>& out_tokens, File file) {
       tokenizer.grabSymbol();
   }
 
-  assert(not out_tokens.empty());
+  if (out_tokens.empty()) {
+    tokenizer.error_at_currentpos("Empty file.");
+    return true;
+  }
 
-  auto const INVALID_TOKEN = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
+  auto const invalid_token = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
   out_tokens.reserve(out_tokens.size() + INVALID_TOKEN_PADDING);
   for (auto i{0uz}; i < INVALID_TOKEN_PADDING; ++i)
-    out_tokens.push_back(INVALID_TOKEN);
+    out_tokens.push_back(invalid_token);
 
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();

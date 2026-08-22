@@ -9,7 +9,5 @@ namespace LOM::PeepIR {
 }
 
 namespace LOM::ToLLVM {
-
 std::unique_ptr<Backend> codegen(PeepIR::TU&&, const std::filesystem::path &);
-
 }

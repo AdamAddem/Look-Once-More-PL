@@ -2,9 +2,8 @@
 #include "edenlib/macros.hpp"
 #include <print>
 
-
 namespace LOM::AST {
-void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
+void print_ast(eden::vector<ASTNode> const& nodes, File const& file) noexcept {
 
   auto curr = nodes.begin();
   const auto end = nodes.end();
@@ -39,7 +38,7 @@ void print_ast(std::vector<ASTNode> const& nodes, File const& file) noexcept {
     case STRING_LITERAL: std::print("STRING_LITERAL: {}", curr->string_val(file)); break;
     case ESCAPED_STRING_LITERAL: std::print("ESCAPED_STRING_LITERAL: {}", curr->string_val(file)); break;
 
-    default: eden_unreachable("Invalid ASTNode Type.");
+    default: edenUnreachable("Invalid ASTNode Type.");
     }
     std::print("\n\t");
     ++curr;

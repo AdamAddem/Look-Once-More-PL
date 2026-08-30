@@ -6,15 +6,14 @@
 #include <iostream>
 #include <utility>
 
-using namespace LOM;
+namespace LOM {
 
-std::unique_ptr<Backend> Backend::codegen(PeepIR::TU&& vtu, const std::filesystem::path& file) {
+std::unique_ptr<Backend> Backend::codegen(PeepIR::TU&& vtu, std::filesystem::path const& file) {
   return ToLLVM::codegen(std::move(vtu), file);
 }
 
-
-//i mean.... it works?
-void Backend::linkObjects(std::vector<std::filesystem::path> const& obj_paths) {
+//.... it works?
+void Backend::linkObjects(eden::vector<std::filesystem::path> const& obj_paths) {
   if constexpr (Settings::external_compiler.empty())
     throw std::runtime_error("Linking objects is currently unsupported without clang or gcc.");
 
@@ -34,4 +33,6 @@ void Backend::linkObjects(std::vector<std::filesystem::path> const& obj_paths) {
     std::cerr << "Error calling compiler with command: " << compiler;
     std::quick_exit(1);
   }
+}
+
 }

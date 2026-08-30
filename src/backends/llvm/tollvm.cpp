@@ -218,7 +218,7 @@ class Lowerer final {
       case PRIMITIVE: {
         auto const primitive = type->castToPrimitive()->getUnderlyingPrimitiveType();
         switch (primitive) { using enum PrimitiveType::PrimitiveTypeEnum;
-        case STRING:        eden_unreachable("WIP");
+        case STRING:        edenUnreachable("WIP");
         case F32: return f32;
         case F64: return f64;
         case U7: case U8: case I8: case CHAR: case BOOL: return i8;
@@ -226,13 +226,13 @@ class Lowerer final {
         case U31: case U32: case I32:                    return i32;
         case U63: case U64: case I64:                    return i64;
         default:
-          eden_unreachable("Invalid primitive type.");
+          edenUnreachable("Invalid primitive type.");
         }
       }
 
       case CUSTOM: break;
-      case FUNCTION: eden_unreachable("Functions should be translated via translateFunctionType.");
-      default: eden_unreachable("Invalid type being translated.");
+      case FUNCTION: edenUnreachable("Functions should be translated via translateFunctionType.");
+      default: edenUnreachable("Invalid type being translated.");
       }
     }
 
@@ -245,12 +245,12 @@ class Lowerer final {
     }
 
     auto const member_table = custom_type->member_table();
-    member_table->orderVariableList();
-    auto const& members = member_table->getVariableList();
+    auto const num_members = member_table->num_variables();
     llvm::Type* member_types[Settings::MAX_STRUCT_MEMBER_VARIABLES];
     auto i{0uz};
-    for (auto const& member : members) {
-      auto* const member_type = member.type.type;
+    for (; i<num_members; ++i) {
+      auto const member = member_table->getVariable(i); assert(member);
+      auto* const member_type = member->type.type;
       member_types[i] = translateType(member_type);
       ++i;
     }
@@ -354,7 +354,7 @@ class Lowerer final {
       return load;
     }
     default:
-      eden_unreachable("Invalid unary peep instruction type.");
+      edenUnreachable("Invalid unary peep instruction type.");
     }
   }
 
@@ -379,7 +379,7 @@ class Lowerer final {
     case FMOD: return builder.CreateFRem(left, right);
 
     case ASSIGN:
-      eden_unreachable("Assign shouldn't be called here.");
+      edenUnreachable("Assign shouldn't be called here.");
 
     case ULESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULT, left, right);
     case SLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLT, left, right);
@@ -412,7 +412,7 @@ class Lowerer final {
       : llvm::CmpInst::Predicate::ICMP_NE,
       left, right);
     default:
-      eden_unreachable("Invalid binary peep instruction type.");
+      edenUnreachable("Invalid binary peep instruction type.");
     }
   }
 
@@ -433,7 +433,7 @@ class Lowerer final {
       break;
 
     default:
-      eden_unreachable("Invalid assign peep instruction type.");
+      edenUnreachable("Invalid assign peep instruction type.");
     }
 
     return builder.CreateStore(right, left);
@@ -570,7 +570,7 @@ class Lowerer final {
     }
 
     default:
-      eden_unreachable("Invalid peep instruction type.");
+      edenUnreachable("Invalid peep instruction type.");
     }
   }
 
@@ -637,7 +637,7 @@ class Lowerer final {
     }
 
     default:
-      eden_unreachable("Invalid peep instruction type.");
+      edenUnreachable("Invalid peep instruction type.");
     }
   }
 
@@ -663,7 +663,7 @@ class Lowerer final {
       builder.CreateRet(branch_value);
       break;
     default:
-      eden_unreachable("Invalid block terminator type.");
+      edenUnreachable("Invalid block terminator type.");
     }
   }
 
@@ -800,7 +800,6 @@ public:
     ptr = llvm::PointerType::get(context, 0);
 
     auto const type_context = peeped_tu.module->getTypeContext();
-    assert(type_context->numVariantTypes() == 0);
     custom_type_map.reserve(type_context->numCustomTypes());
     function_type_map.reserve(type_context->numFunctionTypes());
   }

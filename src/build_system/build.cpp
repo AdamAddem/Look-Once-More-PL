@@ -1,107 +1,78 @@
 #include "build.hpp"
 #include "backends/codegen.hpp"
-#include "error.hpp"
+#include "build_system/print.hpp"
 #include "lexing/lex.hpp"
+#include "modules/table_and_module.hpp"
 #include "parsing/parse.hpp"
 #include "peepir/peepir.hpp"
-#include "semantic_analysis/symbol_table.hpp"
 
+#include <chrono>
 #include <filesystem>
 #include <print>
-#include <chrono>
 #include <thread>
 using namespace LOM;
 namespace fs = std::filesystem;
 
+namespace {
+constexpr auto C_MODULE_IDX = 0uz;
+constexpr auto MAIN_MODULE_IDX = 1uz;
+const fs::path src_path{"src"};
+const fs::path extern_path{"extern"};
 
-static TypeContext types;
-static std::unordered_map<std::string_view, Module> modules;
-static Module main_module(&types);
+// using a global struct so state can be easily reset when profiling
+// kinda dumb but so is this language
+[[maybe_unused]]
+struct GlobalStruct {
+  std::unordered_map<std::string_view, u16_t> module_map;
+  eden::vector<Module> module_list;
+  eden::vector<fs::path> module_paths;
+  eden::vector<fs::path> extern_objects_paths;
+  sz_t num_modules;
+  sz_t num_external_objects;
 
-// returns nullptr if not found
-[[nodiscard]] Module*
-LOM::getModule(std::string_view name) {
-  auto const iter = modules.find(name);
-  if (iter == modules.end()) return nullptr;
-  return &iter->second;
-}
+  void init_module_paths() noexcept {
+    module_paths.reserve(4);
+    module_paths.emplace_back(extern_path);
+    module_paths.emplace_back(src_path);
+    for (auto const& entry : fs::directory_iterator{src_path}) {
+      if (entry.is_directory()) {
+        if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue; // jank, ignores directories starting with .
+        module_paths.emplace_back(entry.path().stem());
+      }
+    }
+  }
+
+  void init_module_list() noexcept {
+    module_list.reserve(module_paths.size());
+    module_list.emplace_back(0); module_list.emplace_back(1);
+  }
+
+  void init_module_map() noexcept {
+    module_map.reserve(module_paths.size());
+    module_map.emplace("__C", C_MODULE_IDX);
+  }
+
+  GlobalStruct() noexcept {
+    init_module_paths();
+    init_module_list();
+    init_module_map();
+    num_modules = module_list.size();
+    num_external_objects = extern_objects_paths.size();
+  }
 
 #ifdef PROFILE
-void LOM::reset_state() noexcept {
-  for (auto& kv : modules) {
-    if (kv.first not_eq std::string_view("__C"))
-      delete[] kv.first.data();
+  ~GlobalStruct() noexcept {
+    for (auto& kv : module_map) {
+      if (kv.first not_eq std::string_view("__C"))
+        delete[] kv.first.data();
+    }
   }
-
-  modules.~unordered_map<std::string_view, Module>();
-  main_module.~Module();
-  types.~TypeContext();
-
-  new (&types) TypeContext;
-  new (&main_module) Module("", &types);
-  new (&modules) std::unordered_map<std::string_view, Module>();
-}
 #endif
 
-// Print Output
-namespace {
-
-eden_noinline_cold void
-print_parser(std::vector<Parser::TU> const& tus, std::vector<fs::path> const& paths) {
-  assert(tus.size() == paths.size()); assert(Settings::do_output_parser);
-  for (auto i{0uz}; i<tus.size(); ++i) {
-    std::println("\n--- Parser Output --- {}", paths[i].native());
-    Parser::printTU(tus[i]);
-    std::println("\n--- Parser Output ---");
-  }
-}
-
-eden_noinline_cold void
-print_peep(std::vector<PeepIR::TU> const& tus, std::vector<fs::path> const& paths) {
-  assert(tus.size() == paths.size()); assert(Settings::do_output_peep);
-  for (auto i{0uz}; i<tus.size(); ++i) {
-    std::println("\n--- Peep Output --- {}", paths[i].native());
-    PeepIR::printPeep(tus[i]);
-    std::println("\n--- Peep Output ---");
-  }
-}
-
-}
-
-// Print Error Output
-namespace {
-
-eden_noinline_cold void
-print_lexer_errors(File file) {
-  std::println("\n--- Lexer Errors --- {}", file.path());
-  std::println("{}", get_file_errors(file));
-  std::println("\n--- Lexer Errors ---");
-}
-
-eden_noinline_cold void
-print_parser_errors(File file) {
-  std::println("\n--- Parser Errors --- {}", file.path());
-  std::println("{}", get_file_errors(file));
-  std::println("\n--- Parser Errors ---");
-}
-
-eden_noinline_cold void
-print_peep_errors(PeepIR::TU const& peep_tu) {
-  for (auto& file : peep_tu.source_files) {
-    std::println("\n--- Peepir Errors --- {}", file.path());
-    std::println("{}", get_file_errors(file));
-    std::println("\n--- Peepir Errors ---");
-  }
-}
-
-}
-
-static const fs::path src_path{"src"};
-static const fs::path extern_path{"extern"};
+}globals;
 
 // LOL
-static std::vector<fs::path> extern_objects_paths;
-static void compileC() {
+void compileC() {
   if (not fs::exists(extern_path) or is_empty(fs::directory_entry(extern_path))) return;
 
   std::string command = std::format("(cd build/obj && {} ", Settings::external_compiler);
@@ -110,13 +81,13 @@ static void compileC() {
   case 1: command.append(" -O1 "); break;
   case 2: command.append(" -O2 "); break;
   case 3: command.append(" -O3 "); break;
-  default: eden_unreachable("Invalid optimization level.");
+  default: edenUnreachable("Invalid optimization level.");
   }
 
   command.append("-c ");
   for (auto& file : fs::directory_iterator{extern_path}) {
     if (file.path().extension() != ".c") continue;
-    extern_objects_paths.emplace_back(
+    globals.extern_objects_paths.emplace_back(
       file.path().filename()).replace_extension(obj_extension);
     command.append(
       std::format("../../{} ", file.path().native())
@@ -127,19 +98,41 @@ static void compileC() {
   system(command.c_str());
 }
 
+}
+
+// returns nullptr if not found
+[[nodiscard]] Module*
+LOM::getModule(std::string_view module_name) {
+  auto const iter = globals.module_map.find(module_name);
+  if (iter == globals.module_map.end()) return nullptr;
+  return &globals.module_list[iter->second];
+}
+
+[[nodiscard]] Module&
+LOM::getModule(u32_t module_id) {
+  assert(module_id < globals.module_list.size());
+  return globals.module_list[module_id];
+}
+[[nodiscard]] Module& LOM::getCModule() noexcept { return globals.module_list[C_MODULE_IDX]; }
+
+namespace {
+
 // populates tu and returns whether an error was encountered
 [[nodiscard]] bool
-lex_and_parse_module(Parser::TU& tu, fs::path const& directory)  {
-  std::vector<Lexer::Token> tokens; tokens.reserve(64);
+lex_and_parse_module(Parser::TU& tu, u32_t module_id)  {
+  eden::vector<Lexer::Token> tokens; tokens.reserve(64);
+  auto const& directory = globals.module_paths[module_id];
 
   { // set up module, this is horrible please change
-    assert(not modules.contains(directory.c_str()));
+    assert(not globals.module_map.contains(directory.c_str()));
     auto const n = directory.filename().native().size() + 1; // this is so stupid i hate this language
-    auto const module_name = new char[n]; // TODO: fix purposeful memory leak
-    std::strcpy(module_name, directory.filename().c_str());
-    tu.name = {module_name, n-1};
-    auto const module_ptr = &modules.emplace(std::pair(tu.name, Module{&types})).first->second;
-    tu.module = module_ptr;
+    auto const module_name_cstr = new char[n]; // TODO: fix purposeful memory leak
+    std::strcpy(module_name_cstr, directory.filename().c_str());
+    auto const module_name = std::string_view{module_name, n-1};
+
+    globals.module_map.emplace(module_name, module_id);
+    tu.name = module_name;
+    tu.module_id = module_id;
   }
 
   bool has_error = false;
@@ -158,66 +151,42 @@ lex_and_parse_module(Parser::TU& tu, fs::path const& directory)  {
   return has_error;
 }
 
-void LOM::build() {
-  if (not fs::exists(src_path)) throw std::runtime_error("LookOnceMore: src directory not found!");
-  std::thread comp_extern;
-  if constexpr (not Settings::external_compiler.empty()) {
-    if (Settings::do_output_obj)
-      comp_extern = std::thread(compileC);
-  }
-
-#ifdef STAGE_BENCHMARKS
-  auto begin_time = std::chrono::high_resolution_clock::now();
-#endif
-  dunderc_module = &modules.emplace(std::pair(std::string_view("__C"), Module{&types})).first->second;
-
-  std::vector<Parser::TU> parsed_tus;   parsed_tus.reserve(4);
-  std::vector<fs::path> module_paths; module_paths.reserve(4);
+// returns whether an error was encountered
+[[nodiscard]] bool
+parse_modules(eden::vector<Parser::TU>& out) noexcept {
   bool has_error = false;
-  for (auto const& entry : fs::directory_iterator{src_path}) {
-    if (entry.is_directory()) {
-      if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue;
-
-      module_paths.emplace_back(entry.path().stem());
-      auto& ptu = parsed_tus.emplace_back();
-      if (lex_and_parse_module(ptu, entry)) has_error = true;
-      continue;
-    }
-
-    std::vector<Lexer::Token> main_tokens; main_tokens.reserve(64);
-    Parser::TU main_tu; main_tu.module = &main_module;
-    auto const& main_path = entry.path();
-    auto const main_file = main_tu.source_files.emplace_back(main_path);
-
-    if      (Lexer::tokenizeFile(main_tokens,  main_file))  print_lexer_errors(main_file),  has_error = true;
-    else if (Parser::parseTokens(main_tu, main_tokens))  print_parser_errors(main_file), has_error = true;
-
-    module_paths.emplace_back("main.lom");
-    parsed_tus.emplace_back(std::move(main_tu));
+  for (auto i{MAIN_MODULE_IDX}; i<globals.module_paths.size(); ++i) {
+    auto& ptu = out.emplace_back();
+    if (lex_and_parse_module(ptu, i)) has_error = true;
   }
-  if (has_error) { if (comp_extern.joinable()) comp_extern.join(); std::quick_exit(1); }
-  if (Settings::do_output_parser) { print_parser(parsed_tus, module_paths); if (comp_extern.joinable()) comp_extern.join(); return; }
 
+  if (has_error) { return true; }
+  if (Settings::do_output_parser) { print_parser(out, globals.module_paths); }
+  return false;
+}
 
-  std::vector<PeepIR::TU> peeped_tus; peeped_tus.reserve(parsed_tus.size());
+// returns whether an error was encountered
+[[nodiscard]] bool
+peep_modules(eden::vector<Parser::TU>& parsed_tus, eden::vector<PeepIR::TU>& out) noexcept {
+  bool has_error = false;
   for (auto& parsed_tu : parsed_tus) {
-    auto& tu = peeped_tus.emplace_back();
+    auto& tu = out.emplace_back();
     auto const error = PeepIR::lowerToPeep(tu, std::move(parsed_tu));
     if (error) print_peep_errors(tu), has_error = true;
   }
 
-  if (has_error) { if (comp_extern.joinable()) comp_extern.join(); std::quick_exit(1); }
-  if (Settings::do_output_peep) { print_peep(peeped_tus, module_paths); if (comp_extern.joinable()) comp_extern.join(); return; }
+  if (has_error) { return true; }
+  if (Settings::do_output_peep) { print_peep(out, globals.module_paths); }
+  return false;
+}
 
-  std::vector<std::unique_ptr<Backend>> compiled_tus; peeped_tus.reserve(parsed_tus.size());
+void compile_modules(eden::vector<PeepIR::TU>& peeped_tus) noexcept {
   for (auto i{0uz}; i<peeped_tus.size(); ++i) {
-    auto& module_path = module_paths[i];
+    auto& module_path = globals.module_paths[i];
     auto& peeped = peeped_tus[i];
 
     [[maybe_unused]]
-    auto const& compiled = compiled_tus.emplace_back(
-      Backend::codegen( std::move(peeped), module_path )
-      );
+    auto const compiled = Backend::codegen( std::move(peeped), module_path );
 
 #ifdef NO_MEASUREMENT
     if (Settings::do_output_asm)
@@ -228,7 +197,9 @@ void LOM::build() {
       module_path = compiled->createObjectFile(module_path);
 #endif
   }
+}
 
+void output_benchmark([[maybe_unused]] auto begin_time) {
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("{:>10}, {:>10} | FULL",
@@ -237,17 +208,51 @@ void LOM::build() {
   );
   std::println("{:>10} Full Parsing Duration.", Parser::parsing_durr);
 #endif
+}
 
-  if (comp_extern.joinable()) {
-    comp_extern.join();
-    module_paths.reserve(module_paths.size() + extern_objects_paths.size());
-    for (auto& extern_path : extern_objects_paths)
-      module_paths.emplace_back(std::move(extern_path));
+}
+
+void LOM::build() {
+  if (not fs::exists(src_path)) throw std::runtime_error("LookOnceMore: src directory not found!");
+  auto const begin_time = std::chrono::high_resolution_clock::now();
+
+  std::thread compile_extern;
+  if constexpr (not Settings::external_compiler.empty()) {
+    if (Settings::do_output_obj)
+      compile_extern = std::thread(compileC);
+  }
+
+  eden::vector<Parser::TU> parsed_tus(eden::flags::reserve_initial<>, globals.num_modules);
+  if (parse_modules(parsed_tus)) {
+    if (compile_extern.joinable()) compile_extern.join();
+    std::quick_exit(1);
+  }
+
+  eden::vector<PeepIR::TU> peeped_tus(eden::flags::reserve_initial<>, globals.num_modules);
+  if (peep_modules(parsed_tus, peeped_tus)) {
+    if (compile_extern.joinable()) compile_extern.join();
+    std::quick_exit(1);
+  }
+
+  compile_modules(peeped_tus);
+  output_benchmark(begin_time);
+
+  if (compile_extern.joinable()) {
+    compile_extern.join();
+    globals.module_paths.reserve(globals.num_modules + globals.num_external_objects);
+    for (auto& extern_path : globals.extern_objects_paths)
+      globals.module_paths.emplace_back(std::move(extern_path));
   }
 
 #ifdef NO_MEASUREMENT
   if (Settings::do_linking)
-    Backend::linkObjects(module_paths);
+    Backend::linkObjects(globals.module_paths);
 #endif
-
 }
+
+#ifdef PROFILE
+void LOM::reset_state() noexcept {
+  globals.~decltype(globals)();
+  new(&globals) decltype(globals);
+}
+#endif

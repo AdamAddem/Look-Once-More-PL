@@ -29,7 +29,7 @@ public:
     text = {file_buff, buff_length};
   }
 
-  eden_always_inline [[nodiscard]] std::string_view get_text() const noexcept { return text; }
+  edenAlwaysInline [[nodiscard]] std::string_view get_text() const noexcept { return text; }
 
   // somewhat expensive, only use in error reporting
   [[nodiscard]] std::string_view

@@ -1,6 +1,6 @@
 #pragma once
-#pragma once
 #include "file.hpp"
+#include "edenlib/vectors/vector.hpp"
 #include "edenlib/vectors/releasing_vector.hpp"
 #include "edenlib/typedefs.hpp"
 #include "semantic_analysis/types.hpp"
@@ -8,7 +8,6 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <vector>
 
 namespace LOM::AST {
 enum class Operator : u8_t {
@@ -135,30 +134,30 @@ struct ASTNode {
     CharData          char_data;
   };
 
-  eden_always_inline [[nodiscard]] constexpr Type::Qualifiers declaration_qualifiers()          const noexcept { assert(type == DECLARATION); return declaration_data.qualifiers; }
-  eden_always_inline [[nodiscard]] constexpr bool             declaration_has_init()            const noexcept { assert(type == DECLARATION); return declaration_data.has_init; }
-  eden_always_inline [[nodiscard]] constexpr Type const*      declaration_identifier_val()      const noexcept { assert(type == IDENTIFIER); return identifier_data.decl_type; }
+  edenAlwaysInline [[nodiscard]] constexpr Type::Qualifiers declaration_qualifiers()          const noexcept { assert(type == DECLARATION); return declaration_data.qualifiers; }
+  edenAlwaysInline [[nodiscard]] constexpr bool             declaration_has_init()            const noexcept { assert(type == DECLARATION); return declaration_data.has_init; }
+  edenAlwaysInline [[nodiscard]] constexpr Type const*      declaration_identifier_val()      const noexcept { assert(type == IDENTIFIER); return identifier_data.decl_type; }
 
-  eden_always_inline [[nodiscard]] constexpr bool             if_has_else()                     const noexcept { assert(type == IF); return if_data.has_else; }
-  eden_always_inline [[nodiscard]] constexpr u64_t            if_numstatements()                const noexcept { assert(type == IF); return if_data.num_substatements; }
-  eden_always_inline [[nodiscard]] constexpr u64_t            while_numstatements()             const noexcept { assert(type == WHILE); return while_data.num_substatements; }
-  eden_always_inline [[nodiscard]] constexpr bool             return_has_value()                const noexcept { assert(type == RETURN); return return_data.has_value; }
+  edenAlwaysInline [[nodiscard]] constexpr bool             if_has_else()                     const noexcept { assert(type == IF); return if_data.has_else; }
+  edenAlwaysInline [[nodiscard]] constexpr u64_t            if_numstatements()                const noexcept { assert(type == IF); return if_data.num_substatements; }
+  edenAlwaysInline [[nodiscard]] constexpr u64_t            while_numstatements()             const noexcept { assert(type == WHILE); return while_data.num_substatements; }
+  edenAlwaysInline [[nodiscard]] constexpr bool             return_has_value()                const noexcept { assert(type == RETURN); return return_data.has_value; }
 
-  eden_always_inline [[nodiscard]] constexpr Operator         unary_operator()                  const noexcept { assert(type == UNARY); return unary_data.opr; }
-  eden_always_inline [[nodiscard]] constexpr Operator         binary_operator()                 const noexcept { assert(type == BINARY); return binary_data.opr; }
-  eden_always_inline [[nodiscard]] constexpr u64_t            parameter_count()                 const noexcept { assert(type == CALLING); return call_data.num_parameters; }
-  eden_always_inline [[nodiscard]] constexpr Type const*      cast_type()                       const noexcept { assert(type == CAST); return cast_data.cast_type; }
+  edenAlwaysInline [[nodiscard]] constexpr Operator         unary_operator()                  const noexcept { assert(type == UNARY); return unary_data.opr; }
+  edenAlwaysInline [[nodiscard]] constexpr Operator         binary_operator()                 const noexcept { assert(type == BINARY); return binary_data.opr; }
+  edenAlwaysInline [[nodiscard]] constexpr u64_t            parameter_count()                 const noexcept { assert(type == CALLING); return call_data.num_parameters; }
+  edenAlwaysInline [[nodiscard]] constexpr Type const*      cast_type()                       const noexcept { assert(type == CAST); return cast_data.cast_type; }
 
-  eden_always_inline [[nodiscard]] constexpr i64_t            signed_val()                      const noexcept { assert(type == SIGNED_LITERAL); return signed_data.value; }
-  eden_always_inline [[nodiscard]] constexpr u64_t            unsigned_val()                    const noexcept { assert(type == UNSIGNED_LITERAL); return unsigned_data.value; }
-  eden_always_inline [[nodiscard]] constexpr float            float_val()                       const noexcept { assert(type == FLOAT_LITERAL); return float_data.value; }
-  eden_always_inline [[nodiscard]] constexpr double           double_val()                      const noexcept { assert(type == DOUBLE_LITERAL); return double_data.value; }
-  eden_always_inline [[nodiscard]] constexpr bool             bool_val()                        const noexcept { assert(type == BOOL_LITERAL); return bool_data.value; }
-  eden_always_inline [[nodiscard]] constexpr char             char_val()                        const noexcept { assert(type == CHAR_LITERAL); return char_data.value; }
-  eden_always_inline [[nodiscard]] constexpr std::string_view identifier_val(File const& file)  const noexcept { assert(type == IDENTIFIER); return file.view_at(length_in_file, position_in_file); }
-  eden_always_inline [[nodiscard]] constexpr std::string_view string_val(File const& file)      const noexcept { assert(type == STRING_LITERAL or type == ESCAPED_STRING_LITERAL); return file.view_at(length_in_file, position_in_file); }
-  eden_always_inline [[nodiscard]] constexpr std::string_view original_string(File const& file) const noexcept { return file.view_at(length_in_file, position_in_file); }
-  eden_always_inline [[nodiscard]] constexpr u32_t            module_position()                 const noexcept { assert(type == MODULE_ACCESS); return position_in_file - module_access_data.module_length; }
+  edenAlwaysInline [[nodiscard]] constexpr i64_t            signed_val()                      const noexcept { assert(type == SIGNED_LITERAL); return signed_data.value; }
+  edenAlwaysInline [[nodiscard]] constexpr u64_t            unsigned_val()                    const noexcept { assert(type == UNSIGNED_LITERAL); return unsigned_data.value; }
+  edenAlwaysInline [[nodiscard]] constexpr float            float_val()                       const noexcept { assert(type == FLOAT_LITERAL); return float_data.value; }
+  edenAlwaysInline [[nodiscard]] constexpr double           double_val()                      const noexcept { assert(type == DOUBLE_LITERAL); return double_data.value; }
+  edenAlwaysInline [[nodiscard]] constexpr bool             bool_val()                        const noexcept { assert(type == BOOL_LITERAL); return bool_data.value; }
+  edenAlwaysInline [[nodiscard]] constexpr char             char_val()                        const noexcept { assert(type == CHAR_LITERAL); return char_data.value; }
+  edenAlwaysInline [[nodiscard]] constexpr std::string_view identifier_val(File const& file)  const noexcept { assert(type == IDENTIFIER); return file.view_at(length_in_file, position_in_file); }
+  edenAlwaysInline [[nodiscard]] constexpr std::string_view string_val(File const& file)      const noexcept { assert(type == STRING_LITERAL or type == ESCAPED_STRING_LITERAL); return file.view_at(length_in_file, position_in_file); }
+  edenAlwaysInline [[nodiscard]] constexpr std::string_view original_string(File const& file) const noexcept { return file.view_at(length_in_file, position_in_file); }
+  edenAlwaysInline [[nodiscard]] constexpr u32_t            module_position()                 const noexcept { assert(type == MODULE_ACCESS); return position_in_file - module_access_data.module_length; }
 
   [[nodiscard]] constexpr std::string_view full_module_access(File const& file) const noexcept {
     assert(type == MODULE_ACCESS);
@@ -188,6 +187,6 @@ inline constexpr ASTNode PLACEHOLDER_NODE{
     .base = 0
 };
 
-void print_ast(std::vector<ASTNode> const& nodes, File const&) noexcept;
+void print_ast(eden::vector<ASTNode> const& nodes, File const&) noexcept;
 
 }

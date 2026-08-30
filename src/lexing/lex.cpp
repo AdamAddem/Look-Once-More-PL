@@ -1,52 +1,43 @@
-#include "edenlib/vectors/releasing_vector.hpp"
 #include "lex.hpp"
+#include "edenlib/vectors/releasing_vector.hpp"
 #include "error.hpp"
-#include "settings.hpp"
 
 #include <cassert>
 #include <cctype>
-#include <unordered_map>
-#include <vector>
 #include <chrono>
+#include <unordered_map>
 
 namespace {
 using namespace LOM;
 using namespace LOM::Lexer;
-using eden::releasing_string;
-using eden::flags::reserve_initial;
 
-[[nodiscard]] bool
-canStartIdentifier(char c)
-{ return std::isalpha(c) or c == '_'; }
-
-[[nodiscard]] bool
-is_num(char c)
-{ return c >= '0' and c <= '9'; }
+edenAlwaysInline [[nodiscard]] bool canStartIdentifier(char c) noexcept { return std::isalpha(c) or c == '_'; }
+edenAlwaysInline [[nodiscard]] bool is_num(char c) noexcept { return c >= '0' and c <= '9'; }
 
 struct Tokenizer {
-  std::vector<Token>& token_list;
+  eden::vector<Token>& token_list;
   File file;
   u32_t current_position{};
   bool has_errors{};
 
   static constexpr char FILE_EOF = '\0';
-  explicit Tokenizer(std::vector<Token>& token_list, File file)
+  explicit Tokenizer(eden::vector<Token>& token_list, File file)
   : token_list(token_list), file(file) {}
 
-  eden_always_inline [[nodiscard]] char peek() const noexcept { return file.get_text()[current_position]; }
-  eden_always_inline [[nodiscard]] char peek_ahead(i64_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
-  eden_always_inline [[nodiscard]] char take() noexcept { return file.get_text()[current_position++]; }
-  eden_always_inline [[nodiscard]] char previous() const noexcept { return file.get_text()[current_position - 1]; }
-  eden_always_inline               void pop() noexcept { ++current_position; }
-  eden_always_inline               void undo() noexcept { --current_position; }
+  edenAlwaysInline [[nodiscard]] char peek() const noexcept { return file.get_text()[current_position]; }
+  edenAlwaysInline [[nodiscard]] char peek_ahead(i64_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
+  edenAlwaysInline [[nodiscard]] char take() noexcept { return file.get_text()[current_position++]; }
+  edenAlwaysInline [[nodiscard]] char previous() const noexcept { return file.get_text()[current_position - 1]; }
+  edenAlwaysInline               void pop() noexcept { ++current_position; }
+  edenAlwaysInline               void undo() noexcept { --current_position; }
 
-  eden_noinline_cold void
+  edenNoInlineCold void
   error_at_currentpos(std::string_view msg) {
     report_error(file, 1, current_position, std::string(msg)); has_errors = true;
   }
 
-  // called when opening quotes already consumed
-  void grabStringLiteral() {
+#define pre assert(previous() == '"');
+  void grabStringLiteral() { pre
     u16_t length = 0;
     auto const pos = current_position; // grabbing the position after opening quotes
     auto c = take();
@@ -70,9 +61,10 @@ struct Tokenizer {
     ending_quote_found: // don't crucify me for this pls
       token_list.emplace_back(string_type, length, pos);
   }
+#undef pre
 
-  // called when opening single-quote already consumed
-  void grabCharLiteral() {
+#define pre assert(previous() == '\'');
+  void grabCharLiteral() { pre
     u16_t length = 2;
     auto const pos = current_position;
     auto const c1 = take();
@@ -87,6 +79,7 @@ struct Tokenizer {
 
     token_list.emplace_back(TokenType::CHAR_LITERAL, length, pos);
   }
+#undef pre
 
   void grabSymbol() {
     TokenType type;
@@ -244,12 +237,22 @@ struct Tokenizer {
 #undef pre
 };
 
+void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] File file) {
+#ifdef STAGE_BENCHMARKS
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::println("{:>10}, {:>10} | Lexing {}",
+    end_time - begin_time,
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
+    file.path()
+  );
+#endif
 }
 
-bool Lexer::tokenizeFile(std::vector<Token>& out_tokens, File file) {
-#ifdef STAGE_BENCHMARKS
-  auto begin_time = std::chrono::high_resolution_clock::now();
-#endif
+}
+
+
+bool Lexer::tokenizeFile(eden::vector<Token>& out_tokens, File file) {
+  auto const begin_time = std::chrono::high_resolution_clock::now();
   Tokenizer tokenizer{out_tokens, file};
   if (tokenizer.peek() == '.') {
     tokenizer.error_at_currentpos("File may not start with . for very esoteric reasons.");
@@ -280,14 +283,6 @@ bool Lexer::tokenizeFile(std::vector<Token>& out_tokens, File file) {
   for (auto i{0uz}; i < INVALID_TOKEN_PADDING; ++i)
     out_tokens.push_back(invalid_token);
 
-#ifdef STAGE_BENCHMARKS
-  auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("{:>10}, {:>10} | Lexing {}",
-    end_time - begin_time,
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    file.path()
-  );
-#endif
-
+  output_benchmark(begin_time, file);
   return tokenizer.has_errors;
 }

@@ -4,7 +4,7 @@
 #include "build_system/build.hpp"
 #include "error.hpp"
 #include "lexing/lex.hpp"
-#include "semantic_analysis/symbol_table.hpp"
+#include "semantic_analysis/table_and_module.hpp"
 
 #include <chrono>
 #include <numeric>
@@ -18,7 +18,7 @@ using namespace LOM::AST;
 
 namespace {
 
-[[noreturn]] void throw_notfound() eden_throws(0) { throw 0; }
+[[noreturn]] void throw_notfound() edenThrows(0) { throw 0; }
 
 struct Expression {
   u32_t left_idx;
@@ -47,6 +47,21 @@ struct ExpressionTree {
 };
 
 class ParserBody {
+  static constexpr auto name_search = [] (std::string_view e, std::string_view key) static { return e == key; };
+  eden::swap_vector<std::string_view> imports;
+  eden::vector<ASTNode> nodes;
+  TokenView tokens;
+  File current_file;
+  TU& tu;
+  Module& module;
+  bool has_errors{};
+  ExpressionTree expression_tree;
+
+  ParserBody(eden::vector<Token>& tokens, TU& tu)
+  : tokens(tokens), current_file(tu.source_files.back()), tu(tu), module(getModule(tu.module_id)) {
+    imports.reserve(2);
+    imports.emplace_back("__C");
+  }
 
   [[nodiscard]] u8_t
   current_file_idx() const noexcept {
@@ -63,7 +78,7 @@ class ParserBody {
     return new_node_idx;
   }
 
-  eden_always_inline [[nodiscard]] ASTNode
+  edenAlwaysInline [[nodiscard]] ASTNode
   newNode(Token token, ASTNode::NodeType type = ASTNode::EMPTY) const noexcept {
     return ASTNode{
             .type = type,
@@ -73,24 +88,9 @@ class ParserBody {
     };
   }
 
-  eden_noinline_cold void
+  edenNoInlineCold void
   error(Token err, std::string_view msg) noexcept {
     report_error(current_file, err, std::string(msg)); has_errors = true;
-  }
-
-  static constexpr auto name_search = [] (std::string_view e, std::string_view key) static { return e == key; };
-  eden::swap_vector<std::string_view> imports;
-  std::vector<ASTNode> nodes;
-  TokenView tokens;
-  File current_file;
-  TU& tu;
-  bool has_errors{};
-  ExpressionTree expression_tree;
-
-  ParserBody(std::vector<Token>& tokens, TU& tu)
-  : tokens(tokens), current_file(tu.source_files.back()), tu(tu) {
-    imports.reserve(2);
-    imports.emplace_back("__C");
   }
 
   #define pre assert(tokens.previous().is(TokenType::LBRACKET));
@@ -110,7 +110,7 @@ class ParserBody {
     }
 
     auto const subtype = parseType();
-    return tu.module->getArrayType(array_size, subtype);
+    return module.getArrayType(array_size, subtype);
   }
   #undef pre
 
@@ -118,9 +118,9 @@ class ParserBody {
   [[nodiscard]] PointerType const*
   parsePointerType(Token pointer_token) noexcept { pre
     switch (pointer_token.type) {
-    case TokenType::KEYWORD_RAW: return tu.module->getRawPointerType(parseType());
-    case TokenType::KEYWORD_REF: return tu.module->getRefPointerType(parseType());
-    default: eden_unreachable("Pointer type unsupported.");
+    case TokenType::KEYWORD_RAW: return module.getRawPointerType(parseType());
+    case TokenType::KEYWORD_REF: return module.getRefPointerType(parseType());
+    default: edenUnreachable("Pointer type unsupported.");
     }
   }
   #undef pre
@@ -145,7 +145,7 @@ class ParserBody {
     case TokenType::KEYWORD_STRING: return PrimitiveType::string();
     case TokenType::KEYWORD_DEVOID: return Type::devoid();
     default:
-    eden_unreachable("Pointer type not supported.");
+    edenUnreachable("Pointer type not supported.");
     }
   }
   #undef pre
@@ -161,7 +161,7 @@ class ParserBody {
     case LBRACKET:             return parseArrayType();
 
     case IDENTIFIER: {
-        Type const* type = tu.module->getCustomType(token.originalString(current_file));
+        Type const* type = module.getCustomType(token.originalString(current_file));
         if (type == nullptr)
           type = Type::error(), error(token, "Expected typename.");
         return type;
@@ -229,7 +229,7 @@ class ParserBody {
 
     case TokenType::STRING_LITERAL:           node.type = ASTNode::STRING_LITERAL; assert(not negate); break;
     case TokenType::ESCAPED_STRING_LITERAL:   node.type = ASTNode::ESCAPED_STRING_LITERAL; assert(not negate); break;
-    default: eden_unreachable("Invalid literal token type.");
+    default: edenUnreachable("Invalid literal token type.");
     }
 
     return expression_tree.create(node);
@@ -485,7 +485,7 @@ class ParserBody {
     switch (expression.node.type) { using enum ASTNode::NodeType;
     case EMPTY: case DECLARATION: case IF:
     case WHILE: case RETURN:
-      eden_unreachable("Statements should not be contained in an expression.");
+      edenUnreachable("Statements should not be contained in an expression.");
 
     case UNARY: case CAST:
       nodes.emplace_back(expression.node);
@@ -529,7 +529,7 @@ class ParserBody {
       nodes.emplace_back(expression.node);
       return;
 
-    default: eden_unreachable("Invalid ast node type in expression translation.");
+    default: edenUnreachable("Invalid ast node type in expression translation.");
     }
   }
 
@@ -557,7 +557,7 @@ class ParserBody {
     }
   }
 
-  eden_always_inline void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
+  edenAlwaysInline void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
 
   // parses  name: qualified_type
   // returns name_token and qualified_type
@@ -565,7 +565,7 @@ class ParserBody {
   std::pair<Token, QualifiedType>
   parseHalfDeclaration() noexcept {
     auto const identifier_token = tokens.take();
-    QualifiedType declaration_type{eden::flags::do_not_initialize};
+    QualifiedType declaration_type;
     declaration_type.qualifiers.writable = false;
 
     if (not identifier_token.isIdentifier())  error(identifier_token, "Expected identifier.");
@@ -728,7 +728,6 @@ class ParserBody {
     auto& stmt_node = nodes[stmt_idx];
     stmt_node.length_in_file = combined.length;
     stmt_node.position_in_file = combined.position;
-
     return combined;
   }
 
@@ -787,7 +786,7 @@ class ParserBody {
     if (not tokens.pop_if(TokenType::SEMI_COLON))
       return error(tokens.peek(), "Expected semi-colon.");
 
-    dunderc_module->addFunction(name, std::move(parameters), return_type, true, is_variadic);
+    getCModule().addFunction(name, std::move(parameters), return_type, true, is_variadic);
   }
 #undef pre
 
@@ -816,7 +815,7 @@ class ParserBody {
 #define pre assert(tokens.previous().isVarQualifier());
   void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
     if (tokens.pop_if(TokenType::RBRACE))
-      return (void)tu.module->addCustomType(name, {});
+      return (void)module.addCustomType(name, {});
 
     eden::swap_vector<SymbolTable::Variable> members; members.reserve(2);
     do {
@@ -827,7 +826,7 @@ class ParserBody {
     if (not tokens.pop_if(TokenType::RBRACE))
       error(tokens.peek(), "Expected closing curly brace after struct definition.");
 
-    tu.module->addCustomType(name, std::move(members));
+    module.addCustomType(name, std::move(members));
   }
 
   void parseFunctionDecl(std::string_view name, bool is_public) noexcept { pre
@@ -864,12 +863,12 @@ class ParserBody {
       if (not tokens.peek_is(TokenType::LBRACE))
         return_type = parseType();
 
-      tu.module->addFunction(
+      module.addFunction(
         current_function.nameof(),
         std::move(parameters),
         return_type,
         current_function.is_public);
-      tu.module->enterFunctionScope(current_function.nameof());
+      module.enterFunctionScope(current_function.nameof());
     }
 
     if (not tokens.pop_if(TokenType::LBRACE)) {
@@ -884,7 +883,7 @@ class ParserBody {
       current_function.body = std::move(nodes);
     }
 
-    tu.functions.emplace_back(current_function);
+    tu.functions.emplace_back(std::move(current_function));
   }
 #undef pre
 
@@ -905,8 +904,8 @@ class ParserBody {
 
 public:
   [[nodiscard]] static bool
-  parse(TU& tu, std::vector<Token>& token_list) {
-    ParserBody parser(token_list, tu);
+  parse(TU& tu, eden::vector<Token>& tokens) {
+    ParserBody parser(tokens, tu);
 
     while (not parser.tokens.peek_is(TokenType::INVALID_TOKEN)) {
       switch (parser.tokens.peek().type) { using enum TokenType;
@@ -925,21 +924,22 @@ public:
 };
 
 void printFunction(Function const& func, TU const& tu) noexcept {
-  auto const function = tu.module->getFunction(func.nameof());
-
-  auto const parameters = function->parameters();
-  auto const return_type = function->returnType();
-
-  std::print("{}fn {} (",
+  std::print("{}{}: (",
     func.is_public ? "pub " : "",
     func.nameof());
 
-  for (auto& parameter : parameters) {
-    std::print("{}", parameter.type.toString());
-    std::print(" {}, ", parameter.nameof());
+  auto const& module = getModule(tu.module_id);
+  auto const function = module.getFunction(func.nameof());
+  auto const num_parameters = function->num_parameters();
+  auto const return_type = function->returnType();
+
+  for (auto i{0uz}; i<num_parameters; ++i) {
+    auto const parameter = function->getLocal(i); assert(parameter);
+    std::print("{}", parameter->type.toString());
+    std::print(" {}, ", parameter->nameof());
   }
 
-  if (not parameters.empty()) std::print("\b\b");
+  if (num_parameters not_eq 0) std::print("\b\b");
 
   std::print(") ");
   if (not return_type->isDevoid())
@@ -948,10 +948,9 @@ void printFunction(Function const& func, TU const& tu) noexcept {
   std::print(" {{ ");
   print_ast(func.body, tu.source_files.back());
   std::print(" \n}} ");
-
 }
 
-} // namespace
+}
 
 void Parser::printTU(TU const& tu) noexcept {
   for (auto const& f : tu.functions) {
@@ -960,18 +959,8 @@ void Parser::printTU(TU const& tu) noexcept {
   }
 }
 
-
-#ifdef STAGE_BENCHMARKS
-  #include <chrono>
-  static inline std::chrono::nanoseconds parsing_durr{};
-#endif
-bool Parser::parseTokens(TU& tu, std::vector<Token>& token_list) noexcept {
-#ifdef STAGE_BENCHMARKS
-  auto begin_time = std::chrono::high_resolution_clock::now();
-#endif
-
-  auto const has_errors = ParserBody::parse(tu, token_list);
-
+#include <chrono>
+static void output_benchmark([[maybe_unused]] auto begin_time) {
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("{:>10}, {:>10} | Parsing {}",
@@ -980,6 +969,14 @@ bool Parser::parseTokens(TU& tu, std::vector<Token>& token_list) noexcept {
     tu.source_files.back().path()
   );
 #endif
+}
+
+bool Parser::parseTokens(TU& out_tu, eden::vector<Token>& tokens) noexcept {
+  auto const begin_time = std::chrono::high_resolution_clock::now();
+
+  auto const has_errors = ParserBody::parse(out_tu, tokens);
+
+  output_benchmark(begin_time);
   return has_errors;
 }
 

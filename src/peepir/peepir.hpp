@@ -1,8 +1,9 @@
 #pragma once
 #include "edenlib/typedefs.hpp"
-#include "semantic_analysis/symbol_table.hpp"
+#include "edenlib/vectors/vector.hpp"
 #include "error.hpp"
 #include "file.hpp"
+#include "semantic_analysis/table_and_module.hpp"
 
 namespace LOM::Parser {
 struct TU;
@@ -122,7 +123,7 @@ struct Instruction {
   explicit constexpr Instruction() {}
   explicit constexpr Instruction(CommonData data) : m(data) {}
   explicit constexpr Instruction(InstructionType type) { m.type = type; }
-  eden_always_inline [[nodiscard]] constexpr bool is_literal() const noexcept { return eden::enumBetween(m.type, I8_LITERAL, U64_LITERAL); }
+  edenAlwaysInline [[nodiscard]] constexpr bool is_literal() const noexcept { return eden::enumBetween(m.type, I8_LITERAL, U64_LITERAL); }
 
   constexpr void
   adjust_literal(u64_t bitwidth, bool make_signed) noexcept {
@@ -156,7 +157,7 @@ struct Instruction {
     return res;
   }
 
-  eden_always_inline [[nodiscard]] constexpr std::string_view
+  edenAlwaysInline [[nodiscard]] constexpr std::string_view
   original_string(File file) const noexcept {
     assert(m.type not_eq TYPE_VARIABLE and m.type not_eq MODULE_GLOBAL and m.type not_eq MODULE_FUNCTION);
     return file.view_at(m.length_in_file, m.position_in_file);
@@ -236,18 +237,18 @@ struct Function {
   const char* name_ptr;
 
   FunctionType const* type;
-  std::vector<Type const*> locals;
-  std::vector<Instruction> instructions;
-  std::vector<Block> blocks;
+  eden::vector<Type const*> locals;
+  eden::vector<Instruction> instructions;
+  eden::vector<Block> blocks;
 
-  eden_always_inline [[nodiscard]] std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
+  edenAlwaysInline [[nodiscard]] std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
 };
 
 struct TU {
-  std::vector<File> source_files;
-  Module* module;
-  std::vector<Function> functions;
+  eden::vector<File> source_files;
+  eden::vector<Function> functions;
   std::string_view name;
+  u32_t module_id;
 };
 
 void printPeep(TU const&);

@@ -4,9 +4,8 @@
 #include "file.hpp"
 #include "tokentype.hpp"
 
+#include "edenlib/vectors/vector.hpp"
 #include <utility>
-#include <filesystem>
-#include <vector>
 
 namespace LOM::Lexer {
 
@@ -79,38 +78,38 @@ struct Token {
   originalString(File const& file) const noexcept
   { return file.view_at(length, position); }
 
-  eden_always_inline [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept { return type == token_type; }
-  eden_always_inline [[nodiscard]] constexpr bool isIdentifier()           const noexcept { return type == TokenType::IDENTIFIER; }
-  eden_always_inline [[nodiscard]] constexpr bool isPrimitive()            const noexcept { return isCategoryPRIMITIVES(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isLiteral()              const noexcept { return isCategoryLITERALS(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isNumericLiteral()       const noexcept { return isCategoryNUMERIC_LITERALS(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isPointer()              const noexcept { return isCategoryPOINTERS(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isVarQualifier()         const noexcept { return isCategoryVAR_QUALIFIERS(type); }
-  eden_always_inline [[nodiscard]] constexpr bool isInvalid()              const noexcept { return type == TokenType::INVALID_TOKEN; }
+  edenAlwaysInline [[nodiscard]] constexpr bool is(TokenType token_type) const noexcept { return type == token_type; }
+  edenAlwaysInline [[nodiscard]] constexpr bool isIdentifier()           const noexcept { return type == TokenType::IDENTIFIER; }
+  edenAlwaysInline [[nodiscard]] constexpr bool isPrimitive()            const noexcept { return isCategoryPRIMITIVES(type); }
+  edenAlwaysInline [[nodiscard]] constexpr bool isLiteral()              const noexcept { return isCategoryLITERALS(type); }
+  edenAlwaysInline [[nodiscard]] constexpr bool isNumericLiteral()       const noexcept { return isCategoryNUMERIC_LITERALS(type); }
+  edenAlwaysInline [[nodiscard]] constexpr bool isPointer()              const noexcept { return isCategoryPOINTERS(type); }
+  edenAlwaysInline [[nodiscard]] constexpr bool isVarQualifier()         const noexcept { return isCategoryVAR_QUALIFIERS(type); }
+  edenAlwaysInline [[nodiscard]] constexpr bool isInvalid()              const noexcept { return type == TokenType::INVALID_TOKEN; }
 
 };
 
 class TokenView {
-  using TokenIter = std::vector<Token>::iterator;
+  using TokenIter = eden::vector<Token>::iterator;
   TokenIter begin;
   TokenIter end;
 
 public:
-  explicit TokenView(std::vector<Token>& tokens) noexcept
+  explicit TokenView(eden::vector<Token>& tokens) noexcept
   : begin(tokens.begin()), end(tokens.end()) {}
 
   TokenView(TokenIter begin, TokenIter end) noexcept
   : begin(begin), end(end) {}
 
-  eden_always_inline [[nodiscard]] Token  peek()                    const noexcept  { return *begin; }
-  eden_always_inline [[nodiscard]] bool   peek_is(TokenType type)   const noexcept  { return begin->type == type; }
-  eden_always_inline [[nodiscard]] Token  peek_ahead(long distance) const noexcept  { return *(begin + distance); }
-  eden_always_inline               void   set_peek(TokenType type)        noexcept  { begin->type = type; }
-  eden_always_inline [[nodiscard]] Token  take()                          noexcept  { return *begin++; }
-  eden_always_inline [[nodiscard]] Token  previous()                const noexcept  { return *(begin - 1); }
-  eden_always_inline               void   pop()                           noexcept  { ++begin; }
-  eden_always_inline               bool   pop_if(TokenType type)          noexcept  { if (begin->type not_eq type) return false; ++begin; return true; }
-  eden_always_inline               void   undo()                          noexcept  { --begin; }
+  edenAlwaysInline [[nodiscard]] Token  peek()                    const noexcept  { return *begin; }
+  edenAlwaysInline [[nodiscard]] bool   peek_is(TokenType type)   const noexcept  { return begin->type == type; }
+  edenAlwaysInline [[nodiscard]] Token  peek_ahead(long distance) const noexcept  { return *(begin + distance); }
+  edenAlwaysInline               void   set_peek(TokenType type)        noexcept  { begin->type = type; }
+  edenAlwaysInline [[nodiscard]] Token  take()                          noexcept  { return *begin++; }
+  edenAlwaysInline [[nodiscard]] Token  previous()                const noexcept  { return *(begin - 1); }
+  edenAlwaysInline               void   pop()                           noexcept  { ++begin; }
+  edenAlwaysInline               bool   pop_if(TokenType type)          noexcept  { if (begin->type not_eq type) return false; ++begin; return true; }
+  edenAlwaysInline               void   undo()                          noexcept  { --begin; }
 
   void pop_if_valid() noexcept
   { if (not begin->is(TokenType::INVALID_TOKEN)) ++begin; }
@@ -139,6 +138,6 @@ inline constexpr auto INVALID_TOKEN_PADDING = 8uz;
 // Returns whether an error occured.
 // Populates out_tokens and pads with invalid tokens.
 [[nodiscard]] bool
-tokenizeFile(std::vector<Token>& out_tokens, File file);
+tokenizeFile(eden::vector<Token>& out_tokens, File file);
 
 }

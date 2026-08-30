@@ -1,9 +1,10 @@
 #pragma once
+#include "settings.hpp"
 #include <string_view>
-#include <settings.hpp>
 
 namespace LOM {
 class Module;
+class Type;
 
 void build();
 
@@ -11,8 +12,9 @@ void build();
 void reset_state() noexcept;
 #endif
 
-inline Module* dunderc_module;
-
-[[nodiscard]] Module* getModule(std::string_view);
+// returns nullptr if non-existent
+[[nodiscard]] Module* getModule(std::string_view module_name) noexcept;
+[[nodiscard]] Module& getModule(u32_t module_id) noexcept;
+[[nodiscard]] Module& getCModule() noexcept;
 
 }

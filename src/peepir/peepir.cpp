@@ -5,13 +5,13 @@
 #include "error.hpp"
 #include "parsing/ast.hpp"
 #include "parsing/parse.hpp"
-#include "semantic_analysis/symbol_table.hpp"
+#include "semantic_analysis/table_and_module.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <format>
 #include <iostream>
 #include <print>
-#include <chrono>
 
 using namespace LOM;
 using namespace LOM::PeepIR;
@@ -43,22 +43,22 @@ castForType(Type const* type) noexcept {
     case U63: case U64: return Instruction::UCAST;
 
     default:
-      eden_unreachable("Invalid primitive type.");
+      edenUnreachable("Invalid primitive type.");
     }
   }
 
-  default: eden_unreachable("This shouldn't happen!");
+  default: edenUnreachable("This shouldn't happen!");
   }
 }
 
 struct TreeView {
-  std::vector<ASTNode>::const_iterator begin;
-  std::vector<ASTNode>::const_iterator end;
+  eden::vector<ASTNode>::const_iterator begin;
+  eden::vector<ASTNode>::const_iterator end;
 
-  eden_always_inline [[nodiscard]] constexpr ASTNode peek() const noexcept { return *begin; }
-  eden_always_inline [[nodiscard]] constexpr bool peek_is_empty() const noexcept { return begin->type == ASTNode::EMPTY; }
-  eden_always_inline constexpr ASTNode take() noexcept { return *(begin++); }
-  eden_always_inline constexpr void pop() noexcept { ++begin; }
+  edenAlwaysInline [[nodiscard]] constexpr ASTNode peek() const noexcept { return *begin; }
+  edenAlwaysInline [[nodiscard]] constexpr bool peek_is_empty() const noexcept { return begin->type == ASTNode::EMPTY; }
+  edenAlwaysInline constexpr ASTNode take() noexcept { return *(begin++); }
+  edenAlwaysInline constexpr void pop() noexcept { ++begin; }
 
   [[nodiscard]] constexpr bool
   pop_if_empty() noexcept {
@@ -69,24 +69,26 @@ struct TreeView {
     return false;
   }
 
-  eden_always_inline constexpr void  undo() noexcept { --begin; }
-  eden_always_inline [[nodiscard]] constexpr bool empty() const noexcept { return begin == end; }
+  edenAlwaysInline constexpr void  undo() noexcept { --begin; }
+  edenAlwaysInline [[nodiscard]] constexpr bool empty() const noexcept { return begin == end; }
 };
 
 class Peeper {
-  Module* module;
-  File const* current_file;
+  Module& module;
+  File current_file;
   TreeView nodes;
   FunctionType const* current_function_type;
 
-  std::vector<Type const*> locals;
-  std::vector<Instruction> instructions;
-  std::vector<Block> blocks;
+  eden::vector<Type const*> locals;
+  eden::vector<Instruction> instructions;
+  eden::vector<Block> blocks;
   bool has_error{};
 
-  eden_always_inline [[nodiscard]] constexpr Block& current_block() noexcept { return blocks.back(); }
-  eden_always_inline [[nodiscard]] constexpr u32_t current_block_index() const noexcept { return blocks.size() - 1; }
-  eden_always_inline [[nodiscard]] constexpr bool is_current_block_empty() const noexcept { return blocks.back().first_instruction_idx == instructions.size(); }
+  constexpr Peeper(Module& module) : module(module) {}
+
+  edenAlwaysInline [[nodiscard]] constexpr Block& current_block() noexcept { return blocks.back(); }
+  edenAlwaysInline [[nodiscard]] constexpr u32_t current_block_index() const noexcept { return blocks.size() - 1; }
+  edenAlwaysInline [[nodiscard]] constexpr bool is_current_block_empty() const noexcept { return blocks.back().first_instruction_idx == instructions.size(); }
 
   // creates a br that goes to the next block, as if it had fallen through (does not create next block)
   // does nothing if current block is empty
@@ -115,13 +117,13 @@ class Peeper {
     return true;
   }
 
-  eden_noinline_cold void
+  edenNoInlineCold void
   error(auto err, std::string msg) noexcept
   requires requires {
     err.length_in_file;
     err.position_in_file;
   } {
-    report_error(*current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true;
+    report_error(current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true;
   }
 
   [[nodiscard]] static Instruction
@@ -167,7 +169,7 @@ class Peeper {
 
     case STRING_LITERAL:          new_instruction.m.type = Instruction::STRING_LITERAL;          res = string_literal; break;
     case ESCAPED_STRING_LITERAL:  new_instruction.m.type = Instruction::ESCAPED_STRING_LITERAL;  res = string_literal; break;
-    default: eden_unreachable("Invalid literal type.");
+    default: edenUnreachable("Invalid literal type.");
     }
 
     instructions.emplace_back(new_instruction);
@@ -192,7 +194,7 @@ class Peeper {
     assert(module_access_node.length_in_file == 1);
 
     if (auto const member_variable = module->getPublicVariable(member_name)) {
-      eden_unreachable("Globals unimplemented.");
+      edenUnreachable("Globals unimplemented.");
       assert(member_variable->id not_eq SymbolTable::INVALID_ID);
       module_symbol.m.type = Instruction::MODULE_GLOBAL;
       module_symbol.module_member_data.member_idx = member_variable->id;
@@ -253,7 +255,7 @@ class Peeper {
       if (member_expression.qualifiers.writable) res.qualifiers = member_variable_decltype.qualifiers;
     }
     else if (auto const member_function = member_table->getPublicFunction(identifier)) {
-      eden_unreachable("Member functions unimplemented."); assert(member_function->id not_eq SymbolTable::INVALID_ID);
+      edenUnreachable("Member functions unimplemented."); assert(member_function->id not_eq SymbolTable::INVALID_ID);
       type_member.type_member_data.member_idx = member_function->id;
       res.type = member_function->type;
     }
@@ -271,19 +273,19 @@ class Peeper {
   QualifiedType
   peepIdentifier(ASTNode identifier_node) { pre
     Instruction identifier_instructon = newInstruction(identifier_node);
-    auto const identifier = current_file->view_at(identifier_node.length_in_file, identifier_node.position_in_file);
+    auto const identifier = current_file.view_at(identifier_node.length_in_file, identifier_node.position_in_file);
     QualifiedType res;
 
-    if (auto const variable = module->getLocal(identifier)) {
+    if (auto const variable = module.getLocal(identifier)) {
       identifier_instructon.m.type = Instruction::LOCAL;
       res = variable->type;
       identifier_instructon.local_data.idx = variable->id + 1; // + 1 to offset for return type
     }
-    else if (auto const function = module->getFunction(identifier)) {
+    else if (auto const function = module.getFunction(identifier)) {
       identifier_instructon.m.type = Instruction::FUNCTION;
       res.type = function->type;
     }
-    else if (auto const global = module->getVariable(identifier)) {
+    else if (auto const global = module.getVariable(identifier)) {
       identifier_instructon.m.type = Instruction::GLOBAL;
       res = global->type;
     }
@@ -531,7 +533,7 @@ class Peeper {
       break;
 
     default:
-      eden_unreachable("Invalid binary operator.");
+      edenUnreachable("Invalid binary operator.");
     }
 
     switch (binary_node.binary_data.opr) { // second sets the right instruction
@@ -604,7 +606,7 @@ class Peeper {
       binary_instruction.m.type = Instruction::NEQ;
       break;
     default:
-      eden_unreachable("Invalid binary operator.");
+      edenUnreachable("Invalid binary operator.");
     }
 
     instructions[binary_idx] = binary_instruction;
@@ -626,12 +628,12 @@ class Peeper {
     case Operator::ADDRESS_OF:
       if (not expression.qualifiers.writable)
         error(unary_node, "Address-of (@) operator used on readonly expression.");
-      expression.type = module->getRawPointerType(expression.type);
+      expression.type = module.getRawPointerType(expression.type);
       expression.qualifiers.writable = false;
       break;
 
     case Operator::REF_TO:
-      expression.type = module->getRefPointerType(expression.type);
+      expression.type = module.getRefPointerType(expression.type);
       expression.qualifiers.writable = false;
       break;
 
@@ -685,7 +687,7 @@ class Peeper {
       expression = expression.type->castToPointer()->getSubtype();
       break;
     default:
-      eden_unreachable("Invalid unary operator.");
+      edenUnreachable("Invalid unary operator.");
     }
 
     switch (unary_node.unary_data.opr) {
@@ -707,7 +709,7 @@ class Peeper {
       unary_instruction.dereference_data.dereference_type = expression.type;
       break;
     default:
-      eden_unreachable("Invalid unary operator.");
+      edenUnreachable("Invalid unary operator.");
     }
 
     instructions[unary_idx] = unary_instruction;
@@ -737,7 +739,7 @@ class Peeper {
     case STRING_LITERAL:
     case ESCAPED_STRING_LITERAL: return peepLiteral(node);
 
-    default: eden_unreachable("Invalid ASTNode while peeping expression.");
+    default: edenUnreachable("Invalid ASTNode while peeping expression.");
     }
   }
 
@@ -848,19 +850,19 @@ class Peeper {
 #define pre assert(decl_node.type == ASTNode::DECLARATION);
   void peepVarDeclaration(ASTNode decl_node) { pre
     auto const declared = nodes.take();
-    auto const declared_name = declared.identifier_val(*current_file);
+    auto const declared_name = declared.identifier_val(current_file);
     auto const type = declared.identifier_data.decl_type;
     auto const qualified_type = QualifiedType{type, decl_node.declaration_data.qualifiers};
     locals.emplace_back(type);
 
-    if (module->containsLocal(declared_name)) {
+    if (module.containsLocal(declared_name)) {
       error(declared, "Redefinition of symbol name in variable declaration.");
       if (decl_node.declaration_data.has_init) (void)peepExpression();
       return;
     }
 
     if (not decl_node.declaration_data.has_init) {
-      module->addLocal(declared_name, qualified_type);
+      module.addLocal(declared_name, qualified_type);
       return;
     }
 
@@ -872,7 +874,7 @@ class Peeper {
       local_instruction.local_data.idx = locals.size() - 1;
       instructions.emplace_back(local_instruction);
     }
-    module->addLocal(declared_name, qualified_type);
+    module.addLocal(declared_name, qualified_type);
 
     auto const init_expr_idx = instructions.size();
     auto const init_expr = peepExpression();
@@ -889,7 +891,7 @@ class Peeper {
   void peepStatement() {
     auto const node = nodes.take();
     switch (node.type) { using enum ASTNode::NodeType;
-    case EMPTY:        eden_unreachable("Empty node peeped in peepStatement.");
+    case EMPTY:        edenUnreachable("Empty node peeped in peepStatement.");
     case DECLARATION:  return peepVarDeclaration(node);
     case IF:           return peepIfStatement(node);
     case WHILE:        return peepWhileLoop(node);
@@ -911,7 +913,7 @@ class Peeper {
     case STRING_LITERAL:
       return (void)peepLiteral(node);
 
-    default: eden_unreachable("Invalid ASTNode while peeping statement.");
+    default: edenUnreachable("Invalid ASTNode while peeping statement.");
     }
   }
 
@@ -960,7 +962,7 @@ class Peeper {
         block.br.next_block_idx = current_block_index();
         break;
       default:
-        eden_unreachable("Invalid ASTNode while peeping statement.");
+        edenUnreachable("Invalid ASTNode while peeping statement.");
       }
 
     }
@@ -971,12 +973,12 @@ public:
   // peeps parsed_functions and fills peeped_tu.functions
   // returns whether an error occurted
   [[nodiscard]] static bool
-  peepFunctions(TU& peep_tu, std::vector<Parser::Function> const& parsed_functions) {
-    Peeper peeper;
-    peeper.module = peep_tu.module;
+  peepFunctions(TU& peep_tu, eden::vector<Parser::Function> const& parsed_functions) {
+    auto& module = getModule(peep_tu.module_id);
+    Peeper peeper(module);
     for (auto const& func : parsed_functions) {
-      auto const function_type = peep_tu.module->enterFunctionScope(func.nameof());
-      peeper.current_file = &peep_tu.source_files[func.file_idx];
+      auto const function_type = module.enterFunctionScope(func.nameof());
+      peeper.current_file = peep_tu.source_files[func.file_idx];
       peeper.nodes.begin = func.body.cbegin();
       peeper.nodes.end = func.body.cend();
       peeper.current_function_type = function_type;
@@ -1094,7 +1096,7 @@ void printPeepInstruction(Instruction instruction, File file) {
 
   case CALL: return std::println("CALL WITH {} PARAMETER(S)", instruction.call_data.num_parameters);
   default:
-    eden_unreachable("Invalid peep instruction.");
+    edenUnreachable("Invalid peep instruction.");
   }
 }
 
@@ -1104,7 +1106,7 @@ void printPeepBlockTerminator(Block block) {
   case BRC: return std::println("\tBRC TRUE {}, FALSE {}", block.brc.true_block_idx, block.brc.false_block_idx);
   case RET: return std::println("\tRET");
   default:
-    eden_unreachable("Invalid block terminator type.");
+    edenUnreachable("Invalid block terminator type.");
   }
 }
 
@@ -1152,25 +1154,26 @@ void PeepIR::printPeep(TU const& tu) {
   }
 }
 
-bool PeepIR::lowerToPeep(TU& tu, Parser::TU&& parsed_tu) {
-
-#ifdef STAGE_BENCHMARKS
-  auto begin_time = std::chrono::high_resolution_clock::now();
-#endif
-
-  tu.source_files = std::move(parsed_tu.source_files);
-  tu.module = parsed_tu.module;
-  tu.functions.reserve(parsed_tu.functions.size());
-  tu.name = parsed_tu.name;
-
-  bool const has_error = Peeper::peepFunctions(tu, parsed_tu.functions);
+static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] std::string_view module_name) {
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("{:>10}, {:>10} | Peeping {}",
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    parsed_tu.module->nameof()
+    module_name
   );
 #endif
+}
+
+bool PeepIR::lowerToPeep(TU& tu, Parser::TU&& parsed_tu) {
+  auto const begin_time = std::chrono::high_resolution_clock::now();
+
+  tu.source_files = std::move(parsed_tu.source_files);
+  tu.module_id = parsed_tu.module_id;
+  tu.functions.reserve(parsed_tu.functions.size());
+  tu.name = parsed_tu.name;
+
+  bool const has_error = Peeper::peepFunctions(tu, parsed_tu.functions);
+  output_benchmark(begin_time, tu.name);
   return has_error;
 }

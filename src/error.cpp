@@ -21,7 +21,7 @@ std::unordered_map< const char*, std::vector<Error> > file_to_errors_map;
 // TODO: make all of this thread safe
 namespace LOM {
 
-eden_noinline_cold
+edenNoInlineCold
 std::string get_file_errors(File file) {
   std::string error_messages;
   auto const file_text = file.get_text();
@@ -53,7 +53,7 @@ std::string get_file_errors(File file) {
   return error_messages;
 }
 
-eden_noinline_cold
+edenNoInlineCold
 void report_error(File file, u16_t length, u32_t position, std::string error_message) {
   file_to_errors_map[file.get_text().data()].emplace_back(
       std::move(error_message),
@@ -61,7 +61,7 @@ void report_error(File file, u16_t length, u32_t position, std::string error_mes
     );
 }
 
-eden_noinline_cold
+edenNoInlineCold
 void report_error(File file, Lexer::Token token, std::string error_message) {
   file_to_errors_map[file.get_text().data()].emplace_back(
       std::move(error_message),
@@ -69,7 +69,7 @@ void report_error(File file, Lexer::Token token, std::string error_message) {
     );
 }
 
-eden_noinline_cold
+edenNoInlineCold
 void report_error(File file, std::string_view file_substr, std::string error_message) {
   auto const [len, pos] = file.len_and_pos_from_view(file_substr);
   file_to_errors_map[file.get_text().data()].emplace_back(

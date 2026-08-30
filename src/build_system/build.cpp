@@ -2,7 +2,7 @@
 #include "backends/codegen.hpp"
 #include "build_system/print.hpp"
 #include "lexing/lex.hpp"
-#include "modules/table_and_module.hpp"
+#include "module/table_and_module.hpp"
 #include "parsing/parse.hpp"
 #include "peepir/peepir.hpp"
 
@@ -35,16 +35,17 @@ struct GlobalStruct {
     module_paths.emplace_back(extern_path);
     module_paths.emplace_back(src_path);
     for (auto const& entry : fs::directory_iterator{src_path}) {
-      if (entry.is_directory()) {
-        if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue; // jank, ignores directories starting with .
-        module_paths.emplace_back(entry.path().stem());
-      }
+      if (not entry.is_directory()) continue;
+
+      if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue; // jank, ignores directories starting with .
+      module_paths.emplace_back(entry.path().stem());
     }
   }
 
   void init_module_list() noexcept {
     module_list.reserve(module_paths.size());
-    module_list.emplace_back(0); module_list.emplace_back(1);
+    for (auto i{0uz}; i<module_list.size(); ++i)
+      module_list.emplace_back(u16_t(i));
   }
 
   void init_module_map() noexcept {
@@ -119,7 +120,7 @@ namespace {
 
 // populates tu and returns whether an error was encountered
 [[nodiscard]] bool
-lex_and_parse_module(Parser::TU& tu, u32_t module_id)  {
+lex_and_parse_module(Parser::TU& tu, u16_t module_id)  {
   eden::vector<Lexer::Token> tokens; tokens.reserve(64);
   auto const& directory = globals.module_paths[module_id];
 
@@ -132,7 +133,7 @@ lex_and_parse_module(Parser::TU& tu, u32_t module_id)  {
 
     globals.module_map.emplace(module_name, module_id);
     tu.name = module_name;
-    tu.module_id = module_id;
+    tu.module = &globals.module_list[module_id];
   }
 
   bool has_error = false;

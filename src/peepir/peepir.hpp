@@ -1,9 +1,10 @@
 #pragma once
 #include "edenlib/typedefs.hpp"
 #include "edenlib/vectors/vector.hpp"
+
 #include "error.hpp"
 #include "file.hpp"
-#include "semantic_analysis/table_and_module.hpp"
+#include "module/table_and_module.hpp"
 
 namespace LOM::Parser {
 struct TU;
@@ -83,7 +84,7 @@ struct Instruction {
 #define common_subsequence InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
   struct CommonData          { common_subsequence };
 
-  struct ModuleMemberData    { InstructionType type; u8_t file_idx; u16_t member_idx; u32_t module_position; StabilizedModule import; };
+  struct ModuleMemberData    { InstructionType type; u8_t file_idx; u16_t member_idx; u32_t module_position; StabilizedTable import; };
   struct TypeMemberData      { InstructionType type; u8_t file_idx; u16_t member_idx; u32_t position_in_file; CustomType const* custom_type; };
 
   struct LocalData           { common_subsequence u32_t idx; };
@@ -100,34 +101,33 @@ struct Instruction {
   struct SubscriptData       { common_subsequence ArrayType const* array_type;  };
   struct DereferenceData     { common_subsequence Type const* dereference_type; };
   struct CallData            { common_subsequence u32_t num_parameters; };
-
 #undef common_subsequence
+
   union {
     CommonData m;
-    ModuleMemberData          module_member_data;
-    TypeMemberData            type_member_data;
-    LocalData                 local_data;
-    SignedLiteralData         signed_literal_data;
-    UnsignedLiteralData       unsigned_literal_data;
-    FloatLiteralData          float_literal_data;
-    DoubleLiteralData         double_literal_data;
-    BoolLiteralData           bool_literal_data;
-    CharLiteralData           char_literal_data;
-    CastAssignData            cast_assign_data;
-    CastData                  cast_data;
-    SubscriptData             subscript_data;
-    DereferenceData           dereference_data;
-    CallData                  call_data;
+    ModuleMemberData    module_member_data;
+    TypeMemberData      type_member_data;
+    LocalData           local_data;
+    SignedLiteralData   signed_literal_data;
+    UnsignedLiteralData unsigned_literal_data;
+    FloatLiteralData    float_literal_data;
+    DoubleLiteralData   double_literal_data;
+    BoolLiteralData     bool_literal_data;
+    CharLiteralData     char_literal_data;
+    CastAssignData      cast_assign_data;
+    CastData            cast_data;
+    SubscriptData       subscript_data;
+    DereferenceData     dereference_data;
+    CallData            call_data;
   };
 
-  explicit constexpr Instruction() {}
-  explicit constexpr Instruction(CommonData data) : m(data) {}
-  explicit constexpr Instruction(InstructionType type) { m.type = type; }
-  edenAlwaysInline [[nodiscard]] constexpr bool is_literal() const noexcept { return eden::enumBetween(m.type, I8_LITERAL, U64_LITERAL); }
+  edenInlineCXPR explicit Instruction() noexcept {}
+  edenInlineCXPR explicit Instruction(CommonData data) noexcept : m(data) {}
+  edenInlineCXPR explicit Instruction(InstructionType type) noexcept { m.type = type; }
+  edenInlineNodiscardCXPR bool is_literal() const noexcept { return eden::enumBetween(m.type, I8_LITERAL, U64_LITERAL); }
 
-  constexpr void
-  adjust_literal(u64_t bitwidth, bool make_signed) noexcept {
-    assert(is_literal());
+#define pre assert(is_literal());
+  constexpr void adjust_literal(u64_t bitwidth, bool make_signed) noexcept { pre
     switch (bitwidth) {
     case 8:   m.type = make_signed ? I8_LITERAL : U8_LITERAL; return;
     case 16:  m.type = make_signed ? I16_LITERAL : U16_LITERAL; return;
@@ -137,14 +137,14 @@ struct Instruction {
       std::unreachable();
     }
   }
+#undef pre
 
-  [[nodiscard]] constexpr std::string
-  escaped_string_value(File file) const noexcept {
-    assert(m.type == ESCAPED_STRING_LITERAL);
+
+#define pre assert(m.type == ESCAPED_STRING_LITERAL);
+  edenNodiscardCXPR std::string escaped_string_value(File file) const noexcept { pre
     std::string res;
     auto const orig = original_string(file);
     res.reserve(orig.size() + 1);
-
     for (auto i{0uz}; i < orig.size(); ++i) {
       char c = orig[i];
       if (c == '\\') {
@@ -153,40 +153,32 @@ struct Instruction {
       }
       res.push_back(c);
     }
-
     return res;
   }
+#undef pre
 
-  edenAlwaysInline [[nodiscard]] constexpr std::string_view
-  original_string(File file) const noexcept {
-    assert(m.type not_eq TYPE_VARIABLE and m.type not_eq MODULE_GLOBAL and m.type not_eq MODULE_FUNCTION);
-    return file.view_at(m.length_in_file, m.position_in_file);
-  }
-
-  // somewhat expensive, use for printing primarily
-  [[nodiscard]] constexpr std::string_view
-  module_variable_name() const noexcept {
-    assert(m.type == MODULE_GLOBAL);
-    auto const member = module_member_data.import.getVariable(module_member_data.member_idx); assert(member);
-    return member->nameof();
-  }
+#define pre assert(m.type not_eq TYPE_VARIABLE and m.type not_eq MODULE_GLOBAL and m.type not_eq MODULE_FUNCTION);
+  edenInlineNodiscardCXPR std::string_view original_string(File file) const noexcept { pre return file.view_at(m.length_in_file, m.position_in_file); }
+#undef pre
 
   // somewhat expensive, use for printing primarily
-  [[nodiscard]] constexpr std::string_view
-  module_function_name() const noexcept {
-    assert(m.type == MODULE_FUNCTION);
-    auto const member = module_member_data.import.getFunction(module_member_data.member_idx); assert(member);
-    return member->nameof();
-  }
+#define pre assert(m.type == MODULE_GLOBAL);
+  edenNodiscardCXPR std::string_view module_variable_name() const noexcept { pre return module_member_data.import.getVariable(module_member_data.member_idx).nameof(); }
+#undef pre
 
   // somewhat expensive, use for printing primarily
-  [[nodiscard]] constexpr std::string_view
-  module_name(File file) const noexcept {
-    assert(m.type == MODULE_GLOBAL or m.type == MODULE_FUNCTION);
+#define pre assert(m.type == MODULE_FUNCTION);
+  edenNodiscardCXPR std::string_view module_function_name() const noexcept { pre return module_member_data.import.getFunction(module_member_data.member_idx).nameof(); }
+#undef pre
+
+  // somewhat expensive, use for printing primarily
+#define pre assert(m.type == MODULE_GLOBAL or m.type == MODULE_FUNCTION);
+  edenNodiscardCXPR std::string_view module_name(File file) const noexcept { pre
     auto module_str = file.get_text().substr(module_member_data.module_position);
     module_str = module_str.substr(0, module_str.find_first_of('.'));
     return module_str;
   }
+#undef pre
 
 };
 static_assert(alignof(Instruction) == 8);

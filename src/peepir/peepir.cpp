@@ -5,7 +5,7 @@
 #include "error.hpp"
 #include "parsing/ast.hpp"
 #include "parsing/parse.hpp"
-#include "semantic_analysis/table_and_module.hpp"
+#include "module/table_and_module.hpp"
 
 #include <cassert>
 #include <chrono>
@@ -55,22 +55,17 @@ struct TreeView {
   eden::vector<ASTNode>::const_iterator begin;
   eden::vector<ASTNode>::const_iterator end;
 
-  edenAlwaysInline [[nodiscard]] constexpr ASTNode peek() const noexcept { return *begin; }
-  edenAlwaysInline [[nodiscard]] constexpr bool peek_is_empty() const noexcept { return begin->type == ASTNode::EMPTY; }
-  edenAlwaysInline constexpr ASTNode take() noexcept { return *(begin++); }
-  edenAlwaysInline constexpr void pop() noexcept { ++begin; }
+  edenInlineNodiscardCXPR ASTNode peek() const noexcept { return *begin; }
+  edenInlineNodiscardCXPR bool peek_is_empty() const noexcept { return begin->type == ASTNode::EMPTY; }
+  edenInlineNodiscardCXPR ASTNode take() noexcept { return *(begin++); }
+  edenInlineCXPR void pop() noexcept { ++begin; }
+  edenInlineCXPR void undo() noexcept { --begin; }
 
-  [[nodiscard]] constexpr bool
-  pop_if_empty() noexcept {
-    if (peek_is_empty()) {
-      pop();
-      return true;
-    }
+  edenNodiscardCXPR bool pop_if_empty() noexcept {
+    if (peek_is_empty()) return pop(), true;
     return false;
   }
-
-  edenAlwaysInline constexpr void  undo() noexcept { --begin; }
-  edenAlwaysInline [[nodiscard]] constexpr bool empty() const noexcept { return begin == end; }
+  edenInlineNodiscardCXPR bool empty() const noexcept { return begin == end; }
 };
 
 class Peeper {
@@ -84,31 +79,30 @@ class Peeper {
   eden::vector<Block> blocks;
   bool has_error{};
 
-  constexpr Peeper(Module& module) : module(module) {}
+  constexpr explicit Peeper(Module& module) : module(module) {}
 
-  edenAlwaysInline [[nodiscard]] constexpr Block& current_block() noexcept { return blocks.back(); }
-  edenAlwaysInline [[nodiscard]] constexpr u32_t current_block_index() const noexcept { return blocks.size() - 1; }
-  edenAlwaysInline [[nodiscard]] constexpr bool is_current_block_empty() const noexcept { return blocks.back().first_instruction_idx == instructions.size(); }
+  edenInlineNodiscardCXPR Block& current_block() noexcept { return blocks.back(); }
+  edenInlineNodiscardCXPR u32_t current_block_index() const noexcept { return blocks.size() - 1; }
+  edenInlineNodiscardCXPR bool is_current_block_empty() const noexcept { return blocks.back().first_instruction_idx == instructions.size(); }
 
   // creates a br that goes to the next block, as if it had fallen through (does not create next block)
   // does nothing if current block is empty
-  constexpr void
-  br_fallthrough() noexcept {
+  constexpr void br_fallthrough() noexcept {
     if (not is_current_block_empty())
       blocks.back().set_br(blocks.size());
   }
 
   // call before any instructions are made
   // does nothing if current block is empty
-  constexpr void
-  new_block() noexcept {
+  constexpr void new_block() noexcept {
     if (not is_current_block_empty())
       blocks.emplace_back(instructions.size(), Block::Terminator::NONE);
   }
 
   constexpr void force_new_block() noexcept { blocks.emplace_back(instructions.size(), Block::Terminator::NONE); }
 
-  constexpr bool // returns whether coersion was successful
+  // returns whether coersion was successful
+  constexpr bool
   coerce_if_integerliteral(Instruction& possible_literal, Type const* expected_type) const noexcept {
     if (not possible_literal.is_literal() or not expected_type->isIntegral()) return false;
     auto const expected_type_primitive = expected_type->castToPrimitive();
@@ -118,15 +112,9 @@ class Peeper {
   }
 
   edenNoInlineCold void
-  error(auto err, std::string msg) noexcept
-  requires requires {
-    err.length_in_file;
-    err.position_in_file;
-  } {
-    report_error(current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true;
-  }
+  error(auto err, std::string msg) noexcept { report_error(current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
 
-  [[nodiscard]] static Instruction
+   edenInlineNodiscardCXPR static Instruction
   newInstruction(ASTNode node, Instruction::InstructionType type = Instruction::NOOP) noexcept {
     return Instruction {
       Instruction::CommonData {
@@ -138,9 +126,9 @@ class Peeper {
     };
   }
 
-  QualifiedType
+  QualifiedTypeID
   peepLiteral(ASTNode node) {
-    QualifiedType res;
+    QualifiedTypeID res;
     auto new_instruction = newInstruction(node);
     switch (node.type) { using enum ASTNode::NodeType;
     case SIGNED_LITERAL:          new_instruction.m.type = Instruction::I8_LITERAL;
@@ -178,16 +166,16 @@ class Peeper {
 
 
 #define pre assert(module_access_node.type == ASTNode::MODULE_ACCESS);
-  QualifiedType
+  QualifiedTypeID
   peepModuleAccess(ASTNode module_access_node) { pre
     Instruction module_symbol = newInstruction(module_access_node);
     module_symbol.module_member_data.module_position = module_access_node.module_position();
 
     auto const instruction_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP);
-    QualifiedType res;
+    QualifiedTypeID res;
 
-    auto const module = getModule(module_access_node.module_name(*current_file)); assert(module);
+    auto const module = getModule(module_access_node.module_name(current_file)); assert(module);
     module_symbol.module_member_data.import = module;
 
     auto const member_name = module_access_node.module_member_name(*current_file);
@@ -225,12 +213,12 @@ class Peeper {
 #undef pre
 
 #define pre assert(member_access_node.type == ASTNode::MEMBER_ACCESS);
-  QualifiedType
+  QualifiedTypeID
   peepMemberAccess(ASTNode member_access_node) { pre
     Instruction type_member = newInstruction(member_access_node, Instruction::TYPE_VARIABLE);
     auto const instruction_idx = instructions.size();
     instructions.emplace_back();
-    QualifiedType res;
+    QualifiedTypeID res;
 
     auto const member_expression = peepExpression();
     res = member_expression;
@@ -270,11 +258,11 @@ class Peeper {
 #undef pre
 
 #define pre assert(identifier_node.type == ASTNode::IDENTIFIER);
-  QualifiedType
+  QualifiedTypeID
   peepIdentifier(ASTNode identifier_node) { pre
     Instruction identifier_instructon = newInstruction(identifier_node);
     auto const identifier = current_file.view_at(identifier_node.length_in_file, identifier_node.position_in_file);
-    QualifiedType res;
+    QualifiedTypeID res;
 
     if (auto const variable = module.getLocal(identifier)) {
       identifier_instructon.m.type = Instruction::LOCAL;
@@ -300,7 +288,7 @@ class Peeper {
 #undef pre
 
 #define pre assert(subscript_node.type == ASTNode::SUBSCRIPT);
-  QualifiedType
+  QualifiedTypeID
   peepSubscriptExpression(ASTNode subscript_node) { pre
     Instruction subscript_instruction = newInstruction(subscript_node, Instruction::SUBSCRIPT);
     auto const subscript_idx = instructions.size();
@@ -311,7 +299,7 @@ class Peeper {
     auto const index_idx /*lol*/ = instructions.size();
     auto const index_expr = peepExpression(); bool const is_unsigned = index_expr.type->isUnsignedIntegral();
 
-    QualifiedType res;
+    QualifiedTypeID res;
 
     bool const valid = is_array && is_unsigned;
     if (not valid) {
@@ -337,13 +325,13 @@ class Peeper {
 #undef pre
 
 #define pre assert(cast_node.type == ASTNode::CAST);
-  QualifiedType
+  QualifiedTypeID
   peepCastExpression(ASTNode cast_node) { pre
     Instruction cast_instruction = newInstruction(cast_node);
     auto const cast_idx = instructions.size();
     instructions.emplace_back();
 
-    QualifiedType res;
+    QualifiedTypeID res;
     auto const cast_type = cast_node.cast_data.cast_type;
     res.type = cast_type;
 
@@ -365,7 +353,7 @@ class Peeper {
 #undef pre
 
 #define pre assert(calling_node.type == ASTNode::CALLING);
-  QualifiedType
+  QualifiedTypeID
   peepCallingExpression(ASTNode calling_node) { pre
     auto const num_parameters = calling_node.call_data.num_parameters;
 
@@ -376,7 +364,7 @@ class Peeper {
       instructions.emplace_back(call_instruction);
     }
 
-    QualifiedType res;
+    QualifiedTypeID res;
     auto const called = peepExpression();
     if (not called.type->isCallable()) {
       if (not called.type->isError()) error(calling_node, "Call operator used on non-callable.");
@@ -436,7 +424,7 @@ class Peeper {
 
   //TODO: Add Short Circuiting
 #define pre assert(binary_node.type == ASTNode::BINARY);
-  QualifiedType
+  QualifiedTypeID
   peepBinaryExpression(ASTNode binary_node) { pre
     Instruction binary_instruction = newInstruction(binary_node);
     auto const binary_idx = instructions.size();
@@ -615,7 +603,7 @@ class Peeper {
 #undef pre
 
 #define pre assert(unary_node.type == ASTNode::UNARY);
-  QualifiedType
+  QualifiedTypeID
   peepUnaryExpression(ASTNode unary_node) { pre
     Instruction unary_instruction = newInstruction(unary_node);
     auto const unary_idx = instructions.size();
@@ -717,7 +705,7 @@ class Peeper {
   }
 #undef pre
 
-  [[nodiscard]] QualifiedType
+  [[nodiscard]] QualifiedTypeID
   peepExpression() {
     auto const node = nodes.take();
     switch (node.type) { using enum ASTNode::NodeType;
@@ -743,7 +731,7 @@ class Peeper {
     }
   }
 
-  void adjustAssignExpression(Instruction& assign, QualifiedType left, QualifiedType right) const noexcept {
+  void adjustAssignExpression(Instruction& assign, QualifiedTypeID left, QualifiedTypeID right) const noexcept {
     if (left.type not_eq right.type and not left.type->isPointer()) {
       assign.m.type = right.type->isSignedIntegral() ? Instruction::SCAST_ASSIGN : Instruction::UCAST_ASSIGN;
       assign.cast_assign_data.bitwidth = left.type->bitwidth();
@@ -852,7 +840,7 @@ class Peeper {
     auto const declared = nodes.take();
     auto const declared_name = declared.identifier_val(current_file);
     auto const type = declared.identifier_data.decl_type;
-    auto const qualified_type = QualifiedType{type, decl_node.declaration_data.qualifiers};
+    auto const qualified_type = QualifiedTypeID{type, decl_node.declaration_data.qualifiers};
     locals.emplace_back(type);
 
     if (module.containsLocal(declared_name)) {

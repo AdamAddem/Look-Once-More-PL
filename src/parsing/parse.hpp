@@ -1,6 +1,7 @@
 #pragma once
-#include "ast.hpp"
 #include "edenlib/vectors/vector.hpp"
+
+#include "ast.hpp"
 #include "file.hpp"
 #include "module/table_and_module.hpp"
 
@@ -9,29 +10,24 @@ struct Token;
 }
 
 namespace LOM::Parser {
-struct TU;
 
 struct Function {
-  //char _pad[2];
+  //byte_t _pad[2];
   bool is_public;
   u8_t  file_idx;
   u32_t name_len;
-  const char* name_ptr;
+  char const* name_ptr;
 
   eden::vector<AST::ASTNode> body;
 
-  edenInlineNodiscardCXPR std::string_view
-  nameof() const noexcept
-  { return {name_ptr, name_len}; }
-
+  edenInlineNodiscardCXPR std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
 };
 
 struct TU {
   eden::vector<File> source_files;
   eden::vector<Function> functions;
   std::string_view name;
-  // char _pad[4];
-  u32_t module_id;
+  Module* module;
 };
 
 void printTU(TU const&) noexcept;

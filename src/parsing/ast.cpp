@@ -3,8 +3,7 @@
 #include <print>
 
 namespace LOM::AST {
-void print_ast(eden::vector<ASTNode> const& nodes, File const& file) noexcept {
-
+edenNoInlineCold void print_ast(eden::vector<ASTNode> const& nodes, File const& file) noexcept {
   auto curr = nodes.begin();
   const auto end = nodes.end();
   std::print("\n\t");
@@ -13,9 +12,8 @@ void print_ast(eden::vector<ASTNode> const& nodes, File const& file) noexcept {
     using enum ASTNode::NodeType;
     switch (curr->type) {
     case EMPTY: std::print("EMPTY"); break;
-    case DECLARATION: std::print("DECLARATION WITH TYPE {}{}",
-          QualifiedType{(curr + 1)->declaration_identifier_val(), curr->declaration_qualifiers()}.toString(),
-          curr->declaration_has_init() ? "" : ", JUNK INITIALIZED"); break;
+    case DECLARATION: std::print("DECLARATION OF {} WITH TYPE {}", curr->original_string(file), curr->declaration_type().toString());
+    case DECLARATION_JUNK: std::print("DECLARATION OF {} WITH TYPE {}, JUNK INITIALIZED", curr->original_string(file), curr->declaration_type().toString());
     case IF: std::print("IF{} W/ {} SUB_STATEMENTS", curr->if_has_else() ? " W/ ELSE" : "", curr->if_numstatements()); break;
     case WHILE: std::print("WHILE W/ {} SUB_STATEMENTS", curr->while_numstatements()); break;
     case RETURN: std::print("RETURN{}", curr->return_has_value() ? "" : " W/ NO VALUE"); break;
@@ -26,7 +24,7 @@ void print_ast(eden::vector<ASTNode> const& nodes, File const& file) noexcept {
     case BINARY: std::print("BINARY: {}", operatorToString(curr->binary_operator())); break;
     case CALLING: std::print("CALLING W/ {} PARAMETERS", curr->parameter_count()); break;
     case IDENTIFIER: std::print("IDENTIFIER: {}", curr->identifier_val(file)); break;
-    case CAST: std::print("CAST TO {}", curr->cast_type()->toString()); break;
+    case CAST: std::print("CAST TO {}", curr->cast_type().toString()); break;
     case SUBSCRIPT: std::print("SUBSCRIPT"); break;
 
     case SIGNED_LITERAL: std::print("SIGNED_LITERAL: {}", curr->signed_val()); break;

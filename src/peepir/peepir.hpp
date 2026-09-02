@@ -139,7 +139,6 @@ struct Instruction {
   }
 #undef pre
 
-
 #define pre assert(m.type == ESCAPED_STRING_LITERAL);
   edenNodiscardCXPR std::string escaped_string_value(File file) const noexcept { pre
     std::string res;

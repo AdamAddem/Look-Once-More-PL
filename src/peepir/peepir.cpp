@@ -19,7 +19,18 @@ using namespace LOM::AST;
 
 namespace {
 
-[[nodiscard]] constexpr Instruction::InstructionType
+edenInlineNodiscardCXPR Type const* getTypeFromID(TypeID typeID) noexcept { return &getModule(typeID.module_id).getTypeFromID(typeID); }
+
+edenInlineNodiscardCXPR QualifiedType
+realizeQualifiedType(QualifiedTypeID qtypeID) noexcept {
+  return QualifiedType{
+    .type = &getModule(qtypeID.module_id).getTypeFromID(qtypeID.toTypeID()),
+    .qtypeID = qtypeID
+  };
+}
+
+
+edenNodiscardCXPR Instruction::InstructionType
 castForType(Type const* type) noexcept {
   switch (type->getDerivedType()) { using enum Type::DerivedType;
   case ERROR: return Instruction::UCAST;
@@ -114,7 +125,7 @@ class Peeper {
   edenNoInlineCold void
   error(auto err, std::string msg) noexcept { report_error(current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
 
-   edenInlineNodiscardCXPR static Instruction
+  edenInlineNodiscardCXPR static Instruction
   newInstruction(ASTNode node, Instruction::InstructionType type = Instruction::NOOP) noexcept {
     return Instruction {
       Instruction::CommonData {
@@ -126,9 +137,9 @@ class Peeper {
     };
   }
 
-  QualifiedTypeID
+  QualifiedType
   peepLiteral(ASTNode node) {
-    QualifiedTypeID res;
+    QualifiedType res;
     auto new_instruction = newInstruction(node);
     switch (node.type) { using enum ASTNode::NodeType;
     case SIGNED_LITERAL:          new_instruction.m.type = Instruction::I8_LITERAL;
@@ -164,21 +175,20 @@ class Peeper {
     return res;
   }
 
-
 #define pre assert(module_access_node.type == ASTNode::MODULE_ACCESS);
-  QualifiedTypeID
+  QualifiedType
   peepModuleAccess(ASTNode module_access_node) { pre
     Instruction module_symbol = newInstruction(module_access_node);
     module_symbol.module_member_data.module_position = module_access_node.module_position();
 
     auto const instruction_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP);
-    QualifiedTypeID res;
+    QualifiedType res;
 
     auto const module = getModule(module_access_node.module_name(current_file)); assert(module);
-    module_symbol.module_member_data.import = module;
+    module_symbol.module_member_data.import.set(module);
 
-    auto const member_name = module_access_node.module_member_name(*current_file);
+    auto const member_name = module_access_node.module_member_name(current_file);
     assert(module_access_node.length_in_file == 1);
 
     if (auto const member_variable = module->getPublicVariable(member_name)) {
@@ -186,13 +196,17 @@ class Peeper {
       assert(member_variable->id not_eq SymbolTable::INVALID_ID);
       module_symbol.m.type = Instruction::MODULE_GLOBAL;
       module_symbol.module_member_data.member_idx = member_variable->id;
-      res = member_variable->type;
+      auto const var_qtypeID = member_variable->type;
+      res.qtypeID = var_qtypeID;
+      res.type = getTypeFromID(var_qtypeID.toTypeID());
     }
     else if (auto const member_function = module->getPublicFunction(member_name)) {
       assert(member_function->id not_eq SymbolTable::INVALID_ID);
       module_symbol.m.type = Instruction::MODULE_FUNCTION;
       module_symbol.module_member_data.member_idx = member_function->id;
-      res.type = member_function->type;
+      auto const fn_typeID = member_function->getTypeID();
+      res.type = getTypeFromID(fn_typeID);
+      res.qtypeID.set(fn_typeID);
     }
     else {
       ASTNode member_node_fake{
@@ -213,12 +227,12 @@ class Peeper {
 #undef pre
 
 #define pre assert(member_access_node.type == ASTNode::MEMBER_ACCESS);
-  QualifiedTypeID
+  QualifiedType
   peepMemberAccess(ASTNode member_access_node) { pre
     Instruction type_member = newInstruction(member_access_node, Instruction::TYPE_VARIABLE);
     auto const instruction_idx = instructions.size();
     instructions.emplace_back();
-    QualifiedTypeID res;
+    QualifiedType res;
 
     auto const member_expression = peepExpression();
     res = member_expression;
@@ -231,21 +245,22 @@ class Peeper {
     auto const custom_type = member_expression.type->castToCustom();
     auto const member_table = custom_type->member_table();
     auto const identifier_node = nodes.take();
-    auto const identifier = std::string_view(identifier_node.identifier_val(*current_file));
+    auto const identifier = std::string_view(identifier_node.identifier_val(current_file));
 
     type_member.type_member_data.custom_type = custom_type;
 
     if (auto const member_variable = member_table->getPublicVariable(identifier)) {
       assert(member_variable->id not_eq SymbolTable::INVALID_ID);
       type_member.type_member_data.member_idx = member_variable->id;
-      auto const member_variable_decltype = member_variable->type;
-      res.type = member_variable_decltype.type;
-      if (member_expression.qualifiers.writable) res.qualifiers = member_variable_decltype.qualifiers;
+      auto const var_qtypeID = member_variable->type;
+      res.type = getTypeFromID(var_qtypeID.toTypeID());
+      if (member_expression.qtypeID.qualifiers.writable) res.qtypeID.qualifiers = var_qtypeID.qualifiers;
     }
     else if (auto const member_function = member_table->getPublicFunction(identifier)) {
       edenUnreachable("Member functions unimplemented."); assert(member_function->id not_eq SymbolTable::INVALID_ID);
       type_member.type_member_data.member_idx = member_function->id;
-      res.type = member_function->type;
+      auto const fn_typeID = TypeID{.derived = Type::FUNCTION, .module_id = member_function->function_type_module_id, .id = member_function->function_type_id};
+      res.type = getTypeFromID(fn_typeID);
     }
     else {
       error(identifier_node, "Identifier is not a public member of type.");
@@ -258,24 +273,24 @@ class Peeper {
 #undef pre
 
 #define pre assert(identifier_node.type == ASTNode::IDENTIFIER);
-  QualifiedTypeID
+  QualifiedType
   peepIdentifier(ASTNode identifier_node) { pre
     Instruction identifier_instructon = newInstruction(identifier_node);
     auto const identifier = current_file.view_at(identifier_node.length_in_file, identifier_node.position_in_file);
-    QualifiedTypeID res;
+    QualifiedType res;
 
     if (auto const variable = module.getLocal(identifier)) {
       identifier_instructon.m.type = Instruction::LOCAL;
-      res = variable->type;
+      res = realizeQualifiedType(variable->type);
       identifier_instructon.local_data.idx = variable->id + 1; // + 1 to offset for return type
     }
     else if (auto const function = module.getFunction(identifier)) {
       identifier_instructon.m.type = Instruction::FUNCTION;
-      res.type = function->type;
+      res.type = getTypeFromID(function->getTypeID());
     }
     else if (auto const global = module.getVariable(identifier)) {
       identifier_instructon.m.type = Instruction::GLOBAL;
-      res = global->type;
+      res = realizeQualifiedType(global->type);
     }
     else {
       error(identifier_node, "Unrecognized identifier.");
@@ -288,7 +303,7 @@ class Peeper {
 #undef pre
 
 #define pre assert(subscript_node.type == ASTNode::SUBSCRIPT);
-  QualifiedTypeID
+  QualifiedType
   peepSubscriptExpression(ASTNode subscript_node) { pre
     Instruction subscript_instruction = newInstruction(subscript_node, Instruction::SUBSCRIPT);
     auto const subscript_idx = instructions.size();
@@ -299,46 +314,46 @@ class Peeper {
     auto const index_idx /*lol*/ = instructions.size();
     auto const index_expr = peepExpression(); bool const is_unsigned = index_expr.type->isUnsignedIntegral();
 
-    QualifiedTypeID res;
+    QualifiedType res;
 
     bool const valid = is_array && is_unsigned;
     if (not valid) {
       res = error_literal;
       if (not is_array)
-        error(subscript_node, std::format("Subscript operator used on non-array type {}.", array_expr.type->toString()) );
+        error(subscript_node, std::format("Subscript operator used on non-array type {}.", array_expr.qtypeID.toString()) );
       if (not is_unsigned)
-        error(subscript_node, std::format("Expression used as array index is of signed type {}.", index_expr.type->toString()) );
+        error(subscript_node, std::format("Expression used as array index is of signed type {}.", index_expr.qtypeID.toString()) );
       return res;
     }
 
     auto const array_type = array_expr.type->castToArray();
-    auto const array_subtype = array_type->getSubtype();
-    res.type = array_subtype;
-    res.qualifiers = array_expr.qualifiers;
+    auto const array_subtypeID = array_type->getSubtypeID(array_expr.qtypeID.module_id);
+    res.type = getTypeFromID(array_subtypeID);
+    res.qtypeID.set(array_subtypeID);
+    res.qtypeID.qualifiers = array_expr.qtypeID.qualifiers;
 
     subscript_instruction.subscript_data.array_type = array_type;
     instructions[subscript_idx] = subscript_instruction;
 
-    coerce_if_integerliteral(instructions[index_idx], PrimitiveType::uptr_t());
+    coerce_if_integerliteral(instructions[index_idx], &PrimitiveType::uptr_t());
     return res;
   }
 #undef pre
 
 #define pre assert(cast_node.type == ASTNode::CAST);
-  QualifiedTypeID
+  QualifiedType
   peepCastExpression(ASTNode cast_node) { pre
     Instruction cast_instruction = newInstruction(cast_node);
     auto const cast_idx = instructions.size();
     instructions.emplace_back();
-
-    QualifiedTypeID res;
-    auto const cast_type = cast_node.cast_data.cast_type;
-    res.type = cast_type;
+    auto const cast_typeID = cast_node.cast_data.cast_type;
+    auto const cast_type = getTypeFromID(cast_typeID);
+    QualifiedType res { .type = cast_type };
 
     auto const casted_expr = peepExpression();
     if (not casted_expr.type->castableTo(cast_type)) {
       error(cast_node,
-        std::format("Invalid cast from {} to {}", casted_expr.type->toString(), cast_type->toString())
+        std::format("Invalid cast from {} to {}", casted_expr.qtypeID.toString(), cast_typeID.toString())
         );
       res = error_literal;
       return res;
@@ -353,7 +368,7 @@ class Peeper {
 #undef pre
 
 #define pre assert(calling_node.type == ASTNode::CALLING);
-  QualifiedTypeID
+  QualifiedType
   peepCallingExpression(ASTNode calling_node) { pre
     auto const num_parameters = calling_node.call_data.num_parameters;
 
@@ -364,51 +379,50 @@ class Peeper {
       instructions.emplace_back(call_instruction);
     }
 
-    QualifiedTypeID res;
+    QualifiedType res;
     auto const called = peepExpression();
     if (not called.type->isCallable()) {
       if (not called.type->isError()) error(calling_node, "Call operator used on non-callable.");
-
-      for (auto i{0uz}; i<num_parameters; ++i)
-        (void)peepExpression();
-
+      for (auto i{0uz}; i<num_parameters; ++i) (void)peepExpression();
       res = error_literal;
       return res;
     }
 
     assert(called.type->isFunction() or called.type->isError());
 
-    auto const function_type = called.type->castToFunction();
-    auto const function_parameter_types = function_type->parameterTypes();
-    auto const function_parameter_count = function_parameter_types.size();
-    bool const variadic = function_type->isVariadic();
+    auto const fn_type = called.type->castToFunction();
+    auto const fn_type_module_id = called.qtypeID.module_id;
+    auto const fn_parameter_count = fn_type->numParameters();
+    bool const variadic = fn_type->isVariadic();
 
-    if (num_parameters < function_parameter_count) {
+    if (num_parameters < fn_parameter_count) {
       error(calling_node, "Too few parameters for function call.");
       res = error_literal;
       return res;
     }
 
-    if (num_parameters > function_parameter_count and not variadic) {
+    if (num_parameters > fn_parameter_count and not variadic) {
       error(calling_node, "Too many parameters for function call.");
       res = error_literal;
       return res;
     }
 
     auto i{0uz};
-    for (; i<function_parameter_count; ++i) {
+    for (; i<fn_parameter_count; ++i) {
       auto const given_parameter_idx = instructions.size();
-      auto given_parameter = peepExpression();
-      auto const function_parameter_type = function_parameter_types[i];
+      auto const given_parameter_qtype = peepExpression();
+      auto const given_parameter_type = given_parameter_qtype.type;
+      auto const fn_parameter_typeID = fn_type->parameterTypeID(i, fn_type_module_id);
+      auto const fn_parameter_type = getTypeFromID(fn_parameter_typeID);
 
-      if (given_parameter.type not_eq function_parameter_type) {
-        if (not given_parameter.type->coercibleTo(function_parameter_type)) {
-          error(calling_node, std::format("Cannot coerce parameter of type '{}' to type '{}'.", given_parameter.type->toString(), function_parameter_type->toString()));
+      if (not given_parameter_type->sameAs(fn_parameter_type)) {
+        if (not given_parameter_type->coercibleTo(fn_parameter_type)) {
+          error(calling_node, std::format("Cannot coerce parameter of type '{}' to type '{}'.", given_parameter_qtype.qtypeID.toString(), fn_parameter_typeID.toString()));
           res = error_literal;
           return res;
         }
 
-        coerce_if_integerliteral(instructions[given_parameter_idx], function_parameter_type);
+        coerce_if_integerliteral(instructions[given_parameter_idx], fn_parameter_type);
       }
     }
 
@@ -417,14 +431,16 @@ class Peeper {
         (void)peepExpression();
     }
 
-    res.type = function_type->returnType();
+    auto const fn_return_typeID = fn_type->returnTypeID(fn_type_module_id);
+    res.type = getTypeFromID(fn_return_typeID);
+    res.qtypeID.set(fn_return_typeID);
     return res;
   }
 #undef pre
 
   //TODO: Add Short Circuiting
 #define pre assert(binary_node.type == ASTNode::BINARY);
-  QualifiedTypeID
+  QualifiedType
   peepBinaryExpression(ASTNode binary_node) { pre
     Instruction binary_instruction = newInstruction(binary_node);
     auto const binary_idx = instructions.size();
@@ -449,7 +465,7 @@ class Peeper {
       else {
         error(binary_node,
           std::format("Right type {} in binary expression cannot coerce to left type {}.",
-          right.type->toString(), left.type->toString()));
+          right.qtypeID.toString(), left.qtypeID.toString()));
 
         left = error_literal;
       }
@@ -468,7 +484,7 @@ class Peeper {
         break;
       }
 
-      left.qualifiers.writable = false;
+      left.qtypeID.qualifiers.writable = false;
       break;
 
     case Operator::LESS:
@@ -505,11 +521,11 @@ class Peeper {
         break;
       }
 
-      left.qualifiers.writable = false;
+      left.qtypeID.qualifiers.writable = false;
       break;
 
     case Operator::ASSIGN:
-      if (not left.qualifiers.writable) {
+      if (not left.qtypeID.qualifiers.writable) {
         error(binary_node, "Left expression in assignment non-mutable.");
         left = error_literal;
       }
@@ -603,7 +619,7 @@ class Peeper {
 #undef pre
 
 #define pre assert(unary_node.type == ASTNode::UNARY);
-  QualifiedTypeID
+  QualifiedType
   peepUnaryExpression(ASTNode unary_node) { pre
     Instruction unary_instruction = newInstruction(unary_node);
     auto const unary_idx = instructions.size();
@@ -614,15 +630,15 @@ class Peeper {
     const bool arithmetic = expression.type->isArithmetic();
     switch (unary_node.unary_data.opr) {
     case Operator::ADDRESS_OF:
-      if (not expression.qualifiers.writable)
+      if (not expression.qtypeID.qualifiers.writable)
         error(unary_node, "Address-of (@) operator used on readonly expression.");
-      expression.type = module.getRawPointerType(expression.type);
-      expression.qualifiers.writable = false;
+      expression.type = module.getRawPointerType(expression.type); // RLLY BAD WTF FIX
+      expression.qtypeID.qualifiers.writable = false;
       break;
 
     case Operator::REF_TO:
       expression.type = module.getRefPointerType(expression.type);
-      expression.qualifiers.writable = false;
+      expression.qtypeID.qualifiers.writable = false;
       break;
 
     case Operator::PRE_INCREMENT:
@@ -705,7 +721,7 @@ class Peeper {
   }
 #undef pre
 
-  [[nodiscard]] QualifiedTypeID
+  [[nodiscard]] QualifiedType
   peepExpression() {
     auto const node = nodes.take();
     switch (node.type) { using enum ASTNode::NodeType;
@@ -731,8 +747,8 @@ class Peeper {
     }
   }
 
-  void adjustAssignExpression(Instruction& assign, QualifiedTypeID left, QualifiedTypeID right) const noexcept {
-    if (left.type not_eq right.type and not left.type->isPointer()) {
+  void adjustAssignExpression(Instruction& assign, QualifiedType left, QualifiedType right) const noexcept {
+    if (left.type->sameAs(right.type) and not left.type->isPointer()) {
       assign.m.type = right.type->isSignedIntegral() ? Instruction::SCAST_ASSIGN : Instruction::UCAST_ASSIGN;
       assign.cast_assign_data.bitwidth = left.type->bitwidth();
     }

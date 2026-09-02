@@ -224,7 +224,7 @@ edenNoInlineCold std::string FunctionType::toString(Module const& owning_module)
 
   string_rep.append(") ");
   if (return_derived_type not_eq DEVOID)
-    string_rep.append(returnID(module_id).toString());
+    string_rep.append(returnTypeID(module_id).toString());
 
   return string_rep;
 }

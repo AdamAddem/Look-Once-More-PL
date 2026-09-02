@@ -346,6 +346,7 @@ class ParserBody {
     case TokenType::AMPERSAND:          opr = Operator::REF_TO; break;
     case TokenType::KEYWORD_NOT:        opr = Operator::NOT; break;
     case TokenType::KEYWORD_BITNOT:     opr = Operator::BITNOT; break;
+
     case TokenType::KEYWORD_CAST: {
       auto node = newNode(token, ASTNode::CAST); tokens.pop();
       if (not tokens.pop_if(TokenType::LESS)) error(tokens.peek(), "Expected opening < in cast.");
@@ -354,7 +355,6 @@ class ParserBody {
 
       return expression_tree.create(node, generatePrefixExpression(), 0);
     }
-
     case TokenType::MINUS: {
       if (tokens.peek_ahead(1).isNumericLiteral()) {
         tokens.pop();

@@ -36,12 +36,13 @@ public:
     mutable eden::swap_vector16<Variable> locals;
     char const* name; u32_t name_len;
     u32_t function_type_id;
+    u16_t function_type_module_id;
+    u16_t id{INVALID_ID};
     bool is_public;
-    // byte_t _pad[5];
-    u16_t id;
+    //byte_t _pad[3];
 
-    constexpr explicit Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, u32_t function_type_id, bool is_public) noexcept
-    : locals(std::move(parameters)), name(name.data()), name_len(name.length()), function_type_id(function_type_id), is_public(is_public), id(INVALID_ID) {
+    constexpr explicit Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, TypeID function_typeID, bool is_public) noexcept
+    : locals(std::move(parameters)), name(name.data()), name_len(name.length()), function_type_id(function_typeID.id), function_type_module_id(function_typeID.module_id), is_public(is_public) {
       assert(locals.is_ordered(get_id_of));
 #ifndef NDEBUG
       for (auto const& param : locals)
@@ -49,7 +50,7 @@ public:
 #endif
     }
 
-    edenInlineNodiscardCXPR TypeID returnType(u16_t module_id) const noexcept { return { .derived = Type::FUNCTION, .module_id = module_id, .id = function_type_id }; }
+    edenInlineNodiscardCXPR TypeID getTypeID() const noexcept { return { .derived = Type::FUNCTION, .module_id = function_type_module_id, .id = function_type_id }; }
     edenInlineNodiscardCXPR std::string_view nameof() const noexcept { return {name, name_len}; }
     edenInlineNodiscardCXPR sz_t num_parameters() const noexcept { return locals.size(); }
 
@@ -66,15 +67,15 @@ public:
 #undef pre
 
   private:
-    constexpr Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, u32_t function_type_id, bool is_public, sz_t functon_insert_order)
-    : Function(name, std::move(parameters), function_type_id, is_public) {
-      assert(functon_insert_order < INVALID_ID);
+    constexpr Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, TypeID function_typeID, bool is_public, sz_t functon_insert_order)
+    : Function(name, std::move(parameters), function_typeID, is_public) {
+      id = (u16_t) functon_insert_order;
+      assert(functon_insert_order not_eq INVALID_ID);
       assert(locals.is_ordered(get_id_of));
 
 #ifndef NDEBUG
       for (auto const& param : locals) assert(param.id not_eq INVALID_ID);
 #endif
-      id = (u16_t) functon_insert_order;
     }
   };
 
@@ -135,7 +136,7 @@ public:
 #define pre assert(not functions.search_noswap(name_search, function_name)); assert(function_typeID.derived == Type::FUNCTION);
   edenInlineCXPR void
   addFunction(std::string_view function_name, eden::swap_vector16<Variable>&& parameters, TypeID function_typeID, bool is_public) noexcept { pre
-    functions.emplace_back( Function{ function_name, std::move(parameters), function_typeID.id, is_public, static_cast<u16_t>(functions.size()) } );
+    functions.emplace_back( Function{ function_name, std::move(parameters), function_typeID, is_public, static_cast<u16_t>(functions.size()) } );
   }
 #undef pre
 
@@ -251,11 +252,12 @@ public:
   getCustomType(std::string_view name) noexcept { 
     auto const res = custom_types.search_noswap(named_search_pred, name); 
     if(res) return getExisting(res, custom_types, id);
-    return devoid_literal.toTypeID();
+    return TypeID { .derived = Type::DEVOID };
   }
 
   // if typeID is not primitive, devoid, or error, then it must be from this module
-  edenNodiscardCXPR Type const& getTypeFromID(TypeID typeID) const noexcept {
+  edenNodiscardCXPR Type const&
+  getTypeFromID(TypeID typeID) const noexcept {
     switch (typeID.derived) {
     case Type::PRIMITIVE: return PrimitiveType::make_arr()[typeID.id];
     case Type::DEVOID:    return Type::devoid();
@@ -275,7 +277,7 @@ public:
 class StabilizedTable {
   SymbolTable const* table;
 public:
-  edenInlineCXPR explicit StabilizedTable(SymbolTable const* table) noexcept : table(table) {}
+  edenInlineCXPR void set(SymbolTable const* to_stabilize) { table = to_stabilize; }
   edenInlineNodiscardCXPR SymbolTable::Variable const& getVariable(u16_t variable_id) const noexcept { return table->getVariable(variable_id); }
   edenInlineNodiscardCXPR SymbolTable::Function const& getFunction(u16_t function_id) const noexcept { return table->getFunction(function_id); }
 };

@@ -43,8 +43,8 @@ private:
   consteval Type() : derived_type(ERROR) { setArithmetic(); }
 
 protected:
-  constexpr void setArithmetic() noexcept {flags or_eq is_arithmetic_mask;}
-  constexpr void setCallable()   noexcept {flags or_eq is_callable_mask;}
+  constexpr void setArithmetic() noexcept {flags |= is_arithmetic_mask;}
+  constexpr void setCallable()   noexcept {flags |= is_callable_mask;}
 
   constexpr explicit Type(DerivedType derived_type) : derived_type(derived_type) {}
 
@@ -102,11 +102,63 @@ public:
   [[nodiscard]] bool coercibleTo(Type const* other) const noexcept;
   [[nodiscard]] bool castableTo(Type const* other) const noexcept;
 
+  [[nodiscard]] bool sameAs(Type const* other) const noexcept;
+
   Type(const Type&) = delete;
   void operator=(const Type&) = delete;
 
   Type(Type&&) noexcept = default;
   Type& operator=(Type &&) noexcept = default;
+};
+
+struct PtrBits {
+  constexpr PtrBits() noexcept = default;
+
+#define pre edenAssume(ptr_level >= 2 and ptr_level <= 5);
+  constexpr explicit PtrBits(u8_t ptr_level, bool l2_raw = false, bool l3_raw = false, bool l4_raw = false, bool l5_raw = false) noexcept { pre
+
+    // set ptr level flag
+    ptr_flags |= 1 << (ptr_level - 2);
+
+    // set ptr raw flags
+    {
+      ptr_flags |= l2_raw_mask * u8_t(l2_raw);
+      ptr_flags |= l3_raw_mask * u8_t(l3_raw);
+      ptr_flags |= l4_raw_mask * u8_t(l4_raw);
+      ptr_flags |= l5_raw_mask * u8_t(l5_raw);
+    }
+
+  }
+#undef pre
+
+  edenInlineNodiscardCXPR u8_t
+  pointer_level() const noexcept {
+    u8_t const ptr_level_flags = ptr_flags & level_mask;
+    return std::bit_width<u8_t>(ptr_level_flags) + 1;
+  }
+
+#define pre edenAssume(ptr_level >= 2 and ptr_level <= pointer_level());
+  edenInlineNodiscardCXPR bool isLevelRaw(u8_t ptr_level) const noexcept { pre return ptr_flags bitand rawmask_for_level(ptr_level); }
+#undef pre
+
+  edenInlineNodiscardCXPR bool isTopLevelRaw() const noexcept { return isLevelRaw(pointer_level()); }
+private:
+
+  static constexpr u8_t l2_ptr_mask = 1 << 0;
+  static constexpr u8_t l3_ptr_mask = 1 << 1;
+  static constexpr u8_t l4_ptr_mask = 1 << 2;
+  static constexpr u8_t l5_ptr_mask = 1 << 3;
+  static constexpr u8_t level_mask = l2_ptr_mask | l3_ptr_mask | l4_ptr_mask | l5_ptr_mask;
+
+  static constexpr u8_t l2_raw_mask = 1 << 4;
+  static constexpr u8_t l3_raw_mask = 1 << 5;
+  static constexpr u8_t l4_raw_mask = 1 << 6;
+  static constexpr u8_t l5_raw_mask = 1 << 7;
+  static constexpr u8_t raw_mask = l2_raw_mask | l3_raw_mask | l4_raw_mask | l5_raw_mask;
+
+  edenInlineNodiscardCXPR static u8_t rawmask_for_level(u8_t ptr_level) noexcept { return 1 << (ptr_level + 2); }
+
+  u8_t ptr_flags{};
 };
 
 struct TypeID {
@@ -140,6 +192,11 @@ struct QualifiedTypeID {
   edenNoInlineCold [[nodiscard]] std::string toString(Module const& owning_module) const noexcept { return (qualifiers.writable ? "$ " : ": ") + toTypeID().toString(owning_module); }
   edenNoInlineCold [[nodiscard]] std::string toString() const noexcept { return toString(getModule(module_id)); }
 }; static_assert(sizeof(QualifiedTypeID) == 8);
+
+struct QualifiedType {
+  Type const* type;
+  QualifiedTypeID qtypeID; // we only rlly need to store the qualifiers, keeping the old typeID info helps for debug and doesn't take any extra space cuz alignment
+};
 
 class PrimitiveType final : public Type {
   friend class Module;
@@ -281,11 +338,11 @@ public:
   type_singleton(string, STRING)
 #undef type_singleton
 
-edenInlineNodiscardCXPR bool Type::isBool()             const noexcept { return derived_type == PRIMITIVE and static_cast<PrimitiveType const*>(this)->isBool();    }
-edenInlineNodiscardCXPR bool Type::isIntegral()         const noexcept { return derived_type == PRIMITIVE and static_cast<PrimitiveType const*>(this)->isIntegral();}
-edenInlineNodiscardCXPR bool Type::isUnsignedIntegral() const noexcept { return derived_type == PRIMITIVE and static_cast<PrimitiveType const*>(this)->isUnsignedIntegral();}
-edenInlineNodiscardCXPR bool Type::isSignedIntegral()   const noexcept { return derived_type == PRIMITIVE and static_cast<PrimitiveType const*>(this)->isSignedIntegral();}
-edenInlineNodiscardCXPR bool Type::isFloating()         const noexcept { return derived_type == PRIMITIVE and static_cast<PrimitiveType const*>(this)->isFloating();}
+edenInlineNodiscardCXPR bool Type::isBool()             const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isBool();    }
+edenInlineNodiscardCXPR bool Type::isIntegral()         const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isIntegral();}
+edenInlineNodiscardCXPR bool Type::isUnsignedIntegral() const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isUnsignedIntegral();}
+edenInlineNodiscardCXPR bool Type::isSignedIntegral()   const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isSignedIntegral();}
+edenInlineNodiscardCXPR bool Type::isFloating()         const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isFloating();}
 
 class PointerType final : public Type {
   friend class Module;
@@ -326,7 +383,7 @@ public:
   edenInlineNodiscardCXPR u64_t  getSize()                          const noexcept { return array_size; }
   edenInlineNodiscardCXPR bool   coerciblTo(ArrayType const* other) const noexcept { return this == other; }
   edenInlineNodiscardCXPR bool   castableo(ArrayType const* other)  const noexcept { return this == other; }
-  edenInlineNodiscardCXPR TypeID subtypeID(u16_t module_id)         const noexcept { return { .derived = subtype_derived, .module_id = module_id, .id = subtype_id }; }
+  edenInlineNodiscardCXPR TypeID getSubtypeID(u16_t module_id)         const noexcept { return { .derived = subtype_derived, .module_id = module_id, .id = subtype_id }; }
 
   [[nodiscard]] std::string toString(Module const& owning_module) const noexcept;
 
@@ -359,9 +416,9 @@ public:
 
   edenInlineNodiscardCXPR sz_t numParameters() const noexcept { return num_parameters; }
   edenInlineNodiscardCXPR bool isVariadic() const noexcept    { return is_variadic; }
-  edenInlineNodiscardCXPR TypeID returnID(u16_t module_id) const noexcept { return { .derived = return_derived_type, .module_id = module_id, .id = return_id }; }
+  edenInlineNodiscardCXPR TypeID returnTypeID(u16_t module_id) const noexcept { return { .derived = return_derived_type, .module_id = module_id, .id = return_id }; }
   edenNoInlineCold [[nodiscard]] std::string toString(Module const& owning_module) const noexcept;
-  edenInlineNodiscardCXPR TypeID parameterID(sz_t parameter_idx, u16_t module_id) const noexcept { return { .derived = parameter_derived_types[parameter_idx], .module_id = module_id, .id = parameter_ids[parameter_idx] }; }
+  edenInlineNodiscardCXPR TypeID parameterTypeID(sz_t parameter_idx, u16_t module_id) const noexcept { return { .derived = parameter_derived_types[parameter_idx], .module_id = module_id, .id = parameter_ids[parameter_idx] }; }
 
 #define pre assert(&other != this);
   edenInlineNodiscardCXPR bool operator==(FunctionType const& other) const noexcept { pre return eden::are_bitwise_equal_restrict(this, &other); }
@@ -411,47 +468,35 @@ Type::bitwidth() const noexcept {
   }
 }
 
-edenInlineNodiscardCXPR PrimitiveType const* Type::castToPrimitive() const noexcept { assert(derived_type == PRIMITIVE); return static_cast<PrimitiveType const*>(this); }
-edenInlineNodiscardCXPR PointerType   const* Type::castToPointer()   const noexcept { assert(derived_type == POINTER);   return static_cast<PointerType   const*>(this); }
-edenInlineNodiscardCXPR ArrayType     const* Type::castToArray()     const noexcept { assert(derived_type == ARRAY);     return static_cast<ArrayType     const*>(this); }
-edenInlineNodiscardCXPR FunctionType  const* Type::castToFunction()  const noexcept { assert(derived_type == FUNCTION);  return static_cast<FunctionType  const*>(this); }
-edenInlineNodiscardCXPR CustomType    const* Type::castToCustom()    const noexcept { assert(derived_type == CUSTOM);    return static_cast<CustomType    const*>(this); }
+edenInlineNodiscardCXPR PrimitiveType const* Type::castToPrimitive() const noexcept { assert(derived_type == PRIMITIVE); return (PrimitiveType const*)(this); }
+edenInlineNodiscardCXPR PointerType   const* Type::castToPointer()   const noexcept { assert(derived_type == POINTER);   return (PointerType   const*)(this); }
+edenInlineNodiscardCXPR ArrayType     const* Type::castToArray()     const noexcept { assert(derived_type == ARRAY);     return (ArrayType     const*)(this); }
+edenInlineNodiscardCXPR FunctionType  const* Type::castToFunction()  const noexcept { assert(derived_type == FUNCTION);  return (FunctionType  const*)(this); }
+edenInlineNodiscardCXPR CustomType    const* Type::castToCustom()    const noexcept { assert(derived_type == CUSTOM);    return (CustomType    const*)(this); }
 
 static_assert(std::to_underlying(PrimitiveType::STRING) == 16);
 
-inline constexpr QualifiedTypeID devoid_literal{
-  TypeID{
-    .derived = Type::DEVOID,
-    .module_id = 0,
-    .id = 0
-  }
-};
-inline constexpr QualifiedTypeID error_literal{
-  TypeID{
-    .derived = Type::ERROR,
-    .module_id = 0,
-    .id = 0
-  }
-};
-inline constexpr QualifiedTypeID i8_literal{PrimitiveType::i8()};
-inline constexpr QualifiedTypeID i16_literal{PrimitiveType::i16()};
-inline constexpr QualifiedTypeID i32_literal{PrimitiveType::i32()};
-inline constexpr QualifiedTypeID i64_literal{PrimitiveType::i64()};
-inline constexpr QualifiedTypeID u7_literal{PrimitiveType::u7()};
-inline constexpr QualifiedTypeID u8_literal{PrimitiveType::u8()};
-inline constexpr QualifiedTypeID u15_literal{PrimitiveType::u15()};
-inline constexpr QualifiedTypeID u16_literal{PrimitiveType::u16()};
-inline constexpr QualifiedTypeID u31_literal{PrimitiveType::u31()};
-inline constexpr QualifiedTypeID u32_literal{PrimitiveType::u32()};
-inline constexpr QualifiedTypeID u63_literal{PrimitiveType::u63()};
-inline constexpr QualifiedTypeID u64_literal{PrimitiveType::u64()};
-inline constexpr QualifiedTypeID f32_literal{PrimitiveType::f32()};
-inline constexpr QualifiedTypeID f64_literal{PrimitiveType::f64()};
-inline constexpr QualifiedTypeID bool_literal{PrimitiveType::bool_()};
-inline constexpr QualifiedTypeID char_literal{PrimitiveType::char_()};
-inline constexpr QualifiedTypeID string_literal{PrimitiveType::string()};
+inline constexpr QualifiedType devoid_literal{&Type::devoid()};
+inline constexpr QualifiedType error_literal{&Type::error()};
+inline constexpr QualifiedType i8_literal{&PrimitiveType::i8()};
+inline constexpr QualifiedType i16_literal{&PrimitiveType::i16()};
+inline constexpr QualifiedType i32_literal{&PrimitiveType::i32()};
+inline constexpr QualifiedType i64_literal{&PrimitiveType::i64()};
+inline constexpr QualifiedType u7_literal{&PrimitiveType::u7()};
+inline constexpr QualifiedType u8_literal{&PrimitiveType::u8()};
+inline constexpr QualifiedType u15_literal{&PrimitiveType::u15()};
+inline constexpr QualifiedType u16_literal{&PrimitiveType::u16()};
+inline constexpr QualifiedType u31_literal{&PrimitiveType::u31()};
+inline constexpr QualifiedType u32_literal{&PrimitiveType::u32()};
+inline constexpr QualifiedType u63_literal{&PrimitiveType::u63()};
+inline constexpr QualifiedType u64_literal{&PrimitiveType::u64()};
+inline constexpr QualifiedType f32_literal{&PrimitiveType::f32()};
+inline constexpr QualifiedType f64_literal{&PrimitiveType::f64()};
+inline constexpr QualifiedType bool_literal{&PrimitiveType::bool_()};
+inline constexpr QualifiedType char_literal{&PrimitiveType::char_()};
+inline constexpr QualifiedType string_literal{&PrimitiveType::string()};
 
-static constexpr QualifiedTypeID signedToLiteralInstance(i64_t val) {
+static constexpr QualifiedType signedToLiteralInstance(i64_t val) {
   val = val < 0 ? (val * -1) - 1 : val;
   if (val <= std::numeric_limits<i8_t>::max())  return i8_literal;
   if (val <= std::numeric_limits<i16_t>::max()) return i16_literal;
@@ -459,7 +504,7 @@ static constexpr QualifiedTypeID signedToLiteralInstance(i64_t val) {
   return i64_literal;
 }
 
-static constexpr QualifiedTypeID unsignedToLiteralInstance(u64_t val) {
+static constexpr QualifiedType unsignedToLiteralInstance(u64_t val) {
   if (val <= i8_max) return u7_literal;
   if (val <= u8_max) return u8_literal;
 

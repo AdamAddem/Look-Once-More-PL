@@ -9,11 +9,11 @@
 
 namespace LOM {
 
-void print_parser(eden::vector<Parser::TU> const& tus, eden::vector<std::filesystem::path> const& paths);
-void print_peep(eden::vector<PeepIR::TU> const& tus, eden::vector<std::filesystem::path> const& paths);
+edenNoInlineCold void print_parser(eden::vector<Parser::TU> const& tus, eden::vector<std::filesystem::path> const& paths);
+edenNoInlineCold void print_peep(eden::vector<PeepIR::TU> const& tus, eden::vector<std::filesystem::path> const& paths);
 
-void print_lexer_errors(File file);
-void print_parser_errors(File file);
-void print_peep_errors(PeepIR::TU const& peep_tu);
+edenNoInlineCold void print_lexer_errors(File file);
+edenNoInlineCold void print_parser_errors(File file);
+edenNoInlineCold void print_peep_errors(PeepIR::TU const& peep_tu);
 
 }

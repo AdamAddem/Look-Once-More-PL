@@ -23,6 +23,9 @@ inline constexpr auto MAX_TYPELIST_MEMBERS = 8;
 inline constexpr auto MAX_STRUCT_MEMBER_VARIABLES = 256;
 inline constexpr auto SUBMODULE_SUPPORT = false;
 inline constexpr auto MULTITHREADING_SUPPORT = false;
+inline constexpr auto PARAMETERS_READONLY = true;
+inline constexpr auto ONLY_FUNCTIONS_CALLABLE = true;
+inline constexpr auto ONLY_PRIMITIVES_ARITHMETIC = true;
 
 // lol
 #ifdef __clang__

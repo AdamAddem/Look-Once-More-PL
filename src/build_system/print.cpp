@@ -7,7 +7,7 @@ namespace fs = std::filesystem;
 
 namespace LOM {
 
-eden_noinline_cold void
+edenNoInlineCold void
 print_parser(eden::vector<Parser::TU> const& tus, eden::vector<fs::path> const& paths) {
   assert(tus.size() == paths.size()); assert(Settings::do_output_parser);
   for (auto i{0uz}; i<tus.size(); ++i) {
@@ -17,7 +17,7 @@ print_parser(eden::vector<Parser::TU> const& tus, eden::vector<fs::path> const& 
   }
 }
 
-eden_noinline_cold void
+edenNoInlineCold void
 print_peep(eden::vector<PeepIR::TU> const& tus, eden::vector<fs::path> const& paths) {
   assert(tus.size() == paths.size()); assert(Settings::do_output_peep);
   for (auto i{0uz}; i<tus.size(); ++i) {
@@ -27,21 +27,21 @@ print_peep(eden::vector<PeepIR::TU> const& tus, eden::vector<fs::path> const& pa
   }
 }
 
-eden_noinline_cold void
+edenNoInlineCold void
 print_lexer_errors(File file) {
   std::println("\n--- Lexer Errors --- {}", file.path());
   std::println("{}", get_file_errors(file));
   std::println("\n--- Lexer Errors ---");
 }
 
-eden_noinline_cold void
+edenNoInlineCold void
 print_parser_errors(File file) {
   std::println("\n--- Parser Errors --- {}", file.path());
   std::println("{}", get_file_errors(file));
   std::println("\n--- Parser Errors ---");
 }
 
-eden_noinline_cold void
+edenNoInlineCold void
 print_peep_errors(PeepIR::TU const& peep_tu) {
   for (auto& file : peep_tu.source_files) {
     std::println("\n--- Peepir Errors --- {}", file.path());

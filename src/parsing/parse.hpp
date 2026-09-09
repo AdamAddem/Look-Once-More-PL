@@ -12,9 +12,9 @@ struct Token;
 namespace LOM::Parser {
 
 struct Function {
-  //byte_t _pad[2];
   bool is_public;
   u8_t  file_idx;
+  u16_t id_in_module;
   u32_t name_len;
   char const* name_ptr;
 

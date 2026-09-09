@@ -12,7 +12,7 @@ struct TU;
 
 namespace LOM::PeepIR {
 
-[[nodiscard]] constexpr char
+edenNodiscardCXPR static char
 charToEscapeSequenceEquivalent(char c) {
   switch (c) {
   case 'n':   return '\n';
@@ -81,30 +81,27 @@ struct Instruction {
 
   // structured this way to abuse the common subsequence exception for unions
   // structs dont inherit from CommonData as that would disqualify them from being standard-layout which is a requirement for this to work
-#define common_subsequence InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
-  struct CommonData          { common_subsequence };
+  InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
+  struct ModuleMemberData    { u16_t module_id; u16_t member_id; };
+  struct TypeMemberData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; };
 
-  struct ModuleMemberData    { InstructionType type; u8_t file_idx; u16_t member_idx; u32_t module_position; StabilizedTable import; };
-  struct TypeMemberData      { InstructionType type; u8_t file_idx; u16_t member_idx; u32_t position_in_file; CustomType const* custom_type; };
+  struct LocalData           { u32_t idx; /* byte_t _extra[4]; */  };
 
-  struct LocalData           { common_subsequence u32_t idx; };
+  struct SignedLiteralData   { i64_t value; };
+  struct UnsignedLiteralData { u64_t value; };
+  struct FloatLiteralData    { f32_t value; /* byte_t _extra[4]; */  };
+  struct DoubleLiteralData   { f64_t value; };
+  struct BoolLiteralData     { bool  value; /* byte_t _extra[7]; */  };
+  struct CharLiteralData     { char  value; /* byte_t _extra[7]; */  };
 
-  struct SignedLiteralData   { common_subsequence i64_t  value; };
-  struct UnsignedLiteralData { common_subsequence u64_t  value; };
-  struct FloatLiteralData    { common_subsequence float  value; };
-  struct DoubleLiteralData   { common_subsequence double value; };
-  struct BoolLiteralData     { common_subsequence bool   value; };
-  struct CharLiteralData     { common_subsequence char   value; };
-
-  struct CastAssignData      { common_subsequence u32_t bitwidth; };
-  struct CastData            { common_subsequence Type const* destination_type; };
-  struct SubscriptData       { common_subsequence ArrayType const* array_type;  };
-  struct DereferenceData     { common_subsequence Type const* dereference_type; };
-  struct CallData            { common_subsequence u32_t num_parameters; };
+  struct CastAssignData      { u32_t bitwidth; /* byte_t _extra[4]; */  };
+  struct CastData            { TypeID destination_typeID; };
+  struct SubscriptData       { TypeID array_typeID;  };
+  struct DereferenceData     { TypeID dereference_typeID; };
+  struct CallData            { u32_t num_parameters; /* byte_t _extra[4]; */ };
 #undef common_subsequence
 
   union {
-    CommonData m;
     ModuleMemberData    module_member_data;
     TypeMemberData      type_member_data;
     LocalData           local_data;
@@ -122,24 +119,26 @@ struct Instruction {
   };
 
   edenInlineCXPR explicit Instruction() noexcept {}
-  edenInlineCXPR explicit Instruction(CommonData data) noexcept : m(data) {}
-  edenInlineCXPR explicit Instruction(InstructionType type) noexcept { m.type = type; }
-  edenInlineNodiscardCXPR bool is_literal() const noexcept { return eden::enumBetween(m.type, I8_LITERAL, U64_LITERAL); }
+  edenInlineCXPR explicit Instruction(InstructionType type, u8_t file_idx, u16_t length_in_file, u32_t position_in_file) noexcept
+  : type(type), file_idx(file_idx), length_in_file(length_in_file), position_in_file(position_in_file) {}
+
+  edenInlineCXPR explicit Instruction(InstructionType type) noexcept { this->type = type; }
+  edenInlineNodiscardCXPR bool is_literal() const noexcept { return eden::enumBetween(type, I8_LITERAL, U64_LITERAL); }
 
 #define pre assert(is_literal());
   constexpr void adjust_literal(u64_t bitwidth, bool make_signed) noexcept { pre
     switch (bitwidth) {
-    case 8:   m.type = make_signed ? I8_LITERAL : U8_LITERAL; return;
-    case 16:  m.type = make_signed ? I16_LITERAL : U16_LITERAL; return;
-    case 32:  m.type = make_signed ? I32_LITERAL : U32_LITERAL; return;
-    case 64:  m.type = make_signed ? I64_LITERAL : U64_LITERAL; return;
+    case 8:   type = make_signed ? I8_LITERAL : U8_LITERAL; return;
+    case 16:  type = make_signed ? I16_LITERAL : U16_LITERAL; return;
+    case 32:  type = make_signed ? I32_LITERAL : U32_LITERAL; return;
+    case 64:  type = make_signed ? I64_LITERAL : U64_LITERAL; return;
     default:
       std::unreachable();
     }
   }
 #undef pre
 
-#define pre assert(m.type == ESCAPED_STRING_LITERAL);
+#define pre assert(type == ESCAPED_STRING_LITERAL);
   edenNodiscardCXPR std::string escaped_string_value(File file) const noexcept { pre
     std::string res;
     auto const orig = original_string(file);
@@ -156,27 +155,24 @@ struct Instruction {
   }
 #undef pre
 
-#define pre assert(m.type not_eq TYPE_VARIABLE and m.type not_eq MODULE_GLOBAL and m.type not_eq MODULE_FUNCTION);
-  edenInlineNodiscardCXPR std::string_view original_string(File file) const noexcept { pre return file.view_at(m.length_in_file, m.position_in_file); }
+#define pre assert(type not_eq TYPE_VARIABLE and type not_eq MODULE_GLOBAL and type not_eq MODULE_FUNCTION);
+  edenInlineNodiscardCXPR std::string_view original_string(File file) const noexcept { pre return file.view_at(length_in_file, position_in_file); }
 #undef pre
 
-  // somewhat expensive, use for printing primarily
-#define pre assert(m.type == MODULE_GLOBAL);
-  edenNodiscardCXPR std::string_view module_variable_name() const noexcept { pre return module_member_data.import.getVariable(module_member_data.member_idx).nameof(); }
+#define pre assert(type == MODULE_GLOBAL);
+  edenInlineNodiscardCXPR std::string_view module_variable_name() const noexcept { pre return getModule(module_member_data.module_id).getVariable(module_member_data.member_id).nameof(); }
 #undef pre
 
-  // somewhat expensive, use for printing primarily
-#define pre assert(m.type == MODULE_FUNCTION);
-  edenNodiscardCXPR std::string_view module_function_name() const noexcept { pre return module_member_data.import.getFunction(module_member_data.member_idx).nameof(); }
+#define pre assert(type == MODULE_FUNCTION);
+  edenInlineNodiscardCXPR std::string_view module_function_name() const noexcept { pre return getModule(module_member_data.module_id).getFunction(module_member_data.member_id).nameof(); }
 #undef pre
 
-  // somewhat expensive, use for printing primarily
-#define pre assert(m.type == MODULE_GLOBAL or m.type == MODULE_FUNCTION);
-  edenNodiscardCXPR std::string_view module_name(File file) const noexcept { pre
-    auto module_str = file.get_text().substr(module_member_data.module_position);
-    module_str = module_str.substr(0, module_str.find_first_of('.'));
-    return module_str;
-  }
+#define pre assert(type == MODULE_GLOBAL or type == MODULE_FUNCTION);
+  edenInlineNodiscardCXPR std::string_view module_name() const noexcept { pre return getModule(module_member_data.module_id).nameof(); }
+#undef pre
+
+#define pre assert(type == TYPE_VARIABLE);
+  edenInlineNodiscardCXPR TypeID custom_typeID() const noexcept { pre return TypeID{ .derived = Type::CUSTOM, .module_id = type_member_data.custom_type_module_id, .id = type_member_data.custom_type_id }; }
 #undef pre
 
 };
@@ -223,12 +219,12 @@ public:
 struct Function {
   bool is_public;
   u8_t file_idx;
-  // char _pad[2];
+//byte_t _pad[2];
   u32_t name_len;
   const char* name_ptr;
 
-  FunctionType const* type;
-  eden::vector<Type const*> locals;
+  TypeID typeID;
+  eden::vector<TypeID> locals;
   eden::vector<Instruction> instructions;
   eden::vector<Block> blocks;
 
@@ -239,7 +235,7 @@ struct TU {
   eden::vector<File> source_files;
   eden::vector<Function> functions;
   std::string_view name;
-  u32_t module_id;
+  Module* module;
 };
 
 void printPeep(TU const&);

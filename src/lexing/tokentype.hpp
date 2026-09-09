@@ -1,8 +1,9 @@
 #pragma once
+#include "edenlib/typedefs.hpp"
+
 #include <string_view>
 #include <unordered_map>
 #include <utility>
-#include "edenlib/typedefs.hpp"
 
 namespace LOM::Lexer {
 enum class TokenType : u8_t {
@@ -51,14 +52,14 @@ enum class TokenType : u8_t {
 	KEYWORD_BITOR,
 	KEYWORD_BITXOR,
 	KEYWORD_BITNOT,
-	KEYWORD_i8,
-	KEYWORD_i16,
-	KEYWORD_i32,
-	KEYWORD_i64,
 	KEYWORD_u8,
 	KEYWORD_u16,
 	KEYWORD_u32,
 	KEYWORD_u64,
+	KEYWORD_i8,
+	KEYWORD_i16,
+	KEYWORD_i32,
+	KEYWORD_i64,
 	KEYWORD_f32,
 	KEYWORD_f64,
 	KEYWORD_CHAR,
@@ -106,10 +107,10 @@ inline const std::unordered_map<std::string_view, TokenType> stringToTokenType{
 	{"eq", TokenType::KEYWORD_EQUALS}, {"not_eq", TokenType::KEYWORD_NOT_EQUAL}, 
 	{"bitand", TokenType::KEYWORD_BITAND}, {"bitor", TokenType::KEYWORD_BITOR}, 
 	{"bitxor", TokenType::KEYWORD_BITXOR}, {"bitnot", TokenType::KEYWORD_BITNOT}, 
-	{"i8", TokenType::KEYWORD_i8}, {"i16", TokenType::KEYWORD_i16}, 
-	{"i32", TokenType::KEYWORD_i32}, {"i64", TokenType::KEYWORD_i64}, 
 	{"u8", TokenType::KEYWORD_u8}, {"u16", TokenType::KEYWORD_u16}, 
 	{"u32", TokenType::KEYWORD_u32}, {"u64", TokenType::KEYWORD_u64}, 
+	{"i8", TokenType::KEYWORD_i8}, {"i16", TokenType::KEYWORD_i16}, 
+	{"i32", TokenType::KEYWORD_i32}, {"i64", TokenType::KEYWORD_i64}, 
 	{"f32", TokenType::KEYWORD_f32}, {"f64", TokenType::KEYWORD_f64}, 
 	{"char", TokenType::KEYWORD_CHAR}, {"string", TokenType::KEYWORD_STRING}, 
 	{"bool", TokenType::KEYWORD_BOOL}, {"", TokenType::KEYWORD_DEVOID}, 
@@ -148,10 +149,10 @@ constexpr std::string_view TokenTypeToString(TokenType e) {
 	"eq","not_eq",
 	"bitand","bitor",
 	"bitxor","bitnot",
-	"i8","i16",
-	"i32","i64",
 	"u8","u16",
 	"u32","u64",
+	"i8","i16",
+	"i32","i64",
 	"f32","f64",
 	"char","string",
 	"bool","",
@@ -173,7 +174,7 @@ constexpr bool isCategorySYMBOLS(TokenType e) { return std::to_underlying(e) >= 
 constexpr bool isCategoryVAR_QUALIFIERS(TokenType e) { return std::to_underlying(e) >= 29 && std::to_underlying(e) < 31; }
 constexpr bool isCategoryKEYWORDS(TokenType e) { return std::to_underlying(e) >= 35 && std::to_underlying(e) < 74; }
 constexpr bool isCategoryBITWISE(TokenType e) { return std::to_underlying(e) >= 35 && std::to_underlying(e) < 45; }
-constexpr bool isCategoryPRIMITIVES(TokenType e) { return std::to_underlying(e) >= 45 && std::to_underlying(e) < 59; }
+constexpr bool isCategoryPRIMITIVES(TokenType e) { return std::to_underlying(e) >= 45 && std::to_underlying(e) < 58; }
 constexpr bool isCategoryPOINTERS(TokenType e) { return std::to_underlying(e) >= 59 && std::to_underlying(e) < 61; }
 constexpr bool isCategoryDUNDER(TokenType e) { return std::to_underlying(e) >= 74 && std::to_underlying(e) < 76; }
 
@@ -181,9 +182,9 @@ constexpr bool isCategoryDUNDER(TokenType e) { return std::to_underlying(e) >= 7
 #define TOKENTYPE_NUMERIC_LITERALS_CASES case INTEGER_LITERAL: case FLOAT_LITERAL: case DOUBLE_LITERAL: case CHAR_LITERAL: case BOOL_LITERAL: 
 #define TOKENTYPE_SYMBOLS_CASES case PLUS: case PLUSPLUS: case MINUS: case MINUSMINUS: case SLASH: case STAR: case MOD: case ASSIGN: case LPAREN: case RPAREN: case LBRACE: case RBRACE: case LBRACKET: case RBRACKET: case LESS: case ARROW: case GTR: case LESSEQ: case GTREQ: case SEMI_COLON: case COLON: case DOLLAR: case ADDR: case AMPERSAND: case COMMA: case DOT: 
 #define TOKENTYPE_VAR_QUALIFIERS_CASES case COLON: case DOLLAR: 
-#define TOKENTYPE_KEYWORDS_CASES case KEYWORD_AND: case KEYWORD_OR: case KEYWORD_XOR: case KEYWORD_NOT: case KEYWORD_EQUALS: case KEYWORD_NOT_EQUAL: case KEYWORD_BITAND: case KEYWORD_BITOR: case KEYWORD_BITXOR: case KEYWORD_BITNOT: case KEYWORD_i8: case KEYWORD_i16: case KEYWORD_i32: case KEYWORD_i64: case KEYWORD_u8: case KEYWORD_u16: case KEYWORD_u32: case KEYWORD_u64: case KEYWORD_f32: case KEYWORD_f64: case KEYWORD_CHAR: case KEYWORD_STRING: case KEYWORD_BOOL: case KEYWORD_DEVOID: case KEYWORD_RAW: case KEYWORD_REF: case KEYWORD_IF: case KEYWORD_ELSE: case KEYWORD_WHILE: case KEYWORD_RETURN: case KEYWORD_CAST: case KEYWORD_GLOBAL: case KEYWORD_NULL: case KEYWORD_JUNK: case KEYWORD_DEFAULT: case KEYWORD_FN: case KEYWORD_STRUCT: case KEYWORD_PUB: case KEYWORD_IMPORT: 
+#define TOKENTYPE_KEYWORDS_CASES case KEYWORD_AND: case KEYWORD_OR: case KEYWORD_XOR: case KEYWORD_NOT: case KEYWORD_EQUALS: case KEYWORD_NOT_EQUAL: case KEYWORD_BITAND: case KEYWORD_BITOR: case KEYWORD_BITXOR: case KEYWORD_BITNOT: case KEYWORD_u8: case KEYWORD_u16: case KEYWORD_u32: case KEYWORD_u64: case KEYWORD_i8: case KEYWORD_i16: case KEYWORD_i32: case KEYWORD_i64: case KEYWORD_f32: case KEYWORD_f64: case KEYWORD_CHAR: case KEYWORD_STRING: case KEYWORD_BOOL: case KEYWORD_DEVOID: case KEYWORD_RAW: case KEYWORD_REF: case KEYWORD_IF: case KEYWORD_ELSE: case KEYWORD_WHILE: case KEYWORD_RETURN: case KEYWORD_CAST: case KEYWORD_GLOBAL: case KEYWORD_NULL: case KEYWORD_JUNK: case KEYWORD_DEFAULT: case KEYWORD_FN: case KEYWORD_STRUCT: case KEYWORD_PUB: case KEYWORD_IMPORT: 
 #define TOKENTYPE_BITWISE_CASES case KEYWORD_AND: case KEYWORD_OR: case KEYWORD_XOR: case KEYWORD_NOT: case KEYWORD_EQUALS: case KEYWORD_NOT_EQUAL: case KEYWORD_BITAND: case KEYWORD_BITOR: case KEYWORD_BITXOR: case KEYWORD_BITNOT: 
-#define TOKENTYPE_PRIMITIVES_CASES case KEYWORD_i8: case KEYWORD_i16: case KEYWORD_i32: case KEYWORD_i64: case KEYWORD_u8: case KEYWORD_u16: case KEYWORD_u32: case KEYWORD_u64: case KEYWORD_f32: case KEYWORD_f64: case KEYWORD_CHAR: case KEYWORD_STRING: case KEYWORD_BOOL: case KEYWORD_DEVOID: 
+#define TOKENTYPE_PRIMITIVES_CASES case KEYWORD_u8: case KEYWORD_u16: case KEYWORD_u32: case KEYWORD_u64: case KEYWORD_i8: case KEYWORD_i16: case KEYWORD_i32: case KEYWORD_i64: case KEYWORD_f32: case KEYWORD_f64: case KEYWORD_CHAR: case KEYWORD_STRING: case KEYWORD_BOOL: 
 #define TOKENTYPE_POINTERS_CASES case KEYWORD_RAW: case KEYWORD_REF: 
 #define TOKENTYPE_DUNDER_CASES case DUNDER_CEXTERN: case DUNDER_VA: 
 

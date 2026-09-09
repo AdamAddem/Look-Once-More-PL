@@ -20,7 +20,7 @@ const fs::path src_path{"src"};
 const fs::path extern_path{"extern"};
 
 // using a global struct so state can be easily reset when profiling
-// kinda dumb but so is this language
+// kinda dumb, but so is this language
 [[maybe_unused]]
 struct GlobalStruct {
   std::unordered_map<std::string_view, u16_t> module_map;
@@ -45,7 +45,7 @@ struct GlobalStruct {
   void init_module_list() noexcept {
     module_list.reserve(module_paths.size());
     for (auto i{0uz}; i<module_list.size(); ++i)
-      module_list.emplace_back(u16_t(i));
+      module_list.emplace_back( (u16_t) i );
   }
 
   void init_module_map() noexcept {
@@ -102,19 +102,20 @@ void compileC() {
 }
 
 // returns nullptr if not found
-[[nodiscard]] Module*
-LOM::getModule(std::string_view module_name) {
+edenPure [[nodiscard]] Module*
+LOM::getModule(std::string_view module_name) noexcept {
   auto const iter = globals.module_map.find(module_name);
   if (iter == globals.module_map.end()) return nullptr;
   return &globals.module_list[iter->second];
 }
 
-[[nodiscard]] Module&
-LOM::getModule(u32_t module_id) {
+edenHot edenPure [[nodiscard]] Module&
+LOM::getModule(u32_t module_id) noexcept {
   assert(module_id < globals.module_list.size());
   return globals.module_list[module_id];
 }
-[[nodiscard]] Module& LOM::getCModule() noexcept { return globals.module_list[C_MODULE_IDX]; }
+
+edenPure [[nodiscard]] Module& LOM::getCModule() noexcept { return globals.module_list[C_MODULE_IDX]; }
 
 namespace {
 
@@ -124,16 +125,17 @@ lex_and_parse_module(Parser::TU& tu, u16_t module_id)  {
   eden::vector<Lexer::Token> tokens; tokens.reserve(64);
   auto const& directory = globals.module_paths[module_id];
 
-  { // set up module, this is horrible please change
+  { // set up module, this is horrible please change. TODO: Eradicate.
     assert(not globals.module_map.contains(directory.c_str()));
     auto const n = directory.filename().native().size() + 1; // this is so stupid i hate this language
     auto const module_name_cstr = new char[n]; // TODO: fix purposeful memory leak
     std::strcpy(module_name_cstr, directory.filename().c_str());
-    auto const module_name = std::string_view{module_name, n-1};
+    auto const module_name = std::string_view{module_name_cstr, n-1};
 
     globals.module_map.emplace(module_name, module_id);
     tu.name = module_name;
     tu.module = &globals.module_list[module_id];
+    tu.module->set_name(module_name);
   }
 
   bool has_error = false;

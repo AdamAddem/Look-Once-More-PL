@@ -27,7 +27,7 @@ add_executable(lom
 
         src/module/types.hpp
         src/module/types.cpp
-        src/module/symbol_table.hpp
+        src/module/table_and_module.hpp
 
         src/peepir/peepir.hpp
         src/peepir/peepir.cpp
@@ -39,6 +39,8 @@ add_executable(lom
 
         src/build_system/build.cpp
         src/build_system/build.hpp
+        src/build_system/print.cpp
+        src/build_system/print.hpp
 
         src/module/table_and_module_sync.hpp
 )

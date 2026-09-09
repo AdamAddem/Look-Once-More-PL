@@ -113,40 +113,29 @@ class ParserBody {
     }
 
     auto const subtype = parseType();
-    return module.getArrayType(subtype, array_size);
+    return module.addArrayTypeID(subtype, array_size);
   }
 #undef pre
 
 #define pre assert(pointer_token.isPointer());
   edenNodiscardCXPR TypeID parsePointerType(Token pointer_token) noexcept { pre
-    switch (pointer_token.type) {
-    case TokenType::KEYWORD_RAW: return module.getRawPointerType(parseType());
-    case TokenType::KEYWORD_REF: return module.getRefPointerType(parseType());
-    default: edenUnreachable("Pointer type unsupported.");
-    }
+    auto x = parseType();
+    x.addPointer(pointer_token.is(TokenType::KEYWORD_RAW));
+    return x;
   }
 #undef pre
 
 #define pre assert(primitive_token.isPrimitive());
   edenNodiscardCXPR TypeID parsePrimitiveType(Token primitive_token) const noexcept { pre
-    switch (primitive_token.type) {
-    case TokenType::KEYWORD_i8:     return i8_literal.toTypeID();
-    case TokenType::KEYWORD_i16:    return i16_literal.toTypeID();
-    case TokenType::KEYWORD_i32:    return i32_literal.toTypeID();
-    case TokenType::KEYWORD_i64:    return i64_literal.toTypeID();
-    case TokenType::KEYWORD_u8:     return u8_literal.toTypeID();
-    case TokenType::KEYWORD_u16:    return u16_literal.toTypeID();
-    case TokenType::KEYWORD_u32:    return u32_literal.toTypeID();
-    case TokenType::KEYWORD_u64:    return u64_literal.toTypeID();
-    case TokenType::KEYWORD_f32:    return f32_literal.toTypeID();
-    case TokenType::KEYWORD_f64:    return f64_literal.toTypeID();
-
-    case TokenType::KEYWORD_CHAR:   return char_literal.toTypeID();
-    case TokenType::KEYWORD_BOOL:   return bool_literal.toTypeID();
-    case TokenType::KEYWORD_STRING: return string_literal.toTypeID();
-    case TokenType::KEYWORD_DEVOID: return devoid_literal.toTypeID();
-    default: edenUnreachable("Primitive type not supported.");
-    }
+    static constexpr sz_t TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER = std::to_underlying(TokenType::KEYWORD_u8) - std::to_underlying(PrimitiveType::U8);
+    return getPrimitiveLiteralID(
+      static_cast<PrimitiveType::PrimitiveTypeEnum>(
+        std::to_underlying(primitive_token.type) - TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER
+        )
+      );
+    static_assert( std::to_underlying(TokenType::KEYWORD_u8) - TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER == std::to_underlying(PrimitiveType::U8) );
+    static_assert( std::to_underlying(TokenType::KEYWORD_i8) - TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER == std::to_underlying(PrimitiveType::I8) );
+    static_assert( std::to_underlying(TokenType::KEYWORD_BOOL) - TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER == std::to_underlying(PrimitiveType::BOOL) );
   }
 #undef pre
 
@@ -160,15 +149,15 @@ class ParserBody {
     case LBRACKET:             return parseArrayType();
 
     case IDENTIFIER: {
-      auto const type = module.getCustomType(token.originalString(current_file));
-      if (type == error_literal.toTypeID())
+      auto const type = module.getCustomTypeID(token.originalString(current_file));
+      if (type == devoidID)
         error(token, "Expected typename.");
       return type;
     }
 
     default:
       error(token, "Expected typename.");
-      return error_literal.toTypeID();
+      return errorID;
     }
   }
 
@@ -481,7 +470,9 @@ class ParserBody {
   constexpr void translateExpression(u32_t idx) noexcept { pre
     auto expression = expression_tree.data[idx];
     switch (expression.node.type) { using enum ASTNode::NodeType;
-    case EMPTY: case DECLARATION: case IF:
+    case EMPTY:
+    case DECLARATION_JUNK_RO: case DECLARATION_JUNK_RW: case DECLARATION_RO: case DECLARATION_RW:
+    case IF:
     case WHILE: case RETURN:
       edenUnreachable("Statements should not be contained in an expression.");
 
@@ -558,38 +549,36 @@ class ParserBody {
 
   edenInlineCXPR void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
 
-  // parses  name: qualified_type
-  // returns name_token and qualified_type
+  // parses  `name  : or $  type`
+  // returns name token, qualifiers, and typeID
   template <bool is_parameter = false>
-  edenNodiscardCXPR std::pair<Token, QualifiedTypeID>
+  edenNodiscardCXPR std::tuple<Token, Type::Qualifiers, TypeID>
   parseHalfDeclaration() noexcept {
     auto const identifier_token = tokens.take();
-    QualifiedTypeID declaration_type;
+    Type::Qualifiers qualifiers;
 
     if (not identifier_token.isIdentifier())  error(identifier_token, "Expected identifier.");
 
-    if (tokens.pop_if(TokenType::COLON)) declaration_type.qualifiers.writable = false;
+    if (tokens.pop_if(TokenType::COLON)) qualifiers.writable = false;
     else if (tokens.pop_if(TokenType::DOLLAR)) {
       if constexpr(is_parameter)
         error(tokens.previous(), "Readwrite parameters are not allowed.");
       else
-        declaration_type.qualifiers.writable = true;
+        qualifiers.writable = true;
     }
     else
       error(tokens.peek(), "Expected : or $ in declaration.");
 
-    auto const type = parseType();
-    declaration_type.module_id = type.module_id;
-    declaration_type.id = type.id;
-    return {identifier_token, declaration_type};
+    auto const typeID = parseType();
+    return {identifier_token, qualifiers, typeID};
   }
 
 #define pre assert(tokens.peek().isIdentifier());
   constexpr Token parseVarDecl(sz_t decl_node_idx) noexcept { pre
-    auto& node = nodes[decl_node_idx];
+    auto const [identifier_token, qualifiers, typeID] = parseHalfDeclaration();
 
-    auto const [identifier_token, qualified_typeID] = parseHalfDeclaration();
-    node.declaration_data.type = qualified_typeID;
+    auto& node = nodes[decl_node_idx];
+    node.declaration_data.typeID = typeID;
     node.file_idx = current_file_idx();
     node.length_in_file = identifier_token.length;
     node.position_in_file = identifier_token.position;
@@ -601,10 +590,14 @@ class ParserBody {
       return err;
     }
 
-    if (tokens.pop_if(TokenType::KEYWORD_JUNK))
-      node.type = ASTNode::DECLARATION_JUNK;
-    else
+    if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
+      node.type = qualifiers.writable ? ASTNode::DECLARATION_JUNK_RW : ASTNode::DECLARATION_JUNK_RO;
+    }
+    else {
+      node.type = qualifiers.writable ? ASTNode::DECLARATION_RW : ASTNode::DECLARATION_RO;
       parseExpression();
+    }
+    // node may be a dead reference past this point
 
     if (not tokens.peek_is(TokenType::SEMI_COLON)) {
       auto const err = tokens.peek();
@@ -703,7 +696,7 @@ class ParserBody {
 
     case IDENTIFIER:
       if (tokens.peek_ahead(1).isVarQualifier()) {
-        stmt_idx = insertTypedNode(ASTNode::DECLARATION);
+        stmt_idx = insertTypedNode(ASTNode::DECLARATION_RO);
         final = parseVarDecl(stmt_idx);
         break;
       }
@@ -728,7 +721,7 @@ class ParserBody {
 
 #define pre  assert(tokens.previous().is(TokenType::LBRACE));
 #define post assert(tokens.previous().is(TokenType::RBRACE) or tokens.peek().isInvalid());
-  void parseStatementsBetweenBraces() { pre
+  constexpr void parseStatementsBetweenBraces() { pre
     while (not tokens.pop_if(TokenType::RBRACE)) {
       parseStatement();
       if (tokens.peek_is(TokenType::INVALID_TOKEN)) {
@@ -741,7 +734,7 @@ class ParserBody {
 #undef post
 
 #define pre assert(tokens.previous().is(TokenType::DUNDER_CEXTERN));
-  void parseCExtern() noexcept { pre
+  constexpr void parseCExtern() noexcept { pre
     auto const name = parseIdentifier();
     if (not tokens.pop_if(TokenType::LPAREN)) {
       error(tokens.peek(), "Expected opening ( for parameter list.");
@@ -758,9 +751,9 @@ class ParserBody {
         break;
       }
 
-      auto const [identifier_token, type] = parseHalfDeclaration<true>();
+      auto const [identifier_token, qualifiers, typeID] = parseHalfDeclaration<true>();
       auto const parameter_idx = parameters.size();
-      parameters.emplace_back(type, identifier_token.originalString(current_file), false, parameter_idx);
+      parameters.emplace_back(typeID, qualifiers, identifier_token.originalString(current_file), false, parameter_idx);
 
       if (not tokens.pop_if(TokenType::COMMA)) break;
       if (parameter_idx + 1 == Settings::MAX_FUNCTION_PARAMETERS) {
@@ -774,7 +767,7 @@ class ParserBody {
     if (not tokens.pop_if(TokenType::RPAREN))
       error(tokens.peek(), "Expected closing parenthesis in parameter list.");
 
-    auto returnTypeID = devoid_literal.toTypeID();
+    auto returnTypeID = devoidID;
     if (not tokens.peek_is(TokenType::SEMI_COLON))
       returnTypeID = parseType();
 
@@ -783,13 +776,13 @@ class ParserBody {
 
     static_assert(Settings::MULTITHREADING_SUPPORT == false); // needs to be protected
     auto& cModule = getCModule();
-    auto const functionTypeID = cModule.getFunctionType(parameters, returnTypeID, is_variadic);
+    auto const functionTypeID = cModule.addFunctionTypeID(parameters.to_span(), returnTypeID, is_variadic);
     cModule.addFunction(name, std::move(parameters), functionTypeID, true);
   }
 #undef pre
 
 #define pre assert(tokens.previous().is(TokenType::KEYWORD_IMPORT));
-  void parseImport() noexcept { pre
+  constexpr void parseImport() noexcept { pre
     auto const& current_file = tu.source_files.back();
     auto const name_token = tokens.take();
     if (not name_token.isIdentifier()) {
@@ -811,14 +804,14 @@ class ParserBody {
 #undef pre
 
 #define pre assert(tokens.previous().isVarQualifier());
-  void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
+  constexpr void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
     if (tokens.pop_if(TokenType::RBRACE))
       return (void)module.addCustomType(name, {});
 
     eden::swap_vector<SymbolTable::Variable> members; members.reserve(2);
-    do {
-      auto const [member_name, member_type] = parseHalfDeclaration();
-      members.emplace_back(member_type, member_name.originalString(current_file), true, members.size());
+    do { // makes it so structs must have a member, which is lowk dumb but whatever. TODO: Change
+      auto const [member_name, member_qualifiers, member_type] = parseHalfDeclaration();
+      members.emplace_back(member_type, member_qualifiers, member_name.originalString(current_file), true, members.size());
     } while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
 
     if (not tokens.pop_if(TokenType::RBRACE))
@@ -827,7 +820,7 @@ class ParserBody {
     (void)module.addCustomType(name, std::move(members));
   }
 
-  void parseFunctionDecl(std::string_view name, bool is_public) noexcept { pre
+  constexpr void parseFunctionDecl(std::string_view name, bool is_public) noexcept { pre
     Function current_function;
     current_function.file_idx = u8_t(tu.source_files.size() - 1);
     current_function.is_public = is_public;
@@ -837,15 +830,15 @@ class ParserBody {
     if (not tokens.pop_if(TokenType::LPAREN))
       error(tokens.peek(), "Expected parameter list.");
 
-    // parameters
+    // parameters and return type
     {
       eden::swap_vector16<SymbolTable::Variable> parameters;
       if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
 
       while (true) {
-        auto const [name_token, type] = parseHalfDeclaration<true>();
+        auto const [name_token, qualifiers, typeID] = parseHalfDeclaration<true>();
         auto const parameter_idx = parameters.size();
-        parameters.emplace_back(type, name_token.originalString(current_file), false, parameter_idx);
+        parameters.emplace_back(typeID, qualifiers, name_token.originalString(current_file), false, parameter_idx);
         if (not tokens.pop_if(TokenType::COMMA)) break;
         if (parameter_idx + 1 == Settings::MAX_FUNCTION_PARAMETERS) {
           error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
@@ -857,17 +850,15 @@ class ParserBody {
       if(not tokens.pop_if(TokenType::RPAREN))
         error(tokens.peek(), "Expected closing parenthesis in parameter list.");
 
-      auto returnTypeID = devoid_literal.toTypeID();
+      auto returnTypeID = devoidID;
       if (not tokens.peek_is(TokenType::LBRACE))
         returnTypeID = parseType();
 
-      auto const functionTypeID = module.getFunctionType(parameters, returnTypeID, false);
-      module.addFunction(
-        current_function.nameof(),
-        std::move(parameters),
-        functionTypeID,
-        current_function.is_public);
-      module.enterFunctionScope(current_function.nameof());
+      auto const functionTypeID = module.addFunctionTypeID(parameters.to_span(), returnTypeID, false);
+      auto const function_id =
+        module.addFunction( current_function.nameof(), std::move(parameters), functionTypeID, current_function.is_public );
+      module.enterFunctionScope(function_id);
+      current_function.id_in_module = function_id;
     }
 
     if (not tokens.pop_if(TokenType::LBRACE)) {
@@ -886,7 +877,7 @@ class ParserBody {
   }
 #undef pre
 
-  void parseGlobalLevelDeclaration(bool is_public) noexcept {
+  constexpr void parseGlobalLevelDeclaration(bool is_public) noexcept {
       auto const name = parseIdentifier();
       if (not tokens.peek().isVarQualifier())
         error(tokens.peek(), "Expected declaration qualifier ( : or $ ).");
@@ -902,7 +893,7 @@ class ParserBody {
   }
 
 public:
-  [[nodiscard]] static bool
+  edenNodiscardCXPR static bool
   parse(TU& tu, eden::vector<Token>& tokens) {
     ParserBody parser(tokens, tu);
 
@@ -922,19 +913,21 @@ public:
   }
 };
 
-edenNoInlineCold void printFunction(Function const& func, TU const& tu) noexcept {
+edenNoInlineCold void
+printFunction(Function const& func, TU const& tu) noexcept {
   std::print("{}{}: (",
     func.is_public ? "pub " : "",
     func.nameof());
 
   auto const& module = *tu.module;
-  auto const function = module.getFunction(func.nameof()); assert(function);
+  auto const function = module.getFunction(func.nameof()); edenAssume(function);
+  auto const function_typeID = function->getTypeID();
   auto const num_parameters = function->num_parameters();
-  auto const returnTypeID = function->returnType(module.getID());
+  auto const returnTypeID = function_typeID.getFunctionType().getReturnTypeID();
 
   for (auto i{0uz}; i<num_parameters; ++i) {
     auto const& parameter = function->getLocal(i);
-    std::print("{}", parameter.type.toString(module));
+    std::print("{}", parameter.typeID.toString());
     std::print(" {}, ", parameter.nameof());
   }
 
@@ -942,7 +935,7 @@ edenNoInlineCold void printFunction(Function const& func, TU const& tu) noexcept
 
   std::print(") ");
   if (returnTypeID.derived not_eq Type::DEVOID)
-    std::print("{}", returnTypeID.toString(module));
+    std::print("{}", returnTypeID.toString());
 
   std::print(" {{ ");
   print_ast(func.body, tu.source_files.back());

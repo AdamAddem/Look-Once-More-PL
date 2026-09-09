@@ -137,87 +137,108 @@ class Lowerer final {
   llvm::Value* i64_0;
   llvm::Value* bool_true; llvm::Value* bool_false;
 
-  eden::swap_map<CustomType const*, llvm::Type*> custom_type_map;
-  eden::swap_map<FunctionType const*, llvm::Type*> function_type_map;
-  std::unordered_map<SymbolTable::Function const*, llvm::Value*> imports;
+  struct TypeMapKey { u16_t module_id; u32_t type_id; bool operator==(TypeMapKey const&) const noexcept = default; };
+  eden::swap_map<TypeMapKey, llvm::Type*> custom_type_map;
+  eden::swap_map<TypeMapKey, llvm::Type*> function_type_map;
+
+  struct FunctionMapKey { u16_t module_id; u16_t fn_id; bool operator==(FunctionMapKey const&) const noexcept = default; };
+  eden::swap_map<FunctionMapKey, llvm::Value*> function_imports;
 
   /* Variables used when lowering a function */
   File current_file;
   llvm::Type* return_type;
   llvm::Function* llvmfunc;
   llvm::IRBuilder<> builder;
-  std::vector<llvm::AllocaInst*> locals;
+  eden::vector<llvm::AllocaInst*> locals;
 
-  std::vector<PeepIR::Instruction> instructions; sz_t instruction_idx{};
-  std::vector<PeepIR::Block> mir_blocks;
-  std::vector<llvm::BasicBlock*> llvm_blocks;
+  eden::vector<PeepIR::Instruction> instructions; sz_t instruction_idx{};
+  eden::vector<PeepIR::Block> mir_blocks;
+  eden::vector<llvm::BasicBlock*> llvm_blocks;
   /* Variables used when lowering a function */
 
   [[nodiscard]] llvm::Value*
   getFunctionImport(PeepIR::Instruction module_function) {
-    auto const imported_module = module_function.module_member_data.import;
-    auto const function = imported_module.getFunction(module_function.module_member_data.member_idx); assert(function);
-    auto const element = imports.find(function);
-    if (element not_eq imports.end()) return element->second;
+    auto const module_id = module_function.module_member_data.module_id;
+    auto const member_id = module_function.module_member_data.member_id;
+    auto const key = FunctionMapKey{ .module_id = module_id, .fn_id = member_id  };
 
-    // this is atrocious please fix this IMMEDIATELY
-    auto const module_name = module_function.module_name(current_file);
+    // search for existing
+    {
+      auto const element = function_imports[key];
+      if (element) return element->value;
+    }
+
+    auto const& imported_module = getModule(module_id);
+    auto const& function = imported_module.getFunction(member_id);
+
+    // TODO: this is atrocious please fix this IMMEDIATELY
+    auto const module_name = module_function.module_name();
     std::string_view full_function_name;
     if (module_name not_eq "__C") {
-      full_function_name = std::string_view{module_name.data(), module_name.length() + 1 + function->name_len};
+      full_function_name = std::string_view{module_name.data(), module_name.length() + 1 + function.name_len};
       std::println("|{}|", full_function_name);
     }
     else
-      full_function_name = function->nameof();
+      full_function_name = function.nameof();
 
-    auto const function_type = translateFunctionType(function->type);
+    auto const function_type = translateFunctionType(function.getTypeID());
 
     auto const res = tu->module.getOrInsertFunction(full_function_name, function_type).getCallee();
-    imports.emplace(function, res);
+    function_imports.emplace_back(key, res);
     return res;
   }
 
+#define pre assert(function_typeID.isFunction());
   [[nodiscard]] llvm::FunctionType*
-  translateFunctionType(FunctionType const* func_type) noexcept {
+  translateFunctionType(TypeID function_typeID) noexcept { pre
+
+    auto const module_id = function_typeID.module_id;
+    auto const type_id = function_typeID.id;
+    auto const key = TypeMapKey{
+      .module_id = module_id,
+      .type_id = type_id
+    };
+
     // search for existing
     {
-      auto const element = function_type_map[func_type];
+      auto const element = function_type_map[key];
       if (element) return llvm::cast<llvm::FunctionType>(element->value);
     }
 
+    auto const& fn_type = function_typeID.getFunctionType();
+    auto const parameter_typeIDs = fn_type.getParameterTypeIDs();
+    auto const num_params = parameter_typeIDs.size();
+
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
-    auto num_params{0uz};
-    for (auto const param_type : func_type->parameterTypes()) {
-      arg_types[num_params] = translateType(param_type);
-      ++num_params;
-    }
+    for (auto i{0uz}; i<num_params; ++i)
+      arg_types[i] = translateType( parameter_typeIDs[i]);
 
     // hack
-    auto const lom_return_type = func_type->returnType();
-    auto const llvm_return_type = lom_return_type->isBool() ? i1 : translateType(lom_return_type);
+    auto const return_typeID = fn_type.getReturnTypeID();
+    auto const llvm_return_type = return_typeID.isBool() ? i1 : translateType(return_typeID);
 
-    auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, func_type->isVariadic());
-    function_type_map.emplace_back(func_type, res);
+    auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, fn_type.isVariadic());
+    function_type_map.emplace_back(key, res);
     return res;
   }
 
   [[nodiscard]] llvm::Type*
-  translateType(Type const* type) noexcept {
+  translateType(TypeID typeID) noexcept {
+
     // translate non-custom types
     {
-      auto const derived = type->getDerivedType();
-      switch (derived) { using enum Type::DerivedType;
+      if (typeID.isPointer()) return ptr;
 
-      case POINTER: return ptr;
+      switch (typeID.derived) { using enum Type::DerivedType;
       case DEVOID: return devoid;
       case ARRAY: {
-        auto const array_type = type->castToArray();
-        return llvm::ArrayType::get( translateType(array_type->getSubtype()), array_type->getSize() );
+        auto const& array_type = typeID.getArrayType();
+        return llvm::ArrayType::get( translateType(array_type.getSubtypeID()), array_type.getSize() );
       }
 
       case PRIMITIVE: {
-        auto const primitive = type->castToPrimitive()->getUnderlyingPrimitiveType();
-        switch (primitive) { using enum PrimitiveType::PrimitiveTypeEnum;
+        auto const& primitive = typeID.getPrimitiveType();
+        switch (primitive.getUnderlyingPrimitiveType()) { using enum PrimitiveType::PrimitiveTypeEnum;
         case STRING:        edenUnreachable("WIP");
         case F32: return f32;
         case F64: return f64;
@@ -236,27 +257,31 @@ class Lowerer final {
       }
     }
 
-    auto const custom_type = type->castToCustom();
+    auto const key = TypeMapKey {
+      .module_id = typeID.module_id,
+      .type_id = typeID.id
+    };
 
     // search for existing translation
     {
-      auto const element = custom_type_map[custom_type];
+      auto const element = custom_type_map[key];
       if (element) return element->value;
     }
 
-    auto const member_table = custom_type->member_table();
-    auto const num_members = member_table->num_variables();
+    auto const& custom_type = typeID.getCustomType();
+    auto const& member_table = custom_type.member_table();
+    auto const num_members = member_table.num_variables();
     llvm::Type* member_types[Settings::MAX_STRUCT_MEMBER_VARIABLES];
     auto i{0uz};
     for (; i<num_members; ++i) {
-      auto const member = member_table->getVariable(i); assert(member);
-      auto* const member_type = member->type.type;
-      member_types[i] = translateType(member_type);
+      auto const member = member_table.getVariable(i);
+      auto const member_typeID = member.typeID;
+      member_types[i] = translateType(member_typeID);
       ++i;
     }
 
-    auto const res = llvm::StructType::create(tu->context, llvm::ArrayRef(member_types, i), custom_type->nameof());
-    custom_type_map.emplace_back(custom_type, res);
+    auto const res = llvm::StructType::create(tu->context, llvm::ArrayRef(member_types, i), custom_type.nameof());
+    custom_type_map.emplace_back(key, res);
     return res;
   }
 
@@ -264,7 +289,7 @@ class Lowerer final {
   fpConstant(llvm::Type* t, double value) const noexcept
   { return llvm::ConstantFP::get(t, value); }
 
-  [[nodiscard]] llvm::Constant*
+  [[maybe_unused]] [[nodiscard]] llvm::Constant*
   signedConstant(llvm::Type* t, i64_t value) const noexcept
   { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value, true); }
 
@@ -442,7 +467,7 @@ class Lowerer final {
   [[nodiscard]] llvm::Value*
   genValueExpression() noexcept { // only relevant for that which can be used by value, with the addition of functions
     auto const& instruction = instructions[instruction_idx++];
-    switch (instruction.m.type) {
+    switch (instruction.type) {
       using enum PeepIR::Instruction::InstructionType;
     case NOOP:
       return nullptr;
@@ -458,11 +483,13 @@ class Lowerer final {
     }
 
     case TYPE_VARIABLE: {
-      auto const type = instruction.type_member_data.custom_type;
-      auto const id = instruction.type_member_data.member_idx;
-      auto const member = type->member_table()->getVariable(id); assert(member);
-      auto const member_ptr = builder.CreateStructGEP(translateType(type), genRefExpression(), id);
-      return builder.CreateLoad(translateType(member->type.type), member_ptr);
+      auto const custom_typeID = instruction.custom_typeID();
+      auto const& custom_type = custom_typeID.getCustomType();
+
+      auto const id = instruction.type_member_data.member_id;
+      auto const member = custom_type.member_table().getVariable(id);
+      auto const member_ptr = builder.CreateStructGEP(translateType(custom_typeID), genRefExpression(), id);
+      return builder.CreateLoad(translateType(member.typeID), member_ptr);
     }
     case MODULE_FUNCTION:
       return getFunctionImport(instruction);
@@ -498,23 +525,27 @@ class Lowerer final {
     case BITAND:
     case BITOR:
     case BITXOR:
-      return genBinary(instruction.m.type);
+      return genBinary(instruction.type);
     case SUBSCRIPT: {
-      auto const array = genRefExpression(); auto const array_type = instruction.subscript_data.array_type;
+      auto const array = genRefExpression();
+      auto const array_typeID = instruction.subscript_data.array_typeID;
+      auto const& array_type = array_typeID.getArrayType();
+
       auto const index = genValueExpression();
-      auto const element_ptr = builder.CreateGEP( translateType(array_type), array, {i64_0, index} );
-      return builder.CreateLoad( translateType(array_type->getSubtype()), element_ptr );
+      auto const element_ptr = builder.CreateGEP( translateType(array_typeID), array, {i64_0, index} );
+
+      return builder.CreateLoad( translateType(array_type.getSubtypeID()), element_ptr );
     }
 
-    case ASSIGN:       return genAssign(instruction.m.type);
+    case ASSIGN:       return genAssign(instruction.type);
     case UCAST_ASSIGN:
-    case SCAST_ASSIGN: return genAssign(instruction.m.type, instruction.cast_assign_data.bitwidth);
+    case SCAST_ASSIGN: return genAssign(instruction.type, instruction.cast_assign_data.bitwidth);
 
     case PRE_INC:
     case FPRE_INC:
     case PRE_DEC:
     case FPRE_DEC: {
-      auto const var = llvm::cast<llvm::AllocaInst>(genUnary(instruction.m.type));
+      auto const var = llvm::cast<llvm::AllocaInst>(genUnary(instruction.type));
       return builder.CreateLoad(var->getAllocatedType(), var);
     }
 
@@ -522,36 +553,34 @@ class Lowerer final {
     case POST_INC: case FPOST_INC:
     case POST_DEC: case FPOST_DEC:
     case ADDRESS_OF:
-    case BITNOT:    return genUnary(instruction.m.type);
+    case BITNOT:    return genUnary(instruction.type);
 
     case DEREFERENCE:
       return builder.CreateLoad(
-        translateType(instruction.dereference_data.dereference_type),
+        translateType(instruction.dereference_data.dereference_typeID),
         genValueExpression());
 
     case UCAST: {
-      auto const dest_type = instruction.cast_data.destination_type;
-      auto const llvm_dest_type = translateType(dest_type);
-      if (dest_type->isFloating())
+      auto const dest_typeID = instruction.cast_data.destination_typeID;
+      auto const llvm_dest_type = translateType(dest_typeID);
+      if (dest_typeID.isFloating())
         return builder.CreateUIToFP(genValueExpression(), llvm_dest_type);
       return builder.CreateZExtOrTrunc(genValueExpression(), llvm_dest_type);
     }
     case SCAST: {
-      auto const dest_type = instruction.cast_data.destination_type;
-      auto const llvm_dest_type = translateType(dest_type);
-      if (dest_type->isFloating())
+      auto const dest_typeID = instruction.cast_data.destination_typeID;
+      auto const llvm_dest_type = translateType(dest_typeID);
+      if (dest_typeID.isFloating())
         return builder.CreateSIToFP(genValueExpression(), llvm_dest_type);
       return builder.CreateSExtOrTrunc(genValueExpression(), llvm_dest_type);
     }
     case FCAST: {
-      auto const dest_type = instruction.cast_data.destination_type;
-      auto const llvm_dest_type = translateType(dest_type);
-      if (dest_type->isIntegral()) {
-        auto const primitive_dest_type = dest_type->castToPrimitive();
-        if (primitive_dest_type->isSignedIntegral())
+      auto const dest_typeID = instruction.cast_data.destination_typeID;
+      auto const llvm_dest_type = translateType(dest_typeID);
+      if (dest_typeID.isIntegral()) {
+        if (dest_typeID.isSignedIntegral())
           return builder.CreateFPToSI(genValueExpression(), llvm_dest_type);
-        else
-          return builder.CreateFPToUI(genValueExpression(), llvm_dest_type);
+        return builder.CreateFPToUI(genValueExpression(), llvm_dest_type);
       }
       return builder.CreateFPCast(genValueExpression(), llvm_dest_type);
     }
@@ -577,7 +606,7 @@ class Lowerer final {
   [[nodiscard]] llvm::Value*
   genRefExpression() noexcept { // only relevant for that which can be referenced
     auto const& instruction = instructions[instruction_idx++];
-    switch (instruction.m.type) {
+    switch (instruction.type) {
     using enum PeepIR::Instruction::InstructionType;
     case FUNCTION: {
       auto const function = tu->module.getFunction(instruction.original_string(current_file)); assert(function);
@@ -591,20 +620,20 @@ class Lowerer final {
       return locals[instruction.local_data.idx];
 
     case TYPE_VARIABLE: {
-      auto const type = instruction.type_member_data.custom_type;
-      auto const id = instruction.type_member_data.member_idx;
-      return builder.CreateStructGEP(translateType(type), genRefExpression(), id);
+      auto const custom_typeID = instruction.custom_typeID();
+      auto const id = instruction.type_member_data.member_id;
+      return builder.CreateStructGEP(translateType(custom_typeID), genRefExpression(), id);
     }
 
     case SUBSCRIPT: {
-      auto const array = genRefExpression(); auto const array_type = instruction.subscript_data.array_type;
+      auto const array = genRefExpression(); auto const array_type = instruction.subscript_data.array_typeID;
       auto const index = genValueExpression();
       return builder.CreateGEP( translateType(array_type), array, {i64_0, index} );
     }
 
     case PRE_INC: case FPRE_INC:
     case PRE_DEC: case FPRE_DEC:
-      return genUnary(instruction.m.type);
+      return genUnary(instruction.type);
     case ASSIGN: {
       auto const left = genRefExpression();
       auto const right = genValueExpression();
@@ -681,7 +710,7 @@ class Lowerer final {
       mir_blocks = std::move(func.blocks);
       current_file = func_file;
 
-      auto const func_type = translateFunctionType(func.type);
+      auto const func_type = translateFunctionType(func.typeID);
       return_type = func_type->getReturnType();
 
       auto const num_params = func_type->getNumParams();
@@ -799,9 +828,10 @@ public:
     devoid = llvm::Type::getVoidTy(context);
     ptr = llvm::PointerType::get(context, 0);
 
-    auto const type_context = peeped_tu.module->getTypeContext();
-    custom_type_map.reserve(type_context->numCustomTypes());
-    function_type_map.reserve(type_context->numFunctionTypes());
+    auto const num_custom_types = peeped_tu.module->numCustomTypes();
+    auto const num_function_types = peeped_tu.module->numFunctionTypes();
+    custom_type_map.reserve(num_custom_types);
+    function_type_map.reserve(num_function_types);
   }
 
 };

@@ -12,8 +12,10 @@ edenNoInlineCold void print_ast(eden::vector<ASTNode> const& nodes, File const& 
     using enum ASTNode::NodeType;
     switch (curr->type) {
     case EMPTY: std::print("EMPTY"); break;
-    case DECLARATION: std::print("DECLARATION OF {} WITH TYPE {}", curr->original_string(file), curr->declaration_type().toString());
-    case DECLARATION_JUNK: std::print("DECLARATION OF {} WITH TYPE {}, JUNK INITIALIZED", curr->original_string(file), curr->declaration_type().toString());
+    case DECLARATION_RO: std::print("RO DECLARATION OF {} WITH TYPE {}", curr->original_string(file), curr->declaration_type().toString()); break;
+    case DECLARATION_RW: std::print("RW DECLARATION OF {} WITH TYPE {}", curr->original_string(file), curr->declaration_type().toString()); break;
+    case DECLARATION_JUNK_RO: std::print("RO DECLARATION OF {} WITH TYPE {}, JUNK INITIALIZED", curr->original_string(file), curr->declaration_type().toString()); break;
+    case DECLARATION_JUNK_RW: std::print("RW DECLARATION OF {} WITH TYPE {}, JUNK INITIALIZED", curr->original_string(file), curr->declaration_type().toString()); break;
     case IF: std::print("IF{} W/ {} SUB_STATEMENTS", curr->if_has_else() ? " W/ ELSE" : "", curr->if_numstatements()); break;
     case WHILE: std::print("WHILE W/ {} SUB_STATEMENTS", curr->while_numstatements()); break;
     case RETURN: std::print("RETURN{}", curr->return_has_value() ? "" : " W/ NO VALUE"); break;

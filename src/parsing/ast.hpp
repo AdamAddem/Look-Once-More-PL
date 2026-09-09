@@ -64,8 +64,10 @@ struct ASTNode {
     EMPTY,
                     // <Following Nodes...>
     // Statements:
-    DECLARATION_JUNK,
-    DECLARATION,    // INIT_EXPR
+    DECLARATION_JUNK_RO,
+    DECLARATION_JUNK_RW,
+    DECLARATION_RO, // INIT_EXPR
+    DECLARATION_RW, // INIT_EXPR
     IF,             // CONDITION_EXPR, STATEMENTS * NUM, ELSE_STMT (if HAS_ELSE is true)
     WHILE,          // CONDITION_EXPR, STATEMENTS * NUM
     RETURN,         // EXPRESSION (if HAS_VALUE is true)
@@ -91,7 +93,7 @@ struct ASTNode {
     CHAR_LITERAL,
   }; using enum NodeType;
 
-  struct DeclarationData  { QualifiedTypeID type; }; // will have the length and position of the file of the declared identifier
+  struct DeclarationData  { TypeID typeID; }; // will have the length and position of the file of the declared identifier
   struct IfData           { bool has_else; u32_t num_substatements; };
   struct WhileData        { u32_t num_substatements; };
   struct ReturnData       { bool has_value; };
@@ -135,7 +137,10 @@ struct ASTNode {
     CharData          char_data;
   };
 
-  edenInlineNodiscardCXPR QualifiedTypeID  declaration_type()                const noexcept { assert(type == DECLARATION or type == DECLARATION_JUNK); return declaration_data.type; }
+  edenInlineNodiscardCXPR bool isDeclaration() const noexcept { return eden::enumBetween(type, DECLARATION_JUNK_RO, DECLARATION_RW); }
+  edenInlineNodiscardCXPR bool isRWDeclaration() const noexcept { return type == DECLARATION_RW or type == DECLARATION_JUNK_RW; }
+  edenInlineNodiscardCXPR bool isJunkDeclaration() const noexcept { return eden::enumBetween(type, DECLARATION_JUNK_RO, DECLARATION_JUNK_RW); }
+  edenInlineNodiscardCXPR TypeID  declaration_type()                         const noexcept { edenAssume(isDeclaration()); return declaration_data.typeID; }
 
   edenInlineNodiscardCXPR bool             if_has_else()                     const noexcept { assert(type == IF); return if_data.has_else; }
   edenInlineNodiscardCXPR u64_t            if_numstatements()                const noexcept { assert(type == IF); return if_data.num_substatements; }

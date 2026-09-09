@@ -29,6 +29,10 @@ public:
     text = {file_buff, buff_length};
   }
 
+  // probably not a good idea to expose these two
+  File() = default;
+  constexpr File& operator=(File&) noexcept = default;
+
   edenAlwaysInline [[nodiscard]] std::string_view get_text() const noexcept { return text; }
 
   // somewhat expensive, only use in error reporting
@@ -43,11 +47,11 @@ public:
       };
   }
 
-  [[nodiscard]] std::string_view
+  edenNodiscardCXPR std::string_view
   view_at(u16_t length, u32_t position) const noexcept
   { return {text.data() + position, static_cast<u64_t>(length)}; }
 
-  [[nodiscard]] std::pair<u16_t, u32_t>
+  edenNodiscardCXPR std::pair<u16_t, u32_t>
   len_and_pos_from_view(std::string_view view_from_file) const noexcept {
     return {
       (u16_t) view_from_file.length(),
@@ -64,7 +68,7 @@ inline void free_file(File file) noexcept {
 }
 
 // returns pair<length, position>
-[[nodiscard]] constexpr std::pair<u16_t, u32_t>
+edenNodiscardCXPR std::pair<u16_t, u32_t>
 combine_spans(u32_t leftmost_pos, u16_t rightmost_len, u32_t rightmost_pos) noexcept {
   return {
     u16_t(rightmost_pos - leftmost_pos + rightmost_len),

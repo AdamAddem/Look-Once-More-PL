@@ -26,9 +26,9 @@ enum class Args {
   O3,
 };
 
-const std::unordered_map<std::string_view, Args> stringToArgs{
-	      {"-emit-parser", Args::OUTPUT_PARSER}, {"-emit-peep", Args::OUTPUT_PEEP},
-              {"-emit-llvm", Args::OUTPUT_LLVMIR}, {"-emit-asm", Args::OUTPUT_ASM}, {"-emit-obj", Args::OUTPUT_OBJ},
+std::unordered_map<std::string_view, Args> const stringToArgs{
+	      {"--emit-parser", Args::OUTPUT_PARSER}, {"--emit-peep", Args::OUTPUT_PEEP},
+              {"--emit-llvm", Args::OUTPUT_LLVMIR}, {"--emit-asm", Args::OUTPUT_ASM}, {"--emit-obj", Args::OUTPUT_OBJ},
               {"-o", Args::EXECUTABLE_NAME},{"build", Args::BUILD},
               {"-O0", Args::O0}, {"-O1", Args::O1}, {"-O2", Args::O2}, {"-O3", Args::O3},
 };
@@ -73,17 +73,14 @@ void setArgs(unsigned argc, const char* argv[]) {
     std::quick_exit(0);
   }
 
-  for (auto i{1uz}; i < argc; ++i) {
+  for (sz_t i{1}; i < argc; ++i) {
     auto const arg_view = std::string_view(argv[i]);
     auto const arg_iter = stringToArgs.find(arg_view);
     if (arg_iter == stringToArgs.end()) {
-      if (arg_view == "--extern_flags:") {
-        while (++i < argc) { extern_flags += argv[i]; extern_flags.push_back(' '); }
-        break;
-      }
+      if (arg_view != "--extern_flags:") std::println("LookOnceMore: Unrecognized argument {}.", arg_view), std::quick_exit(1);
 
-      std::println("LookOnceMore: Unrecognized argument {}.", arg_view);
-      std::quick_exit(1);
+      while (++i < argc) { extern_flags += argv[i]; extern_flags.push_back(' '); }
+      break;
     }
 
     auto const arg = arg_iter->second;

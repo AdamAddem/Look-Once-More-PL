@@ -28,7 +28,8 @@ Within a module, all non-public functions are available only to other source fil
 To publish a function, place the keyword 'pub' before its declaration. <br>
 To import a module, just type 'import <module_name>;' somewhere in global scope. <br>
 Access the members of a module by appending the module name with a dot. <br>
-Imports are parsed in-order, meaning an import will not be recognized until after the point where it is declared. <br>
+Imports are parsed in-order, meaning an import will not be recognized until after the point where it is declared.
+For this reason, I recommend declaring all imports upfront. <br>
 
 ### Error messages
 Error messages are currently stage-based. An error occuring in the lexing stage of a module will display the relevant error and prevent parsing from occuring. <br>
@@ -37,21 +38,21 @@ Any errors occuring during parsing will prevent all other modules from entering 
 ### C Interop
 Calling C functions can be done using the '__C' keyword. <br>
 You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration. <br>
-Ex: `__C puts(str: raw u8) i32;` <br>
+Ex: `__C puts(str: raw byte) i32;` <br>
 This will place the function as part of the internal '__C' module, and as such only one declaration can be present throughout the entire program. <br>
 If variadic arguments are needed, use the '__va' keyword as the last parameter. <br>
-Ex: `__C printf(fmt: raw u8, __va) i32;` <br>
+Ex: `__C printf(fmt: raw byte, __va) i32;` <br>
 Calling these functions can be done as if through the '__C' module, which is imported by default. <br>
-C Interop using structs or arrays is untested and probably won't function as expected. I'm working on it. <br>
+C Interop using structs or arrays passed by value is incorrect won't function as expected. Pass by pointer instead. <br>
 
 ### Missing Features and Known Bugs
 - Globals are unsupported until a constant evaluator is made to enforce constant initialization.
 - Private functions (and public functions within main.lom) with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
-- _= operators do not exist (+=, -=, etc).
-- Strings are accessable only through ref to u8.
+- _= operators do not exist yet (+=, -=, etc).
+- Strings are accessable only through ref u8.
 - No support for creating or importing precompiled libraries directly.
 - Import names currently shadow local variabels when accessing members. (local variable named foo cannot access any members if a module named foo has been imported).
-- Parsing errors don't sync very well. One error will likely cause many many more.
+- Errors have some minor display problems;
 - No pointer arithmetic.
 - No working variants or tuples.
 - No standard library.
@@ -61,6 +62,8 @@ C Interop using structs or arrays is untested and probably won't function as exp
 - Functions may not have greater than 8 parameters.
 - Structs may not have greater than 256 members;
 - Modules may not have greater than 256 files.
+- Files may not exceed u32_max in size.
 - Tokens may not exceed the u16_max in length.
-- Violating any of these rules may cause a crash, assertion failure, or logical error rather than a standard error message.
+- Expressions have a reasonablly large size limit, do not nest too hard.
+- Violating any of these rules may or may not cause a crash, assertion failure, or logical error rather than a standard error message.
 - These limits exist to increase compilation speed and reduce memory usage.

@@ -5,7 +5,7 @@ a LLVM backend; it is written as a passion project, and successfully compiles wi
 ### Language Priorities
 My main goal is to create a language that mirrors the performance and freedom that C++ provides while ditching many of the legacy practices.
 I want to prioritize improvements to the language over all else without being held back by tradition or long term backwards compatability.
-Compilation speed is also a priority.
+Compilation speed is also a priority, speeds of >250k lines of code per second have been measured.
 
 ### Features of Look Once More (Subject to Change)
 * Improved defaults, readonly/readwrite semantics
@@ -26,21 +26,25 @@ Compilation speed is also a priority.
 
 * Simple and explicit pointer / reference syntax
     ```
-    # References are pointers
-    x: raw i32 = ...;  # Raw keyword denotes a pointer to readwrite variable (int* const equivalent)
-    y: ref i32 = ...;  # Ref keyword denotes a pointer to readonly variable  (const int* const equivalent)
+    # Raw keyword denotes a pointer to readwrite variable 
+    a$ raw i32 = ...;  # int* 
+    b: raw i32 = ...;  # int* const 
+  
+    # Ref keyword denotes a pointer to readonly variable  
+    c$ ref i32 = ...;  # const int* 
+    d: ref i32 = ...;  # const int* const 
     
     # Uniform dereference syntax
-    raw_rect: raw Rectangle = @my_rect;   # GenZ address-of operator produces a pointer to readwrite variable (if possible)
+    raw_rect: raw Rectangle = @my_rect;   # GenZ address-of operator produces a pointer to readwrite variable
     ref_rect: ref Rectangle = &my_rect;   # Ampersand operator produces a pointer to readonly variable
     raw_rect->length = 2;                 # Dereference to access member
     raw_rect-> = getSquare();             # Dereference to access object (*raw_rect equivalent)
 * Native variant, tuple, and nullable types (planned)
     ```
-    <string, u32> name_or_id = 5;
-    <string, devoid> first_member = getFirstClubMember();    # Nullable type represented via 'devoid' keyword
+    name_or_id: <string, u32> = 5;
+    first_member: ?string = getFirstClubMember(); # '?' prefix to express nullability
     
-    [string first, string last] person = ["Gabe", "Newell"]; # Tuple / Anonymous struct
+    person: {first: string, last: string} = {"Gabe", "Newell"}; # Tuple / anonymous struct
 * Strict and explicit global variables (planned)
     ```
     #{ 
@@ -74,9 +78,9 @@ Compilation speed is also a priority.
 * An actual module system (100% adoption rate)
     ```
     import whatever;
-    pub bar() {...}
+    pub bar: () { ... }
 
-    foo() i32 { # visible only within current module
+    foo: () i32 { # visible only within current module
       return whatever.getNum() + 2;
     }
 ---
@@ -87,21 +91,21 @@ Clone and compile as such:
 git clone --recurse-submodules https://github.com/AdamAddem/Look-Once-More-PL
 mkdir build && cd build && cmake .. && make
 ```
-Either clang or gcc are required to support linking objects into an executable or compiling within the 'extern' folder. <br>
+Must compile with either clang or gcc to support linking objects into an executable or compiling within the 'extern' folder. <br>
 
 ### Running
 The executable can be ran with the following arguments:
 ```
-    -init                Creates a project template.
-    -build               Builds, compiles, and links the project.
-    -o <output>          Specifies output file name.
-    -O0, O1, O2, O3      Sets optimization levels (No effect currently).
+    init               Creates a project template.
+    build              Builds, compiles, and links the project.
+    -o <output>        Specifies output file name.
+    -O0, O1, O2, O3    Sets optimization levels (No effect currently).
     
-    -emit-obj            Produces object files.
-    -emit-llvm           Produces the LLVM IR representation of the source code.
-    -emit-asm            Produces the assembly representation of the source code.
+    --emit-obj         Produces object files.
+    --emit-llvm        Produces the LLVM IR representation of the source code.
+    --emit-asm         Produces the assembly representation of the source code.
     
-    --extern_flags:      Will pass all remaining flags to the compiler used for linking and compiling files within the 'extern' folder.
+    --extern_flags:    Will pass all remaining flags to the compiler used for linking and compiling files within the 'extern' folder.
 ```
 Visit [GettingStarted](GettingStarted.md) for more information on setting up a project.
 

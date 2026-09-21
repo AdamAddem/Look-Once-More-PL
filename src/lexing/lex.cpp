@@ -6,13 +6,14 @@
 #include <cctype>
 #include <chrono>
 #include <unordered_map>
+#include <print>
 
 namespace {
 using namespace LOM;
 using namespace LOM::Lexer;
 
-edenAlwaysInline [[nodiscard]] bool canStartIdentifier(char c) noexcept { return std::isalpha(c) or c == '_'; }
-edenAlwaysInline [[nodiscard]] bool is_num(char c) noexcept { return c >= '0' and c <= '9'; }
+edenInlineNodiscardCXPR bool canStartIdentifier(char c) noexcept { return std::isalpha(c) or c == '_'; }
+edenInlineNodiscardCXPR bool is_num(char c) noexcept { return c >= '0' and c <= '9'; }
 
 struct Tokenizer {
   eden::vector<Token>& token_list;
@@ -24,12 +25,12 @@ struct Tokenizer {
   explicit Tokenizer(eden::vector<Token>& token_list, File file)
   : token_list(token_list), file(file) {}
 
-  edenAlwaysInline [[nodiscard]] char peek() const noexcept { return file.get_text()[current_position]; }
-  edenAlwaysInline [[nodiscard]] char peek_ahead(i64_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
-  edenAlwaysInline [[nodiscard]] char take() noexcept { return file.get_text()[current_position++]; }
-  edenAlwaysInline [[nodiscard]] char previous() const noexcept { return file.get_text()[current_position - 1]; }
-  edenAlwaysInline               void pop() noexcept { ++current_position; }
-  edenAlwaysInline               void undo() noexcept { --current_position; }
+  edenInlineNodiscardCXPR char peek() const noexcept { return file.get_text()[current_position]; }
+  edenInlineNodiscardCXPR char peek_ahead(i64_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
+  edenInlineNodiscardCXPR char take() noexcept { return file.get_text()[current_position++]; }
+  edenInlineNodiscardCXPR char previous() const noexcept { return file.get_text()[current_position - 1]; }
+  edenInlineCXPR          void pop() noexcept { ++current_position; }
+  edenInlineCXPR          void undo() noexcept { --current_position; }
 
   edenNoInlineCold void
   error_at_currentpos(std::string_view msg) {
@@ -37,7 +38,7 @@ struct Tokenizer {
   }
 
 #define pre assert(previous() == '"');
-  void grabStringLiteral() { pre
+  constexpr void grabStringLiteral() noexcept { pre
     u16_t length = 0;
     auto const pos = current_position; // grabbing the position after opening quotes
     auto c = take();
@@ -64,7 +65,7 @@ struct Tokenizer {
 #undef pre
 
 #define pre assert(previous() == '\'');
-  void grabCharLiteral() { pre
+  constexpr void grabCharLiteral() noexcept { pre
     u16_t length = 2;
     auto const pos = current_position;
     auto const c1 = take();
@@ -81,7 +82,7 @@ struct Tokenizer {
   }
 #undef pre
 
-  void grabSymbol() {
+  constexpr void grabSymbol() noexcept {
     TokenType type;
     u16_t length = 1;
     auto const pos = current_position;
@@ -149,7 +150,7 @@ struct Tokenizer {
     token_list.emplace_back(type, length, pos);
   }
 
-  void grabNumber() {
+  constexpr void grabNumber() noexcept {
     auto newtoken_type = TokenType::INTEGER_LITERAL;
     u16_t newtoken_length = 0;
     auto const newtoken_pos = current_position;
@@ -175,7 +176,7 @@ struct Tokenizer {
     token_list.emplace_back(newtoken_type, newtoken_length, newtoken_pos);
   }
 
-  void grabIdentOrKeyword() {
+  constexpr void grabIdentOrKeyword() noexcept {
     Token new_token{TokenType::INVALID_TOKEN, 0, current_position};
     auto c = take();
 
@@ -203,7 +204,7 @@ struct Tokenizer {
     token_list.emplace_back(new_token);
   }
 
-  void skipWS() {
+  constexpr void skipWS() noexcept {
     while (std::isspace(peek())) {
       auto const c = take();
       if (c == '\0') return;
@@ -211,7 +212,7 @@ struct Tokenizer {
   }
 
 #define pre assert(peek() == '#');
-  void skipComments() { pre
+  constexpr void skipComments() noexcept { pre
     pop();
 
     if (peek() not_eq '{') {
@@ -251,7 +252,11 @@ void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] File fi
 }
 
 
-bool Lexer::tokenizeFile(eden::vector<Token>& out_tokens, File file) {
+bool Lexer::tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
+#ifndef NDEBUG
+  std::println("Lexer::tokenizeFile on file {}", file.path());
+#endif
+
   auto const begin_time = std::chrono::high_resolution_clock::now();
   Tokenizer tokenizer{out_tokens, file};
   if (tokenizer.peek() == '.') {

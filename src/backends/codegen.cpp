@@ -13,7 +13,7 @@ std::unique_ptr<Backend> Backend::codegen(PeepIR::TU&& vtu, std::filesystem::pat
 }
 
 //.... it works?
-void Backend::linkObjects(eden::vector<std::filesystem::path> const& obj_paths) {
+void Backend::linkObjects(std::span<std::filesystem::path> obj_paths) {
   if constexpr (Settings::external_compiler.empty())
     throw std::runtime_error("Linking objects is currently unsupported without clang or gcc.");
 

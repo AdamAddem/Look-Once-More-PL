@@ -8,8 +8,8 @@ namespace fs = std::filesystem;
 namespace LOM {
 
 edenNoInlineCold void
-print_parser(eden::vector<Parser::TU> const& tus, eden::vector<fs::path> const& paths) {
-  assert(tus.size() == paths.size()); assert(Settings::do_output_parser);
+print_parser(std::span<Parser::TU const> tus, std::span<fs::path const> paths) {
+  assert(Settings::do_output_parser); assert(tus.size() == paths.size());
   for (auto i{0uz}; i<tus.size(); ++i) {
     std::println("\n--- Parser Output --- {}", paths[i].native());
     Parser::printTU(tus[i]);
@@ -18,8 +18,8 @@ print_parser(eden::vector<Parser::TU> const& tus, eden::vector<fs::path> const& 
 }
 
 edenNoInlineCold void
-print_peep(eden::vector<PeepIR::TU> const& tus, eden::vector<fs::path> const& paths) {
-  assert(tus.size() == paths.size()); assert(Settings::do_output_peep);
+print_peep(std::span<PeepIR::TU const> tus, std::span<fs::path const> paths) {
+  assert(Settings::do_output_peep); assert(tus.size() == paths.size());
   for (auto i{0uz}; i<tus.size(); ++i) {
     std::println("\n--- Peep Output --- {}", paths[i].native());
     PeepIR::printPeep(tus[i]);

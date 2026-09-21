@@ -129,6 +129,7 @@ pointerCoercibleFromTo(PointerType const& from, PointerType const& to) noexcept 
 [[nodiscard]] bool
 TypeID::coercibleTo(TypeID other) const noexcept {
   if (sameAs(other)) return true;
+  if (isError() or other.isError()) return true;
 
   if (isPointer()) {
     if (not other.isPointer()) return false;
@@ -216,7 +217,8 @@ TypeID::sameAs(TypeID other) const noexcept {
   switch (derived) { using enum Type::DerivedType;
   case DEVOID:
   case ERROR:
-  case PRIMITIVE:
+  case PRIMITIVE: return true;
+
   case POINTER: edenUnreachable("Should have succeeded earlier.");
 
   case ARRAY: return getArrayType().sameAs( other.getArrayType() );

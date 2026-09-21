@@ -113,7 +113,7 @@ class ParserBody {
     }
 
     auto const subtype = parseType();
-    return module.addArrayTypeID(subtype, array_size);
+    return module.addArrayType(subtype, array_size);
   }
 #undef pre
 
@@ -170,8 +170,8 @@ class ParserBody {
   }
 
   // opening parenthesis must be popped, and the next token must not be closing parenthesis (?)
-#define pre assert(not tokens.previous().is(TokenType::LPAREN));
-  edenNodiscardCXPR u32_t generateParameters() { pre
+//#define pre assert(tokens.previous().is(TokenType::LPAREN));
+  edenNodiscardCXPR u32_t generateParameters() { //pre
     auto const parameter = generateAssignmentExpression();
     if (tokens.pop_if(TokenType::RPAREN))
       return expression_tree.create(PLACEHOLDER_NODE, parameter, 0);
@@ -182,7 +182,7 @@ class ParserBody {
     error(tokens.peek(), "Expected comma in call expression.");
     return expression_tree.create(PLACEHOLDER_NODE, parameter, generateParameters());
   }
-#undef pre
+//#undef pre
 
 #define pre assert(tokens.peek().isLiteral());
   template <bool negate = false>
@@ -576,6 +576,11 @@ class ParserBody {
 #define pre assert(tokens.peek().isIdentifier());
   constexpr Token parseVarDecl(sz_t decl_node_idx) noexcept { pre
     auto const [identifier_token, qualifiers, typeID] = parseHalfDeclaration();
+    auto const decl_name = identifier_token.originalString(current_file);
+    if (module.containsLocal(decl_name))
+      error(identifier_token, "Redefinition of symbol name in variable declaration.");
+    else
+      module.addLocal(typeID, qualifiers, decl_name);
 
     auto& node = nodes[decl_node_idx];
     node.declaration_data.typeID = typeID;
@@ -697,8 +702,7 @@ class ParserBody {
     case IDENTIFIER:
       if (tokens.peek_ahead(1).isVarQualifier()) {
         stmt_idx = insertTypedNode(ASTNode::DECLARATION_RO);
-        final = parseVarDecl(stmt_idx);
-        break;
+        return parseVarDecl(stmt_idx); // kindof a bodge, but we avoid getting the combined token for the whole statement
       }
 
       [[fallthrough]];
@@ -741,7 +745,7 @@ class ParserBody {
       return sync_to_semicolon();
     }
 
-    eden::swap_vector16<Module::Variable> parameters; parameters.reserve(4);
+    eden::swap_vector16<Module::Variable> parameters;
     bool is_variadic = false;
     if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
 
@@ -774,9 +778,10 @@ class ParserBody {
     if (not tokens.pop_if(TokenType::SEMI_COLON))
       return error(tokens.peek(), "Expected semi-colon.");
 
-    static_assert(Settings::MULTITHREADING_SUPPORT == false); // needs to be protected
-    auto& cModule = getCModule();
-    auto const functionTypeID = cModule.addFunctionTypeID(parameters.to_span(), returnTypeID, is_variadic);
+    auto& cModule = getCModule(); static_assert(Settings::MULTITHREADING_SUPPORT == false); // needs to be protected
+
+    auto const parameter_span = parameters.to_span();
+    auto const functionTypeID = cModule.addFunctionType(parameter_span, returnTypeID, is_variadic);
     cModule.addFunction(name, std::move(parameters), functionTypeID, true);
   }
 #undef pre
@@ -854,7 +859,7 @@ class ParserBody {
       if (not tokens.peek_is(TokenType::LBRACE))
         returnTypeID = parseType();
 
-      auto const functionTypeID = module.addFunctionTypeID(parameters.to_span(), returnTypeID, false);
+      auto const functionTypeID = module.addFunctionType(parameters.to_span(), returnTypeID, false);
       auto const function_id =
         module.addFunction( current_function.nameof(), std::move(parameters), functionTypeID, current_function.is_public );
       module.enterFunctionScope(function_id);
@@ -964,6 +969,9 @@ static void output_benchmark([[maybe_unused]] auto begin_time) {
 }
 
 bool Parser::parseTokens(TU& out_tu, eden::vector<Token>& tokens) noexcept {
+#ifndef NDEBUG
+  std::println("Parser::parseTokens on '{}' tu", out_tu.name);
+#endif
   auto const begin_time = std::chrono::high_resolution_clock::now();
 
   auto const has_errors = ParserBody::parse(out_tu, tokens);

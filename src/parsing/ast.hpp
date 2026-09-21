@@ -140,7 +140,8 @@ struct ASTNode {
   edenInlineNodiscardCXPR bool isDeclaration() const noexcept { return eden::enumBetween(type, DECLARATION_JUNK_RO, DECLARATION_RW); }
   edenInlineNodiscardCXPR bool isRWDeclaration() const noexcept { return type == DECLARATION_RW or type == DECLARATION_JUNK_RW; }
   edenInlineNodiscardCXPR bool isJunkDeclaration() const noexcept { return eden::enumBetween(type, DECLARATION_JUNK_RO, DECLARATION_JUNK_RW); }
-  edenInlineNodiscardCXPR TypeID  declaration_type()                         const noexcept { edenAssume(isDeclaration()); return declaration_data.typeID; }
+  edenInlineNodiscardCXPR TypeID  declaration_type() const noexcept { edenAssume(isDeclaration()); return declaration_data.typeID; }
+  edenInlineNodiscardCXPR std::string_view decl_identifier_val(File const& file)  const noexcept { edenAssume(isDeclaration()); return file.view_at(length_in_file, position_in_file); }
 
   edenInlineNodiscardCXPR bool             if_has_else()                     const noexcept { assert(type == IF); return if_data.has_else; }
   edenInlineNodiscardCXPR u64_t            if_numstatements()                const noexcept { assert(type == IF); return if_data.num_substatements; }

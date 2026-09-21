@@ -21,7 +21,6 @@ const fs::path extern_path{"extern"};
 
 // using a global struct so state can be easily reset when profiling
 // kinda dumb, but so is this language
-[[maybe_unused]]
 struct GlobalStruct {
   std::unordered_map<std::string_view, u16_t> module_map;
   eden::vector<Module> module_list;
@@ -30,6 +29,7 @@ struct GlobalStruct {
   sz_t num_modules;
   sz_t num_external_objects;
 
+private:
   void init_module_paths() noexcept {
     module_paths.reserve(4);
     module_paths.emplace_back(extern_path);
@@ -39,12 +39,23 @@ struct GlobalStruct {
 
       if (is_empty(entry) or entry.path().filename().native()[0] == '.') continue; // jank, ignores directories starting with .
       module_paths.emplace_back(entry.path().stem());
+
     }
+
+#ifndef NDEBUG
+    std::println("Module paths: ");
+    for (auto const& path : module_paths)
+      std::println("\t- '{}'", path.native());
+    std::println();
+#endif
   }
 
   void init_module_list() noexcept {
-    module_list.reserve(module_paths.size());
-    for (auto i{0uz}; i<module_list.size(); ++i)
+    num_modules = module_paths.size();
+    module_list.reserve(num_modules + 1);
+    module_list.emplace_back(0).set_name("__C"); static_assert(C_MODULE_IDX == 0);
+
+    for (auto i{1uz}; i<num_modules; ++i)
       module_list.emplace_back( (u16_t) i );
   }
 
@@ -52,6 +63,7 @@ struct GlobalStruct {
     module_map.reserve(module_paths.size());
     module_map.emplace("__C", C_MODULE_IDX);
   }
+public:
 
   GlobalStruct() noexcept {
     init_module_paths();
@@ -59,6 +71,10 @@ struct GlobalStruct {
     init_module_map();
     num_modules = module_list.size();
     num_external_objects = extern_objects_paths.size();
+  }
+
+  std::span<fs::path> getTUPaths() noexcept {
+    return module_paths.to_span().subspan(MAIN_MODULE_IDX);
   }
 
 #ifdef PROFILE
@@ -138,6 +154,10 @@ lex_and_parse_module(Parser::TU& tu, u16_t module_id)  {
     tu.module->set_name(module_name);
   }
 
+#ifndef NDEBUG
+  std::println("lex_and_parse_module '{}' with id '{}'", tu.name, module_id);
+#endif
+
   bool has_error = false;
   for (auto const& entry : fs::directory_iterator{directory}) {
     auto const& path = entry.path();
@@ -154,21 +174,21 @@ lex_and_parse_module(Parser::TU& tu, u16_t module_id)  {
   return has_error;
 }
 
-// returns whether an error was encountered
+// returns whether compilation should stop (due to error, or outputing parser)
 [[nodiscard]] bool
 parse_modules(eden::vector<Parser::TU>& out) noexcept {
   bool has_error = false;
-  for (auto i{MAIN_MODULE_IDX}; i<globals.module_paths.size(); ++i) {
+  for (auto i{MAIN_MODULE_IDX}; i<globals.num_modules; ++i) {
     auto& ptu = out.emplace_back();
     if (lex_and_parse_module(ptu, i)) has_error = true;
   }
 
   if (has_error) { return true; }
-  if (Settings::do_output_parser) { print_parser(out, globals.module_paths); }
+  if (Settings::do_output_parser) { print_parser(out.to_span(), globals.getTUPaths()); return true; }
   return false;
 }
 
-// returns whether an error was encountered
+// returns whether compilation should stop (due to error, or outputing peep)
 [[nodiscard]] bool
 peep_modules(eden::vector<Parser::TU>& parsed_tus, eden::vector<PeepIR::TU>& out) noexcept {
   bool has_error = false;
@@ -179,25 +199,26 @@ peep_modules(eden::vector<Parser::TU>& parsed_tus, eden::vector<PeepIR::TU>& out
   }
 
   if (has_error) { return true; }
-  if (Settings::do_output_peep) { print_peep(out, globals.module_paths); }
+  if (Settings::do_output_peep) { print_peep(out.to_span(), globals.getTUPaths()); return true; }
   return false;
 }
 
 void compile_modules(eden::vector<PeepIR::TU>& peeped_tus) noexcept {
+  auto const tu_paths = globals.getTUPaths();
   for (auto i{0uz}; i<peeped_tus.size(); ++i) {
-    auto& module_path = globals.module_paths[i];
+    auto& peeped_path = tu_paths[i];
     auto& peeped = peeped_tus[i];
 
     [[maybe_unused]]
-    auto const compiled = Backend::codegen( std::move(peeped), module_path );
+    auto const compiled = Backend::codegen( std::move(peeped), peeped_path );
 
 #ifdef NO_MEASUREMENT
     if (Settings::do_output_asm)
-      compiled->createASMFile(module_path);
+      compiled->createASMFile(peeped_path);
     if (Settings::do_output_llvmir)
-      compiled->createIRFile(module_path);
+      compiled->createIRFile(peeped_path);
     if (Settings::do_output_obj)
-      module_path = compiled->createObjectFile(module_path);
+      peeped_path = compiled->createObjectFile(peeped_path);
 #endif
   }
 }
@@ -248,8 +269,11 @@ void LOM::build() {
   }
 
 #ifdef NO_MEASUREMENT
-  if (Settings::do_linking)
-    Backend::linkObjects(globals.module_paths);
+  if (Settings::do_linking) {
+    static_assert(MAIN_MODULE_IDX > C_MODULE_IDX);
+    auto const objs = globals.module_paths.to_span().subspan(MAIN_MODULE_IDX); // skip the extern object
+    Backend::linkObjects(objs);
+  }
 #endif
 }
 

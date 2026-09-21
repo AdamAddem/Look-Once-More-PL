@@ -169,15 +169,16 @@ class Module final : public SymbolTable {
 
   template <std::derived_from<Type> T>
   edenInlineNodiscardCXPR static TypeID
-  getExisting(T* type_in_vector, eden::swap_vector<T>& owning_vector, u16_t module_id) noexcept {
+  getExisting(T const* type_in_vector, eden::swap_vector<T>& owning_vector, u16_t module_id) noexcept {
     return {.derived = Type::corresponding_derived_type<T>(), .module_id = module_id, .id = (u16_t)owning_vector.index_in(type_in_vector)};
   }
 
   template <std::derived_from<Type> T>
   edenInlineNodiscardCXPR static TypeID
   makeNew(eden::swap_vector<T>& type_vector, u16_t module_id, T&& type) noexcept {
+    auto const fn_type_id = (u16_t) type_vector.size();
     type_vector.emplace_back(std::move(type));
-    return {.derived = Type::corresponding_derived_type<T>(), .module_id = module_id, .id = (u16_t)(type_vector.size() - 1)};
+    return {.derived = Type::corresponding_derived_type<T>(), .module_id = module_id, .id = fn_type_id};
   }
 
   template <std::derived_from<Type> T>
@@ -214,17 +215,16 @@ public:
   edenInlineNodiscardCXPR sz_t numFunctionTypes() const noexcept { return function_types.size(); }
   edenInlineNodiscardCXPR sz_t numCustomTypes()   const noexcept { return custom_types.size(); }
 
-  edenInlineNodiscardCXPR TypeID addArrayTypeID(TypeID subtypeID, u64_t array_size) noexcept { return returnExistingOrNew(array_types, id, subtypeID, array_size); }
-
-  edenInlineNodiscardCXPR TypeID addFunctionTypeID(std::span<TypeID const> parameter_typeIDs, TypeID returnTypeID, bool is_variadic = false) noexcept { return returnExistingOrNew(function_types, id, parameter_typeIDs, returnTypeID, is_variadic); }
-  edenInlineNodiscardCXPR TypeID addFunctionTypeID(std::span<Variable const> parameters, TypeID returnTypeID, bool is_variadic) noexcept {
+  edenInlineNodiscardCXPR TypeID addArrayType(TypeID subtypeID, u64_t array_size) noexcept { return returnExistingOrNew(array_types, id, subtypeID, array_size); }
+  edenInlineNodiscardCXPR TypeID addFunctionType(std::span<TypeID const> parameter_typeIDs, TypeID returnTypeID, bool is_variadic = false) noexcept { return returnExistingOrNew(function_types, id, parameter_typeIDs, returnTypeID, is_variadic); }
+  edenInlineNodiscardCXPR TypeID addFunctionType(std::span<Variable const> parameters, TypeID returnTypeID, bool is_variadic) noexcept {
     auto const num_parameters = parameters.size(); assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
 
     TypeID parameter_typeIDs[Settings::MAX_FUNCTION_PARAMETERS];
     for (auto i{0uz}; i<num_parameters; ++i)
       parameter_typeIDs[i] = parameters[i].typeID;
 
-    return addFunctionTypeID({parameter_typeIDs, num_parameters}, returnTypeID, is_variadic);
+    return addFunctionType({parameter_typeIDs, num_parameters}, returnTypeID, is_variadic);
   }
 
 #define pre assert(getCustomTypeID(type_name) == devoidID);
@@ -237,15 +237,15 @@ public:
   }
 #undef pre
 
-#define pre assert(arrayTypeID.module_id == id); assert(arrayTypeID.derived == Type::ARRAY);
+#define pre assert(arrayTypeID.module_id == id); assert(arrayTypeID.derived == Type::ARRAY); assert(not arrayTypeID.isPointer());
   edenInlineNodiscardCXPR ArrayType const& getArrayType(TypeID arrayTypeID) const noexcept { pre return array_types[arrayTypeID.id]; }
 #undef pre
 
-#define pre assert(functionTypeID.module_id == id); assert(functionTypeID.derived == Type::FUNCTION);
+#define pre assert(functionTypeID.module_id == id); assert(functionTypeID.derived == Type::FUNCTION); assert(not functionTypeID.isPointer());
   edenInlineNodiscardCXPR FunctionType const& getFunctionType(TypeID functionTypeID) const noexcept { pre return function_types[functionTypeID.id]; }
 #undef pre
 
-#define pre assert(customTypeID.module_id == id); assert(customTypeID.derived == Type::CUSTOM);
+#define pre assert(customTypeID.module_id == id); assert(customTypeID.derived == Type::CUSTOM); assert(not customTypeID.isPointer());
   edenInlineNodiscardCXPR CustomType const& getCustomType(TypeID customTypeID) const noexcept { pre return custom_types[customTypeID.id]; }
 #undef pre
 

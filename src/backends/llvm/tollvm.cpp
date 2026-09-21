@@ -191,7 +191,6 @@ class Lowerer final {
 #define pre assert(function_typeID.isFunction());
   [[nodiscard]] llvm::FunctionType*
   translateFunctionType(TypeID function_typeID) noexcept { pre
-
     auto const module_id = function_typeID.module_id;
     auto const type_id = function_typeID.id;
     auto const key = TypeMapKey{
@@ -211,7 +210,7 @@ class Lowerer final {
 
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
     for (auto i{0uz}; i<num_params; ++i)
-      arg_types[i] = translateType( parameter_typeIDs[i]);
+      arg_types[i] = translateType( parameter_typeIDs[i] );
 
     // hack
     auto const return_typeID = fn_type.getReturnTypeID();
@@ -221,6 +220,7 @@ class Lowerer final {
     function_type_map.emplace_back(key, res);
     return res;
   }
+#undef pre
 
   [[nodiscard]] llvm::Type*
   translateType(TypeID typeID) noexcept {
@@ -262,12 +262,13 @@ class Lowerer final {
       .type_id = typeID.id
     };
 
-    // search for existing translation
+    // search for existing custom translation
     {
       auto const element = custom_type_map[key];
       if (element) return element->value;
     }
 
+    // translate custom types
     auto const& custom_type = typeID.getCustomType();
     auto const& member_table = custom_type.member_table();
     auto const num_members = member_table.num_variables();

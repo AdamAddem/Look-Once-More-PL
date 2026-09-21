@@ -33,10 +33,10 @@ public:
   File() = default;
   constexpr File& operator=(File&) noexcept = default;
 
-  edenAlwaysInline [[nodiscard]] std::string_view get_text() const noexcept { return text; }
+  edenInlineNodiscardCXPR std::string_view get_text() const noexcept { return text; }
 
   // somewhat expensive, only use in error reporting
-  [[nodiscard]] std::string_view
+  edenNodiscardCXPR std::string_view
   path() const noexcept {
     auto const file_path_start = text.find_last_of('\0', text.size() - 2) + 1;
     assert(file_path_start not_eq std::string::npos);
@@ -47,11 +47,11 @@ public:
       };
   }
 
-  edenNodiscardCXPR std::string_view
+  edenInlineNodiscardCXPR std::string_view
   view_at(u16_t length, u32_t position) const noexcept
   { return {text.data() + position, static_cast<u64_t>(length)}; }
 
-  edenNodiscardCXPR std::pair<u16_t, u32_t>
+  edenInlineNodiscardCXPR std::pair<u16_t, u32_t>
   len_and_pos_from_view(std::string_view view_from_file) const noexcept {
     return {
       (u16_t) view_from_file.length(),

@@ -228,7 +228,7 @@ struct Function {
   eden::vector<Instruction> instructions;
   eden::vector<Block> blocks;
 
-  edenAlwaysInline [[nodiscard]] std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
+  edenInlineNodiscardCXPR std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
 };
 
 struct TU {

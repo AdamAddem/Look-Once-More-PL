@@ -99,10 +99,8 @@ struct PtrBits {
 
     // set ptr raw flags
     {
-      flags |= l1_raw_mask * u8_t(l1_raw);
-      flags |= l2_raw_mask * u8_t(l2_raw);
-      flags |= l3_raw_mask * u8_t(l3_raw);
-      flags |= l4_raw_mask * u8_t(l4_raw);
+      auto const raw_flags = l1_raw_mask * u8_t(l1_raw) | l2_raw_mask * u8_t(l2_raw) | l3_raw_mask * u8_t(l3_raw) | l4_raw_mask * u8_t(l4_raw);
+      flags |= raw_flags;
     }
 
   }
@@ -124,9 +122,9 @@ struct PtrBits {
   // returns true if this has just become a pointer.
   // as in, pointer level is no longer 0
 #define pre edenAssume(pointer_level() < 4);
-  edenInlineCXPR bool addLevel(bool is_level_raw) noexcept {
+  edenInlineCXPR bool addLevel(bool is_level_raw) noexcept { pre
     auto const new_level = pointer_level() + 1;
-    u8_t const new_level_flag = (flags & level_mask) << 1; // shift pointer level bit by one
+    auto const new_level_flag = levelmask_for_level(new_level);
     u8_t const new_raw_flags = (flags & raw_mask) | (rawmask_for_level(new_level) * u8_t(is_level_raw));
     flags = new_level_flag bitor new_raw_flags;
     return new_level == 1;
@@ -135,15 +133,16 @@ struct PtrBits {
 
   // returns true if this is no longer a pointer
   // as in, pointer level is now 0
-#define pre edenAssume(pointer_level() >= 1); // pointer_level of 0 cannot be removed by this struct, must be done at typeID level
-  edenInlineCXPR bool removeLevel() noexcept {
-    u8_t const old_level = pointer_level();
-    u8_t const new_level_flag = (flags & level_mask) >> 1; // shift pointer level bit by one
+#define pre edenAssume(pointer_level() >= 1);
+  edenInlineCXPR bool removeLevel() noexcept { pre
+    auto const old_level = pointer_level();
+    auto const new_level = old_level - 1;
+    auto const new_level_flag = levelmask_for_level(new_level);
 
-    u8_t const rawmask_for_old_level = rawmask_for_level(old_level);
-    u8_t const new_raw_flags = flags bitand ~rawmask_for_old_level;
+    auto const rawmask_for_old_level = rawmask_for_level(old_level);
+    auto const new_raw_flags = flags bitand rawmask_for_old_level;
     flags = new_level_flag bitor new_raw_flags;
-    return old_level == 1;
+    return new_level == 0;
   }
 #undef pre
 
@@ -435,22 +434,19 @@ class FunctionType final : public Type {
   constexpr FunctionType(std::span<TypeID const> parameter_typeIDs, TypeID return_typeID, bool is_variadic) noexcept
   : Type(FUNCTION), is_variadic(is_variadic), num_parameters(parameter_typeIDs.size()), return_typeID(return_typeID) {
     assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
-    std::memcpy(this->parameter_typeIDs, parameter_typeIDs.data(), num_parameters);
+    std::memcpy(this->parameter_typeIDs, parameter_typeIDs.data(), num_parameters * sizeof(TypeID));
   }
 
 public:
 
-  edenInlineNodiscardCXPR bool sameAs(FunctionType const& other) const noexcept {
+  edenNodiscardCXPR bool sameAs(FunctionType const& other) const noexcept {
     if (num_parameters != other.num_parameters) return false;
     if (is_variadic != other.is_variadic) return false;
-    if (return_typeID.sameAs( other.return_typeID )) return false;
+    if (not return_typeID.sameAs( other.return_typeID )) return false;
 
-    for (auto i{0uz}; i<sz_t(num_parameters); ++i) {
-      auto const this_param_typeID = parameter_typeIDs[i];
-      auto const other_param_typeID = other.parameter_typeIDs[i];
+    for (auto i{0uz}; i<sz_t(num_parameters); ++i)
+      if (not parameter_typeIDs[i].sameAs( other.parameter_typeIDs[i] )) return false;
 
-      if (not this_param_typeID.sameAs(other_param_typeID)) return false;
-    }
     return true;
   }
 

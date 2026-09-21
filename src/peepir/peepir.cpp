@@ -70,7 +70,7 @@ struct TreeView {
 struct QualifiedTypeID : TypeID {
   Type::Qualifiers qualifiers{};
 
-  edenInlineCXPR void operator=(TypeID other) noexcept { TypeID::operator=(other); }
+  edenInlineCXPR QualifiedTypeID& operator=(TypeID other) noexcept { TypeID::operator=(other); return *this; }
   edenInlineCXPR QualifiedTypeID& operator=(QualifiedTypeID&) noexcept = default;
 };
 
@@ -371,8 +371,7 @@ class Peeper {
     if (not called.isCallable()) {
       if (not called.isError()) error(calling_node, "Call operator used on non-callable.");
       for (auto i{0uz}; i<num_parameters; ++i) (void)peepExpression();
-      res = errorID;
-      return res;
+      return res = errorID;
     }
 
     assert(called.isFunction());
@@ -384,36 +383,29 @@ class Peeper {
 
     if (num_parameters < parameter_count) {
       error(calling_node, "Too few parameters for function call.");
-      res = errorID;
-      return res;
+      return res = errorID;
     }
 
     if (num_parameters > parameter_count and not variadic) {
       error(calling_node, "Too many parameters for function call.");
-      res = errorID;
-      return res;
+      return res = errorID;
     }
 
     auto i{0uz};
     for (auto parameter_typeID : parameters) {
       auto const given_parameter_idx = instructions.size();
       auto const given_parameter_typeID = peepExpression();
+      auto& given_parameter_instr = instructions[given_parameter_idx];
 
-      if (not given_parameter_typeID.sameAs(parameter_typeID)) {
-        if (not given_parameter_typeID.coercibleTo(parameter_typeID)) {
-          error(calling_node, std::format("Cannot coerce parameter of type '{}' to type '{}'.", given_parameter_typeID.toString(), parameter_typeID.toString()));
-          res = errorID;
-          return res;
-        }
-
-        coerce_if_integerliteral(instructions[given_parameter_idx], parameter_typeID);
+      if (given_parameter_typeID.coercibleTo(parameter_typeID))
+        coerce_if_integerliteral(given_parameter_instr, parameter_typeID);
+      else {
+        error(given_parameter_instr, std::format("Cannot coerce parameter of type '{}' to type '{}'.", given_parameter_typeID.toString(), parameter_typeID.toString()));
+        res = errorID;
       }
     }
 
-    if (variadic) {
-      for (; i<num_parameters; ++i)
-        (void)peepExpression();
-    }
+    if (variadic) for (; i<num_parameters; ++i) (void)peepExpression();
 
     auto const fn_return_typeID = fn_type.getReturnTypeID();
     res = fn_return_typeID;
@@ -836,26 +828,12 @@ class Peeper {
 
 #define pre assert(decl_node.isDeclaration());
   constexpr void peepVarDeclaration(ASTNode decl_node) noexcept { pre
-    auto const declared = nodes.take();
-    auto const declared_name = declared.identifier_val(current_file);
-
     QualifiedTypeID qualified_typeID;
     qualified_typeID = decl_node.declaration_type();
     qualified_typeID.qualifiers.writable = decl_node.isRWDeclaration();
     locals.emplace_back( (TypeID) qualified_typeID);
 
-    bool const has_init = not decl_node.isJunkDeclaration();
-    if (module.containsLocal(declared_name)) {
-      error(declared, "Redefinition of symbol name in variable declaration.");
-      if ( has_init ) (void)peepExpression();
-      return;
-    }
-
-    if (not has_init) {
-      //module.addLocal(declared_name, qualified_typeID); // what is the point of this?
-      return;
-    }
-
+    if (decl_node.isJunkDeclaration()) return;
     auto const assign_idx = instructions.size();
     {
       instructions.emplace_back(newInstruction(decl_node, Instruction::ASSIGN));
@@ -864,7 +842,6 @@ class Peeper {
       local_instruction.local_data.idx = locals.size() - 1;
       instructions.emplace_back(local_instruction);
     }
-    //module.addLocal(declared_name, qualified_typeID); // what is the point of this?
 
     auto const init_expr_idx = instructions.size();
     auto const init_expr = peepExpression();
@@ -1015,7 +992,11 @@ void printPeepInstruction(Instruction instruction, File file) {
   case FUNCTION: return std::println("FUNCTION {}", instruction.original_string(file));
 
   case MODULE_GLOBAL: return std::println("GLOBAL {} FROM MODULE {}", instruction.module_variable_name(), instruction.module_name());
-  case MODULE_FUNCTION: return std::println("FUNCTION {} FROM MODULE {}", instruction.module_function_name(), instruction.module_name());
+  case MODULE_FUNCTION: {
+    auto const& module = getModule(instruction.module_member_data.module_id);
+    auto const& fn = module.getFunction(instruction.module_member_data.member_id);
+    return std::println("FUNCTION {} FROM MODULE {} WITH SIGNATURE {}", fn.nameof(), module.nameof(), fn.getTypeID().toString());
+  }
 
   // this doesn't have to be one line but its really funny
   case TYPE_VARIABLE: return std::println("TYPE_VARIABLE {}", getModule(instruction.type_member_data.custom_type_module_id).getCustomType( TypeID{ .derived = Type::CUSTOM, .module_id = instruction.type_member_data.custom_type_module_id, .id = instruction.type_member_data.custom_type_id } ).member_table().getVariable(instruction.type_member_data.member_id).nameof());
@@ -1115,10 +1096,9 @@ void printPeepBlocks(eden::vector<Block> const& blocks, eden::vector<Instruction
 
   while (true) {
     if (blocks[current_block].first_instruction_idx == current_instruction) {
-      if (current_block not_eq 0)
-        printPeepBlockTerminator(blocks[current_block - 1]);
-      if (current_block == num_blocks - 1)
-        break;
+      if (current_block not_eq 0) printPeepBlockTerminator(blocks[current_block - 1]);
+      if (current_block == num_blocks - 1)  break;
+
       std::println("Block {}: ", current_block);
       ++current_block;
     }

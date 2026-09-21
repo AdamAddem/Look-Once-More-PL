@@ -137,11 +137,12 @@ class Lowerer final {
   llvm::Value* i64_0;
   llvm::Value* bool_true; llvm::Value* bool_false;
 
-  struct TypeMapKey { u16_t module_id; u32_t type_id; bool operator==(TypeMapKey const&) const noexcept = default; };
+  // aligned and removed padding to make operator== faster
+  struct alignas(8) TypeMapKey { u16_t module_id; u16_t _pad{}; u32_t type_id; bool operator==(TypeMapKey const&) const noexcept = default; };
   eden::swap_map<TypeMapKey, llvm::Type*> custom_type_map;
   eden::swap_map<TypeMapKey, llvm::Type*> function_type_map;
 
-  struct FunctionMapKey { u16_t module_id; u16_t fn_id; bool operator==(FunctionMapKey const&) const noexcept = default; };
+  struct alignas(4) FunctionMapKey { u16_t module_id; u16_t fn_id; bool operator==(FunctionMapKey const&) const noexcept = default; };
   eden::swap_map<FunctionMapKey, llvm::Value*> function_imports;
 
   /* Variables used when lowering a function */

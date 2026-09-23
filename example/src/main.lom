@@ -1,3 +1,4 @@
+# Raylib Example, use --extern_flags: -lraylib
 # Window
 __C InitWindow(w: i32, h: i32, title: ref u8);
 __C CloseWindow();

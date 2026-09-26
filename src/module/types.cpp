@@ -112,7 +112,7 @@ primitiveCastableFromTo(PrimitiveType const& from, PrimitiveType const& to) noex
   case F32:
   case F64:
   case BOOL:
-  case CHAR: return eden::enumBetween(to.getUnderlyingPrimitiveType(), I8, CHAR);
+  case CHAR: return eden::enumBetween(to.getUnderlyingPrimitiveType(), U7, CHAR);
 
   case STRING: return false;
   default:
@@ -217,7 +217,7 @@ TypeID::sameAs(TypeID other) const noexcept {
   switch (derived) { using enum Type::DerivedType;
   case DEVOID:
   case ERROR:
-  case PRIMITIVE: return true;
+  case PRIMITIVE: return false;
 
   case POINTER: edenUnreachable("Should have succeeded earlier.");
 

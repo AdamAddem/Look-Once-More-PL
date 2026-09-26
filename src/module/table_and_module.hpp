@@ -162,10 +162,8 @@ class Module final : public SymbolTable {
   eden::swap_vector<ArrayType> array_types; // using a swap vector here is bad, we should only ever use search_noswap. TODO: Change
   eden::swap_vector<FunctionType> function_types;
   eden::swap_vector<CustomType> custom_types;
-  char const* name{};
-  u32_t name_len{};
   u16_t id;
-  //byte_t _pad[2];
+//byte_t _pad[6];
 
   template <std::derived_from<Type> T>
   edenInlineNodiscardCXPR static TypeID
@@ -191,14 +189,8 @@ class Module final : public SymbolTable {
   }
 
 public:
-  constexpr explicit Module(u16_t module_id) noexcept : id(module_id) {
-    array_types.reserve(8);
-    function_types.reserve(8);
-    custom_types.reserve(2);
-  }
-  constexpr Module(Module&&) noexcept = default;
-
-  void set_name(std::string_view module_name) noexcept { name = module_name.data(); name_len = module_name.size(); }
+  edenInlineCXPR explicit Module(u16_t module_id) noexcept : id(module_id) {}
+  //edenInlineCXPR Module(Module&&) noexcept = default;
 
   edenInlineNodiscardCXPR sz_t
   totalNumberOfTypes() const noexcept {
@@ -208,7 +200,6 @@ public:
            custom_types.size();
   }
 
-  edenInlineNodiscardCXPR std::string_view nameof() const noexcept { return std::string_view{name, name_len}; }
   edenInlineNodiscardCXPR u16_t getID()             const noexcept { return id; }
 
   edenInlineNodiscardCXPR sz_t numArrayTypes()    const noexcept { return array_types.size(); }
@@ -257,22 +248,6 @@ public:
     return TypeID { .derived = Type::DEVOID };
   }
 
-  // if typeID is not primitive, devoid, or error, then it must be from this module
-  /*
-  edenNodiscardCXPR Type const&
-  getTypeFromID(TypeID typeID) const noexcept {
-    switch (typeID.derived) {
-    case Type::PRIMITIVE: return PrimitiveType::make_arr()[typeID.id];
-    case Type::DEVOID:    return Type::devoid();
-    case Type::ERROR:     return Type::error();
-
-    case Type::POINTER:   assert(typeID.module_id == id); return pointer_types[typeID.id];
-    case Type::ARRAY:     assert(typeID.module_id == id); return array_types[typeID.id];
-    case Type::FUNCTION:  assert(typeID.module_id == id); return function_types[typeID.id];
-    case Type::CUSTOM:    assert(typeID.module_id == id); return custom_types[typeID.id];
-    default: edenUnreachable("Invalid derived type.");
-    }
-  } */
 };
 
 // Stabilized table and module exist so Variable* and Function* can be used without worry of the data being relocated

@@ -14,6 +14,7 @@ add_executable(lom
         src/settings.hpp
         src/settings.cpp
         src/file.hpp
+        src/generic_tu.hpp
 
         src/lexing/lex.hpp
         src/lexing/lex.cpp
@@ -39,8 +40,6 @@ add_executable(lom
 
         src/build_system/build.cpp
         src/build_system/build.hpp
-        src/build_system/print.cpp
-        src/build_system/print.hpp
 
         src/module/table_and_module_sync.hpp
 )

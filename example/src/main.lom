@@ -10,6 +10,7 @@ __C EndDrawing();
 __C ClearBackground(color: u32);
 __C DrawLine(x1: i32, y1: i32, x2: i32, y2: i32, color: u32);
 
+import Foo;
 pub main: () i32 {
     __C.InitWindow(1280, 720, "Cube");
     bg_color: u32 = cast<u32>(0) - 1;
@@ -21,5 +22,7 @@ pub main: () i32 {
     }
 
     __C.CloseWindow();
-    return 0;
+
+    n: i32 = Foo.fib(8);
+    return n;
 }

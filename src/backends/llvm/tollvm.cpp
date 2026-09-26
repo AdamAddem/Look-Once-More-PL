@@ -170,17 +170,20 @@ class Lowerer final {
     }
 
     auto const& imported_module = getModule(module_id);
+    auto const& imported_module_name = getNameOfModule(module_id);
     auto const& function = imported_module.getFunction(member_id);
 
     // TODO: this is atrocious please fix this IMMEDIATELY
-    auto const module_name = module_function.module_name();
     std::string_view full_function_name;
-    if (module_name not_eq "__C") {
-      full_function_name = std::string_view{module_name.data(), module_name.length() + 1 + function.name_len};
-      std::println("|{}|", full_function_name);
-    }
-    else
+    std::string tmp;
+    if (imported_module_name == "__C")
       full_function_name = function.nameof();
+    else {
+      tmp.append(imported_module_name);
+      tmp.push_back('.');
+      tmp.append(function.nameof());
+      full_function_name = tmp;
+    }
 
     auto const function_type = translateFunctionType(function.getTypeID());
 
@@ -782,36 +785,34 @@ class Lowerer final {
 public:
 
   void lowerToLLVM(PeepIR::TU& tu) {
-    // All of this is so stupid
+
+    // TODO: Very bad not good.
     char buff[256];
     auto const module_name = tu.name;
-    auto i{0uz};
+    auto fn_name_start{0uz};
     if (not module_name.empty()) {
       for (auto const c : module_name) {
-        buff[i] = c;
-        ++i;
+        buff[fn_name_start] = c;
+        ++fn_name_start;
       }
-      buff[i++] = '.'; buff[i] = '\0';
+      buff[fn_name_start++] = '.';
+      buff[fn_name_start] = '\0';
     }
 
-    std::vector<llvm::Function*> public_functions;
-    public_functions.reserve(tu.functions.size());
-    for (auto& func : tu.functions) {
-      auto x = compileFunction(func, tu.source_files[func.file_idx]);
-      if (func.is_public)
-        public_functions.push_back(x);
-    }
+    for (auto& fn : tu.functions) {
+      auto const llvm_fn = compileFunction(fn, tu.source_files[fn.file_idx]);
+      if (not fn.is_public) continue;
 
-    for (auto const func : public_functions) {
-      auto j{0uz};
-      auto func_name = func->getName();
-      if (func_name == "main") continue;
-      for (auto c : func_name) {
-        buff[i + j] = c;
-        ++j;
-      }
-      buff[i + j] = '\0';
-      func->setName(buff);
+      auto const fn_name = fn.nameof();
+      if (fn_name == "main") continue;
+
+      // set public functions name in the binary to module_name + '.' + func_name
+      auto fn_name_end{fn_name_start};
+      for (auto c : fn_name)
+        buff[fn_name_end] = c, ++fn_name_end;
+
+      buff[fn_name_end] = '\0';
+      llvm_fn->setName( std::string_view{buff, fn_name_end} );
     }
   }
 
@@ -830,8 +831,8 @@ public:
     devoid = llvm::Type::getVoidTy(context);
     ptr = llvm::PointerType::get(context, 0);
 
-    auto const num_custom_types = peeped_tu.module->numCustomTypes();
-    auto const num_function_types = peeped_tu.module->numFunctionTypes();
+    auto const num_custom_types = peeped_tu.module.numCustomTypes();
+    auto const num_function_types = peeped_tu.module.numFunctionTypes();
     custom_type_map.reserve(num_custom_types);
     function_type_map.reserve(num_function_types);
   }

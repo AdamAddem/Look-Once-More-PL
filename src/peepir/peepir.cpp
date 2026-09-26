@@ -167,6 +167,8 @@ class Peeper {
   edenNodiscardCXPR QualifiedTypeID
   peepModuleAccess(ASTNode module_access_node) noexcept { pre
     Instruction module_symbol = newInstruction(module_access_node);
+    module_symbol.module_member_data.member_length = module_access_node.module_access_data.member_length;
+    module_symbol.module_member_data.module_length = module_access_node.module_access_data.module_length;
 
     auto const instruction_idx = instructions.size();
     instructions.emplace_back(Instruction::NOOP);
@@ -430,9 +432,15 @@ class Peeper {
 
     auto const right_idx = instructions.size();
     auto right = peepExpression();
+    if (right.isUnsignedIntegral()) {
+      if (right.getPrimitiveType().getUnderlyingPrimitiveType() == PrimitiveType::U8) {
+        [[maybe_unused]] bool b = true;
+      }
+
+    }
 
     // TODO: THIS IS BAD AND SUCKS FIX IT NOW
-    if ( left.sameAs( (TypeID) right) ) { // if left or right is an integer literal, coerce its type to the other
+    if ( not left.sameAs( (TypeID) right) ) { // if left or right is an integer literal, coerce its type to the other
       if (coerce_if_integerliteral(instructions[left_idx], (TypeID) right))
         left = right;
       else if (coerce_if_integerliteral(instructions[right_idx], (TypeID) left))
@@ -515,7 +523,8 @@ class Peeper {
       edenUnreachable("Invalid binary operator.");
     }
 
-    switch (binary_node.binary_data.opr) { // second sets the right instruction
+    // second sets the right instruction
+    switch (binary_node.binary_data.opr) {
     case Operator::ADD:
       binary_instruction.type = left_float ? Instruction::FADD : Instruction::ADD;
       break;
@@ -939,42 +948,73 @@ class Peeper {
     }
   }
 
+  static constexpr void transmutate_tu(Parser::TU& parsed_tu) {
+    auto module_copy = std::move(parsed_tu.module);
+    auto source_files = std::move(parsed_tu.source_files);
+    auto const name = parsed_tu.name;
+
+    auto const begin = parsed_tu.functions.data();
+    auto const size = parsed_tu.functions.size();
+    auto const cap = parsed_tu.functions.capacity();
+    parsed_tu.functions.unsafe_zero_members();
+    parsed_tu.~TU();
+
+    auto const new_begin = std::start_lifetime_as_array<Function>(begin, size);
+    auto& peeped_tu = * new(&parsed_tu) TU{
+      .module = std::move(module_copy),
+      .source_files = std::move(source_files),
+      .name = name,
+      .functions = {}
+    };
+    peeped_tu.functions.unsafe_set_members(new_begin, new_begin + size, new_begin + cap, {});
+  }
+
 public:
 
-  // peeps parsed_functions and fills peeped_tu.functions
-  // returns whether an error occurted
+  // returns whether an error occured
   edenNodiscardCXPR static bool
-  peepFunctions(TU& peep_tu, eden::vector<Parser::Function> const& parsed_functions) {
-    auto& module = *peep_tu.module;
+  peepTU(Parser::TU& parsed_tu) {
+    auto& module = parsed_tu.module;
     Peeper peeper(module);
-    for (auto const& func : parsed_functions) {
-      auto const& fn = module.getFunction(func.id_in_module);
-      auto const fn_typeID = fn.getTypeID();
+
+    for (auto& parsed_fn : parsed_tu.functions) {
+      auto const fn_typeID = module.getFunction(parsed_fn.id_in_module).getTypeID();
       auto const& fn_type = fn_typeID.getFunctionType();
-      peeper.current_file = peep_tu.source_files[func.file_idx];
-      peeper.nodes.begin = func.body.cbegin();
-      peeper.nodes.end = func.body.cend();
+      peeper.current_file = parsed_tu.source_files[parsed_fn.file_idx];
+      peeper.nodes.begin = parsed_fn.body.cbegin();
+      peeper.nodes.end = parsed_fn.body.cend();
       peeper.current_function_type = &fn_type;
 
       auto const parameter_typeIDs = fn_type.getParameterTypeIDs();
       peeper.locals.reserve(parameter_typeIDs.size() + 1); // + return type
       peeper.locals.emplace_back(fn_type.getReturnTypeID());
       for (auto const parameter_typeID : parameter_typeIDs)
-        peeper.locals.emplace_back(parameter_typeID);
+        peeper.locals.emplace_back_unchecked(parameter_typeID);
 
       peeper.peepUntilEmpty();
-      peep_tu.functions.emplace_back(
-        Function {
-        .is_public = func.is_public, .file_idx = func.file_idx,
-        .name_len = func.name_len, .name_ptr = func.name_ptr,
 
-        .typeID = fn_typeID,
-        .locals = std::move(peeper.locals),
-        .instructions = std::move(peeper.instructions),
-        .blocks = std::move(peeper.blocks)
-        });
+      // transmutate the Parser::Function into a PeepIR::Function inplace
+      // hopefully all this copying is optimized away
+      auto const is_public = parsed_fn.is_public;
+      auto const file_idx = parsed_fn.file_idx;
+      auto const id_in_module = parsed_fn.id_in_module;
+      auto const name_len = parsed_fn.name_len;
+      auto const name_ptr = parsed_fn.name_ptr;
+      parsed_fn.~Function();
+
+      auto& peeped_fn = *new (&parsed_fn) Function;
+      peeped_fn.is_public = is_public;
+      peeped_fn.file_idx = file_idx;
+      peeped_fn.id_in_module = id_in_module;
+      peeped_fn.name_len = name_len;
+      peeped_fn.name_ptr = name_ptr;
+      peeped_fn.typeID = fn_typeID;
+      peeped_fn.locals = std::move(peeper.locals);
+      peeped_fn.instructions = std::move(peeper.instructions);
+      peeped_fn.blocks = std::move(peeper.blocks);
     }
 
+    transmutate_tu(parsed_tu);
     return peeper.has_error;
   }
 
@@ -985,17 +1025,17 @@ public:
 // printing functions
 namespace {
 
-void printPeepInstruction(Instruction instruction, File file) {
+void printPeepInstruction(Instruction instruction, File file, std::string_view module_name) {
   switch (instruction.type) { using enum Instruction::InstructionType;
   case NOOP: return std::println("NOOP");
   case GLOBAL: return std::println("GLOBAL {}", instruction.original_string(file));
   case FUNCTION: return std::println("FUNCTION {}", instruction.original_string(file));
 
-  case MODULE_GLOBAL: return std::println("GLOBAL {} FROM MODULE {}", instruction.module_variable_name(), instruction.module_name());
+  case MODULE_GLOBAL: return std::println("GLOBAL {} FROM MODULE {}", instruction.module_variable_name(), instruction.module_name(file));
   case MODULE_FUNCTION: {
-    auto const& module = getModule(instruction.module_member_data.module_id);
-    auto const& fn = module.getFunction(instruction.module_member_data.member_id);
-    return std::println("FUNCTION {} FROM MODULE {} WITH SIGNATURE {}", fn.nameof(), module.nameof(), fn.getTypeID().toString());
+    auto const& fn = getModule(instruction.module_member_data.module_id).getFunction(instruction.module_member_data.member_id);
+    std::println("!!\n {} \n!!", instruction.original_string(file));
+    return std::println("FUNCTION {} FROM MODULE {} WITH SIGNATURE {}", fn.nameof(), module_name, fn.getTypeID().toString());
   }
 
   // this doesn't have to be one line but its really funny
@@ -1089,7 +1129,7 @@ void printPeepBlockTerminator(Block block) {
   }
 }
 
-void printPeepBlocks(eden::vector<Block> const& blocks, eden::vector<Instruction> const& instructions, File file) {
+void printPeepBlocks(eden::vector<Block> const& blocks, eden::vector<Instruction> const& instructions, File file, std::string_view module_name) {
   auto const num_blocks = blocks.size();
   sz_t current_block{};
   sz_t current_instruction{};
@@ -1103,12 +1143,12 @@ void printPeepBlocks(eden::vector<Block> const& blocks, eden::vector<Instruction
       ++current_block;
     }
     std::print("\t");
-    printPeepInstruction(instructions[current_instruction], file);
+    printPeepInstruction(instructions[current_instruction], file, module_name);
     ++current_instruction;
   }
 
   std::print("Return Block {}:\n\t", current_block);
-  printPeepInstruction(instructions[current_instruction++], file);
+  printPeepInstruction(instructions[current_instruction++], file, module_name);
   printPeepBlockTerminator(blocks[current_block]);
 }
 
@@ -1127,7 +1167,7 @@ void PeepIR::printPeep(TU const& tu) {
       std::print("{}: {} | ", i + 1, func.locals[i + 1].toString());
     std::println();
 
-    printPeepBlocks(func.blocks, func.instructions, tu.source_files[func.file_idx]);
+    printPeepBlocks(func.blocks, func.instructions, tu.source_files[func.file_idx], tu.name);
     std::println("}}\n");
   }
 }
@@ -1143,15 +1183,10 @@ static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] 
 #endif
 }
 
-bool PeepIR::lowerToPeep(TU& tu, Parser::TU&& parsed_tu) {
+bool PeepIR::lowerToPeep(Parser::TU& parsed_tu) {
   auto const begin_time = std::chrono::high_resolution_clock::now();
 
-  tu.source_files = std::move(parsed_tu.source_files);
-  tu.module = parsed_tu.module;
-  tu.functions.reserve(parsed_tu.functions.size());
-  tu.name = parsed_tu.name;
-
-  bool const has_error = Peeper::peepFunctions(tu, parsed_tu.functions);
-  output_benchmark(begin_time, tu.name);
+  bool const has_error = Peeper::peepTU(parsed_tu);
+  output_benchmark(begin_time, parsed_tu.name);
   return has_error;
 }

@@ -274,15 +274,18 @@ public:
     case BOOL:
     case CHAR:
       return 8;
+
     case I16:
     case U15:
     case U16:
       return 16;
+
     case I32:
     case U31:
     case U32:
     case F32:
       return 32;
+
     case I64:
     case U63:
     case U64:

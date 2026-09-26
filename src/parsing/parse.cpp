@@ -61,8 +61,8 @@ class ParserBody {
   bool has_errors{};
   ExpressionTree expression_tree;
 
-  constexpr ParserBody(eden::vector<Token>& tokens, TU& tu) noexcept
-  : tokens(tokens), current_file(tu.source_files.back()), tu(tu), module(*tu.module) {
+  constexpr ParserBody(std::span<Token> tokens, TU& tu) noexcept
+  : tokens(tokens), current_file(tu.source_files.back()), tu(tu), module(tu.module) {
     imports.reserve(2);
     imports.emplace_back("__C");
   }
@@ -808,7 +808,7 @@ class ParserBody {
   }
 #undef pre
 
-#define pre assert(tokens.previous().isVarQualifier());
+#define pre assert(tokens.previous().is(TokenType::LBRACE));
   constexpr void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
     if (tokens.pop_if(TokenType::RBRACE))
       return (void)module.addCustomType(name, {});
@@ -817,14 +817,16 @@ class ParserBody {
     do { // makes it so structs must have a member, which is lowk dumb but whatever. TODO: Change
       auto const [member_name, member_qualifiers, member_type] = parseHalfDeclaration();
       members.emplace_back(member_type, member_qualifiers, member_name.originalString(current_file), true, members.size());
-    } while (tokens.pop_if(TokenType::COMMA) and not tokens.peek_is(TokenType::RBRACE));
+    } while (tokens.pop_if(TokenType::SEMI_COLON) and not tokens.peek_is(TokenType::RBRACE));
 
     if (not tokens.pop_if(TokenType::RBRACE))
       error(tokens.peek(), "Expected closing curly brace after struct definition.");
 
     (void)module.addCustomType(name, std::move(members));
   }
+#undef pre
 
+#define pre assert(tokens.previous().is(TokenType::LPAREN));
   constexpr void parseFunctionDecl(std::string_view name, bool is_public) noexcept { pre
     Function current_function;
     current_function.file_idx = u8_t(tu.source_files.size() - 1);
@@ -832,14 +834,9 @@ class ParserBody {
     current_function.name_len = name.length();
     current_function.name_ptr = name.data();
 
-    if (not tokens.pop_if(TokenType::LPAREN))
-      error(tokens.peek(), "Expected parameter list.");
-
-    // parameters and return type
-    {
-      eden::swap_vector16<SymbolTable::Variable> parameters;
-      if (tokens.peek_is(TokenType::RPAREN)) goto end_params;
-
+    eden::swap_vector16<SymbolTable::Variable> parameters;
+    // parameters
+    if (not tokens.pop_if(TokenType::RPAREN)) {
       while (true) {
         auto const [name_token, qualifiers, typeID] = parseHalfDeclaration<true>();
         auto const parameter_idx = parameters.size();
@@ -850,21 +847,17 @@ class ParserBody {
           break;
         }
       }
-
-      end_params:
-      if(not tokens.pop_if(TokenType::RPAREN))
-        error(tokens.peek(), "Expected closing parenthesis in parameter list.");
-
-      auto returnTypeID = devoidID;
-      if (not tokens.peek_is(TokenType::LBRACE))
-        returnTypeID = parseType();
-
-      auto const functionTypeID = module.addFunctionType(parameters.to_span(), returnTypeID, false);
-      auto const function_id =
-        module.addFunction( current_function.nameof(), std::move(parameters), functionTypeID, current_function.is_public );
-      module.enterFunctionScope(function_id);
-      current_function.id_in_module = function_id;
+      if(not tokens.pop_if(TokenType::RPAREN)) error(tokens.peek(), "Expected closing parenthesis in parameter list.");
     }
+
+    auto returnTypeID = devoidID;
+    if (not tokens.peek_is(TokenType::LBRACE))
+      returnTypeID = parseType();
+
+    auto const functionTypeID = module.addFunctionType(parameters.to_span(), returnTypeID, false);
+    auto const function_id = module.addFunction( current_function.nameof(), std::move(parameters), functionTypeID, current_function.is_public );
+    module.enterFunctionScope(function_id);
+    current_function.id_in_module = function_id;
 
     if (not tokens.pop_if(TokenType::LBRACE)) {
       error(tokens.peek(), "Expected function definition.");
@@ -883,23 +876,26 @@ class ParserBody {
 #undef pre
 
   constexpr void parseGlobalLevelDeclaration(bool is_public) noexcept {
-      auto const name = parseIdentifier();
-      if (not tokens.peek().isVarQualifier())
-        error(tokens.peek(), "Expected declaration qualifier ( : or $ ).");
-      else if (tokens.peek_is(TokenType::DOLLAR))
-        error(tokens.take(), "$ qualifiers currently not supported on functions or structs, sorry!");
-      else
-        tokens.pop();
+    auto const name = parseIdentifier();
+    if (not tokens.peek().isVarQualifier())
+      error(tokens.peek(), "Expected declaration qualifier ( : or $ ).");
+    else if (tokens.peek_is(TokenType::DOLLAR))
+      error(tokens.take(), "$ qualifiers currently not supported on functions or structs, sorry!");
+    else
+      tokens.pop();
 
-      if (tokens.pop_if(TokenType::LBRACE))
-        parseStructDecl(name, is_public);
-      else
-        parseFunctionDecl(name, is_public);
+    switch (tokens.peek().type) {
+    case TokenType::LBRACE: tokens.pop(); parseStructDecl(name, is_public); break;
+    case TokenType::LPAREN: tokens.pop(); parseFunctionDecl(name, is_public); break;
+    default:
+      error(tokens.peek(), "Expected { or (. Globals unsupported, sorry!");
+      sync_to_semicolon();
+    }
   }
 
 public:
   edenNodiscardCXPR static bool
-  parse(TU& tu, eden::vector<Token>& tokens) {
+  parse(TU& tu, std::span<Token> tokens) {
     ParserBody parser(tokens, tu);
 
     while (not parser.tokens.peek_is(TokenType::INVALID_TOKEN)) {
@@ -924,7 +920,7 @@ printFunction(Function const& func, TU const& tu) noexcept {
     func.is_public ? "pub " : "",
     func.nameof());
 
-  auto const& module = *tu.module;
+  auto const& module = tu.module;
   auto const function = module.getFunction(func.nameof()); edenAssume(function);
   auto const function_typeID = function->getTypeID();
   auto const num_parameters = function->num_parameters();
@@ -968,12 +964,12 @@ static void output_benchmark([[maybe_unused]] auto begin_time) {
 #endif
 }
 
-bool Parser::parseTokens(TU& out_tu, eden::vector<Token>& tokens) noexcept {
+bool Parser::parseTokens(TU& out_tu, std::span<Token> tokens) noexcept {
 #ifndef NDEBUG
   std::println("Parser::parseTokens on '{}' tu", out_tu.name);
 #endif
-  auto const begin_time = std::chrono::high_resolution_clock::now();
 
+  auto const begin_time = std::chrono::high_resolution_clock::now();
   auto const has_errors = ParserBody::parse(out_tu, tokens);
 
   output_benchmark(begin_time);

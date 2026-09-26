@@ -6,6 +6,7 @@
 
 #include "edenlib/vectors/vector.hpp"
 #include <utility>
+#include <span>
 
 namespace LOM::Lexer {
 
@@ -90,12 +91,12 @@ struct Token {
 };
 
 class TokenView {
-  using TokenIter = eden::vector<Token>::iterator;
+  using TokenIter = std::span<Token>::iterator;
   TokenIter begin;
   TokenIter end;
 
 public:
-  explicit TokenView(eden::vector<Token>& tokens) noexcept
+  explicit TokenView(std::span<Token> tokens) noexcept
   : begin(tokens.begin()), end(tokens.end()) {}
 
   TokenView(TokenIter begin, TokenIter end) noexcept

@@ -15,7 +15,9 @@ void reset_state() noexcept;
 
 // returns nullptr if non-existent
 edenPure [[nodiscard]] Module* getModule(std::string_view module_name) noexcept;
-edenHot edenPure [[nodiscard]] Module& getModule(u32_t module_id) noexcept;
+
+edenPure edenHot [[nodiscard]] Module& getModule(u16_t module_id) noexcept;
+edenPure [[nodiscard]] std::string_view getNameOfModule(u16_t module_id) noexcept;
 edenPure [[nodiscard]] Module& getCModule() noexcept;
 
 }

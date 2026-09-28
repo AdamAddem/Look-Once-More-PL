@@ -953,13 +953,13 @@ void Parser::printTU(TU const& tu) noexcept {
 }
 
 #include <chrono>
-static void output_benchmark([[maybe_unused]] auto begin_time) {
+static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] std::string_view name) {
 #ifdef STAGE_BENCHMARKS
   auto end_time = std::chrono::high_resolution_clock::now();
   std::println("{:>10}, {:>10} | Parsing {}",
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    tu.source_files.back().path()
+    name
   );
 #endif
 }
@@ -968,7 +968,7 @@ bool Parser::parseTokens(TU& out_tu, std::span<Token> tokens) noexcept {
   auto const begin_time = std::chrono::high_resolution_clock::now();
   auto const has_errors = ParserBody::parse(out_tu, tokens);
 
-  output_benchmark(begin_time);
+  output_benchmark(begin_time, out_tu.name);
   return has_errors;
 }
 

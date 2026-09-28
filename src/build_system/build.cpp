@@ -22,11 +22,11 @@ fs::path const src_path{"src"};
 fs::path const extern_path{"extern"};
 
 union TUnion {
-  GenericTU  generic_tu;
+  GenericTU  m;
   Parser::TU parser_tu;
   PeepIR::TU peepir_tu;
 
-  edenInlineCXPR explicit TUnion(u16_t tu_id) : parser_tu(tu_id) { generic_tu.source_files.reserve(1); }
+  edenInlineCXPR explicit TUnion(u16_t tu_id) : parser_tu(tu_id) { m.source_files.reserve(1); }
   edenInlineCXPR ~TUnion() { peepir_tu.~TU(); }
 };
 static_assert( sizeof(Parser::TU) == sizeof(PeepIR::TU) );
@@ -56,7 +56,7 @@ class Globals {
     auto const tu_array = std::start_lifetime_as_array<TUnion>(::operator new(num_tus * sizeof(TUnion), align_t{64}), num_tus);
     tu_list.reset( tu_array, num_tus );
 
-    std::construct_at<TUnion>(tu_array, C_TU_IDX)->generic_tu.name = "__C";
+    std::construct_at<TUnion>(tu_array, C_TU_IDX)->m.name = "__C";
     for (sz_t i{MAIN_TU_IDX}; i<num_tus; ++i) {
       auto const id = (u16_t) i;
       auto* tu = std::construct_at<TUnion>(tu_array + i, id);
@@ -68,7 +68,7 @@ class Globals {
       auto const module_name = std::string_view{module_name_cstr, n-1};
 
       module_map.emplace(module_name, id);
-      tu->generic_tu.name = module_name;
+      tu->m.name = module_name;
     }
   }
 
@@ -120,7 +120,7 @@ void compileExtern() {
 edenNoInlineCold void
 print_parsed() noexcept {
   for (auto const& tu : Globals::getUserTUs()) {
-    std::println("\n--- Parser Output --- {}", tu.generic_tu.name);
+    std::println("\n--- Parser Output --- {}", tu.m.name);
     Parser::printTU(tu.parser_tu);
     std::println("\n--- Parser Output ---");
   }
@@ -129,7 +129,7 @@ print_parsed() noexcept {
 edenNoInlineCold void
 print_peeped() noexcept {
   for (auto const& tu : Globals::getUserTUs()) {
-    std::println("\n--- Peep Output --- {}", tu.generic_tu.name);
+    std::println("\n--- Peep Output --- {}", tu.m.name);
     PeepIR::printPeep(tu.peepir_tu);
     std::println("\n--- Parser Output ---");
   }
@@ -147,7 +147,7 @@ print_errors(File file) {
 edenHot edenPure [[nodiscard]] Module&
 LOM::getModule(u16_t module_id) noexcept {
   assert(module_id < Globals::numTUs());
-  return Globals::getTU(module_id).generic_tu.module;
+  return Globals::getTU(module_id).m.module;
 }
 
 // returns nullptr if not found
@@ -161,7 +161,7 @@ LOM::getModule(std::string_view module_name) noexcept {
 edenPure [[nodiscard]] std::string_view
 LOM::getNameOfModule(u16_t module_id) noexcept {
   assert(module_id < Globals::numTUs());
-  return Globals::getTU(module_id).generic_tu.name;
+  return Globals::getTU(module_id).m.name;
 }
 
 edenPure [[nodiscard]] Module& LOM::getCModule() noexcept { return getModule(C_TU_IDX); }
@@ -229,7 +229,7 @@ peep_modules() {
     if (not PeepIR::lowerToPeep(tu.parser_tu)) continue;
 
     has_error = true;
-    for (auto const file : tu.generic_tu.source_files) print_errors(file);
+    for (auto const file : tu.m.source_files) print_errors(file);
   }
 
   if (has_error) return true;
@@ -261,7 +261,6 @@ void output_benchmark([[maybe_unused]] auto begin_time) {
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time)
   );
-  std::println("{:>10} Full Parsing Duration.", Parser::parsing_durr);
 #endif
 }
 
@@ -279,7 +278,6 @@ void LOM::build() {
     throw std::runtime_error("LookOnceMore: src directory not found!");
 
   Globals::init();
-
   if (parse_modules()) return;
   if (peep_modules())  return;
 
@@ -288,9 +286,7 @@ void LOM::build() {
 
   if (compile_extern.joinable()) {
     compile_extern.join();
-    Globals::module_paths.reserve(Globals::numTUs() + Globals::extern_objects_paths.size());
-    for (auto& extern_path : Globals::extern_objects_paths)
-      Globals::module_paths.emplace_back_unchecked(std::move(extern_path));
+    Globals::module_paths.move_append_range( Globals::extern_objects_paths.to_span() );
   }
 
 #ifdef NO_MEASUREMENT

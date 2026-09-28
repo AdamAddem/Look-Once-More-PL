@@ -844,7 +844,7 @@ public:
 
 std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU&& peeped_tu, std::filesystem::path const& file) {
 #ifdef STAGE_BENCHMARKS
-  auto begin_time = std::chrono::high_resolution_clock::now();
+  auto const begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
   auto backend = std::make_unique<TU>(file.native());
@@ -852,11 +852,11 @@ std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU&& peeped_tu, std::filesystem
   codegen.lowerToLLVM(peeped_tu);
 
 #ifdef STAGE_BENCHMARKS
-  auto end_time = std::chrono::high_resolution_clock::now();
+  auto const end_time = std::chrono::high_resolution_clock::now();
   std::println("{:>10}, {:>10} | LLVM {}",
     end_time - begin_time,
     std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    peeped_tu.module->nameof()
+    peeped_tu.name
   );
 #endif
 

@@ -14,6 +14,7 @@
 #include <span>
 #include <utility>
 
+#include <print>
 namespace LOM {
 
 class PrimitiveType;
@@ -154,7 +155,11 @@ private:
   static constexpr u8_t l3_ptr_mask = 1 << 2;
   static constexpr u8_t l4_ptr_mask = 1 << 3;
   static constexpr u8_t level_mask = l1_ptr_mask | l2_ptr_mask | l3_ptr_mask | l4_ptr_mask;
-  edenInlineNodiscardCXPR static u8_t levelmask_for_level(u8_t ptr_level) noexcept { return 1 << (ptr_level - 1); }
+  edenInlineNodiscardCXPR static u8_t levelmask_for_level(u8_t ptr_level) noexcept {
+    auto const n = u32_t(ptr_level - 1) & u32_t(0b1111); // when ptr_level is 0, this will overflow then be truncated to 15
+    auto const m = u8_t(1 << n);  // truncation is necessary to prevent shifting 1 by a large amount
+    return m;
+  }
 
   static constexpr u8_t l1_raw_mask = 1 << 4;
   static constexpr u8_t l2_raw_mask = 1 << 5;

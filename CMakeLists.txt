@@ -8,7 +8,7 @@ find_package(LLVM 22.1.4 REQUIRED CONFIG)
 
 include_directories(${PROJECT_SOURCE_DIR}/src)
 add_executable(lom
-        main.cpp
+        src/main.cpp
         src/error.hpp
         src/error.cpp
         src/settings.hpp

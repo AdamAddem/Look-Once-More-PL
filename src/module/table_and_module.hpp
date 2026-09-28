@@ -200,8 +200,7 @@ public:
            custom_types.size();
   }
 
-  edenInlineNodiscardCXPR u16_t getID()             const noexcept { return id; }
-
+  edenInlineNodiscardCXPR u16_t getID()           const noexcept { return id; }
   edenInlineNodiscardCXPR sz_t numArrayTypes()    const noexcept { return array_types.size(); }
   edenInlineNodiscardCXPR sz_t numFunctionTypes() const noexcept { return function_types.size(); }
   edenInlineNodiscardCXPR sz_t numCustomTypes()   const noexcept { return custom_types.size(); }

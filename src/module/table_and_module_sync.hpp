@@ -3,8 +3,8 @@
 // This exists to solve the cyclic dependency between symbol_table.hpp and types.hpp.
 // symbol_table.hpp static_asserts that these properties hold true.
 namespace LOM {
-inline constexpr auto SYMBOL_TABLE_SIZE = 48uz;
-inline constexpr auto SYMBOL_TABLE_ALIGNMENT = 8uz;
-inline constexpr auto MODULE_SIZE = 128uz;
-inline constexpr auto MODULE_ALIGNMENT = 8uz;
+static constexpr sz_t SYMBOL_TABLE_SIZE = 48;
+static constexpr sz_t SYMBOL_TABLE_ALIGNMENT = 8;
+static constexpr sz_t MODULE_SIZE = 128;
+static constexpr sz_t MODULE_ALIGNMENT = 8;
 }

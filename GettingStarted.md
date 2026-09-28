@@ -17,7 +17,6 @@ LookOnceMore uses a folder-based module system. <br>
 A module contains one or more .lom files, which are all compiled together into one translation unit. <br>
 To create a module, simply create a directory within 'src'. The module's name is the directory's name. <br>
 All .lom files within that directory will be compiled as part of the module. <br>
-Any directory prefixed with '.' will not be considered. <br>
 No individual module may exceed 256 files. <br>
 
 In the top level source directory, it is required that there be one file named 'main.lom'. <br>

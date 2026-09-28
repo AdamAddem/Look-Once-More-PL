@@ -447,7 +447,7 @@ public:
     if (is_variadic != other.is_variadic) return false;
     if (not return_typeID.sameAs( other.return_typeID )) return false;
 
-    for (auto i{0uz}; i<sz_t(num_parameters); ++i)
+    for (sz_t i{}; i<sz_t(num_parameters); ++i)
       if (not parameter_typeIDs[i].sameAs( other.parameter_typeIDs[i] )) return false;
 
     return true;

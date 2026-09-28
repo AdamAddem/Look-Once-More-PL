@@ -3,7 +3,7 @@
 using namespace LOM::Lexer;
 
 #include <print>
-void TokenView::print([[maybe_unused]] File const& file) const {
+void TokenView::print([[maybe_unused]] File file) const {
 
   auto curr = begin;
   while (curr not_eq end) {

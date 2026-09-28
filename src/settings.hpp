@@ -18,14 +18,14 @@ std::string_view getExternFlags() noexcept;
 u8_t getOptimizationLevel() noexcept;
 void setArgs(unsigned argc, const char* argv[]);
 
-inline constexpr auto MAX_FUNCTION_PARAMETERS = 8;
-inline constexpr auto MAX_TYPELIST_MEMBERS = 8;
-inline constexpr auto MAX_STRUCT_MEMBER_VARIABLES = 256;
-inline constexpr auto SUBMODULE_SUPPORT = false;
-inline constexpr auto MULTITHREADING_SUPPORT = false;
-inline constexpr auto PARAMETERS_READONLY = true;
-inline constexpr auto ONLY_FUNCTIONS_CALLABLE = true;
-inline constexpr auto ONLY_PRIMITIVES_ARITHMETIC = true;
+static constexpr sz_t MAX_FUNCTION_PARAMETERS = 8;
+static constexpr sz_t MAX_TYPELIST_MEMBERS = 8;
+static constexpr sz_t MAX_STRUCT_MEMBER_VARIABLES = 256;
+static constexpr auto SUBMODULE_SUPPORT = false;
+static constexpr auto MULTITHREADING_SUPPORT = false;
+static constexpr auto PARAMETERS_READONLY = true;
+static constexpr auto ONLY_FUNCTIONS_CALLABLE = true;
+static constexpr auto ONLY_PRIMITIVES_ARITHMETIC = true;
 
 // lol
 #ifdef __clang__

@@ -221,7 +221,7 @@ struct Tokenizer {
     }
 
     pop();
-    auto nested{1uz};
+    sz_t nested{1};
     while (peek() not_eq FILE_EOF and nested > 0) {
       auto const first = peek();
       auto const second = peek_ahead();
@@ -253,10 +253,6 @@ void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] File fi
 
 
 bool Lexer::tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
-#ifndef NDEBUG
-  std::println("Lexer::tokenizeFile on file {}", file.path());
-#endif
-
   auto const begin_time = std::chrono::high_resolution_clock::now();
   Tokenizer tokenizer{out_tokens, file};
   if (tokenizer.peek() == '.') {
@@ -285,7 +281,7 @@ bool Lexer::tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
 
   auto const invalid_token = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
   out_tokens.reserve(out_tokens.size() + INVALID_TOKEN_PADDING);
-  for (auto i{0uz}; i < INVALID_TOKEN_PADDING; ++i)
+  for (sz_t i{}; i < INVALID_TOKEN_PADDING; ++i)
     out_tokens.push_back(invalid_token);
 
   output_benchmark(begin_time, file);

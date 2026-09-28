@@ -6,6 +6,7 @@
 #include "settings.hpp"
 #include "edenlib/vectors/swap_vector.hpp"
 
+#include <cassert>
 #include <chrono>
 #include <filesystem>
 #include <print>
@@ -213,7 +214,7 @@ class Lowerer final {
     auto const num_params = parameter_typeIDs.size();
 
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
-    for (auto i{0uz}; i<num_params; ++i)
+    for (sz_t i{}; i<num_params; ++i)
       arg_types[i] = translateType( parameter_typeIDs[i] );
 
     // hack
@@ -277,7 +278,7 @@ class Lowerer final {
     auto const& member_table = custom_type.member_table();
     auto const num_members = member_table.num_variables();
     llvm::Type* member_types[Settings::MAX_STRUCT_MEMBER_VARIABLES];
-    auto i{0uz};
+    sz_t i{};
     for (; i<num_members; ++i) {
       auto const member = member_table.getVariable(i);
       auto const member_typeID = member.typeID;
@@ -594,7 +595,7 @@ class Lowerer final {
     case CALL: {
       auto const fn = genRefExpression();
       llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
-      for (auto i{0uz}; i<instruction.call_data.num_parameters; ++i)
+      for (sz_t i{}; i<instruction.call_data.num_parameters; ++i)
         parameters[i] = genValueExpression();
 
       return builder.CreateCall(
@@ -661,7 +662,7 @@ class Lowerer final {
     case CALL: {
       auto const fn = genRefExpression();
       llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
-      for (auto i{0uz}; i<instruction.call_data.num_parameters; ++i)
+      for (sz_t i{}; i<instruction.call_data.num_parameters; ++i)
         parameters[i] = genValueExpression();
 
       return builder.CreateCall(
@@ -730,7 +731,7 @@ class Lowerer final {
       auto const entry = llvm::BasicBlock::Create(tu->context, "", llvmfunc);
       builder.SetInsertPoint(entry);
       llvm_blocks.emplace_back(entry);
-      for (auto i{1uz}; i<mir_blocks.size(); ++i) {
+      for (sz_t i{1}; i<mir_blocks.size(); ++i) {
         llvm_blocks.emplace_back(
           llvm::BasicBlock::Create(tu->context, "", llvmfunc));
       }
@@ -741,7 +742,7 @@ class Lowerer final {
         (return_type->isVoidTy()) ? nullptr
         : builder.CreateAlloca(return_type, nullptr) );
 
-      for (auto i{0uz}; i<num_params; ++i) {
+      for (sz_t i{}; i<num_params; ++i) {
         llvm::AllocaInst* param_alloca = builder.CreateAlloca(arg_types[i], nullptr);
         builder.CreateStore(arg, param_alloca);
         locals.emplace_back(param_alloca);
@@ -761,7 +762,7 @@ class Lowerer final {
     // codegen
     {
       auto const num_blocks = mir_blocks.size();
-      auto block_idx{0uz};
+      sz_t block_idx{};
       while (block_idx < (num_blocks - 1)) {
         genBlock(mir_blocks[block_idx+1].first_instruction_idx, block_idx);
         ++block_idx;
@@ -789,7 +790,7 @@ public:
     // TODO: Very bad not good.
     char buff[256];
     auto const module_name = tu.name;
-    auto fn_name_start{0uz};
+    sz_t fn_name_start{};
     if (not module_name.empty()) {
       for (auto const c : module_name) {
         buff[fn_name_start] = c;

@@ -1,7 +1,6 @@
 #pragma once
 #include "backends/codegen.hpp"
 
-#include <cassert>
 #include <filesystem>
 
 namespace LOM::PeepIR {

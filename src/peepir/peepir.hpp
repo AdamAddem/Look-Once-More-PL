@@ -144,7 +144,7 @@ struct Instruction {
     std::string res;
     auto const orig = original_string(file);
     res.reserve(orig.size() + 1);
-    for (auto i{0uz}; i < orig.size(); ++i) {
+    for (sz_t i{}; i < orig.size(); ++i) {
       char c = orig[i];
       if (c == '\\') {
         ++i;

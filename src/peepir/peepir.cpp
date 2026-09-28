@@ -372,7 +372,7 @@ class Peeper {
     auto const called = peepExpression();
     if (not called.isCallable()) {
       if (not called.isError()) error(calling_node, "Call operator used on non-callable.");
-      for (auto i{0uz}; i<num_parameters; ++i) (void)peepExpression();
+      for (sz_t i{}; i<num_parameters; ++i) (void)peepExpression();
       return res = errorID;
     }
 
@@ -393,7 +393,7 @@ class Peeper {
       return res = errorID;
     }
 
-    auto i{0uz};
+    sz_t i{};
     for (auto parameter_typeID : parameters) {
       auto const given_parameter_idx = instructions.size();
       auto const given_parameter_typeID = peepExpression();
@@ -926,7 +926,7 @@ class Peeper {
 
     //turn ret into a br to the return block
     //turn brc with identical branches into a br
-    for (auto i{0uz}; i<blocks.size()-1; ++i) {
+    for (sz_t i{}; i<blocks.size()-1; ++i) {
       auto& block = blocks[i];
       switch (block.terminator_type) {
       case Block::Terminator::BR: break;
@@ -1163,7 +1163,7 @@ void PeepIR::printPeep(TU const& tu) {
 
     std::print("Locals: | ");
     auto const num_locals = func.locals.size() - 1;
-    for (auto i{0uz}; i<num_locals; ++i)
+    for (sz_t i{}; i<num_locals; ++i)
       std::print("{}: {} | ", i + 1, func.locals[i + 1].toString());
     std::println();
 

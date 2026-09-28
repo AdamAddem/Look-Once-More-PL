@@ -120,7 +120,7 @@ public:
     return res;
   }
 
-  void print(File const& file) const;
+  void print(File file) const;
 
   edenNodiscardCXPR Token
   viewAsStringToken() const noexcept {
@@ -132,7 +132,7 @@ public:
 
 };
 
-inline constexpr auto INVALID_TOKEN_PADDING = 8uz;
+inline constexpr sz_t INVALID_TOKEN_PADDING = 8;
 
 // Returns whether an error occured.
 // Populates out_tokens and pads with invalid tokens.

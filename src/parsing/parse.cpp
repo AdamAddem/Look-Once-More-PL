@@ -622,7 +622,7 @@ class ParserBody {
       error(tokens.peek(), "Expected {.");
     }
 
-    auto num_substatements{0uz};
+    sz_t num_substatements{};
     while (not tokens.peek_is(TokenType::RBRACE)) {
       parseStatement();
       ++num_substatements;
@@ -926,7 +926,7 @@ printFunction(Function const& func, TU const& tu) noexcept {
   auto const num_parameters = function->num_parameters();
   auto const returnTypeID = function_typeID.getFunctionType().getReturnTypeID();
 
-  for (auto i{0uz}; i<num_parameters; ++i) {
+  for (sz_t i{}; i<num_parameters; ++i) {
     auto const& parameter = function->getLocal(i);
     std::print("{}", parameter.typeID.toString());
     std::print(" {}, ", parameter.nameof());
@@ -965,10 +965,6 @@ static void output_benchmark([[maybe_unused]] auto begin_time) {
 }
 
 bool Parser::parseTokens(TU& out_tu, std::span<Token> tokens) noexcept {
-#ifndef NDEBUG
-  std::println("Parser::parseTokens on '{}' tu", out_tu.name);
-#endif
-
   auto const begin_time = std::chrono::high_resolution_clock::now();
   auto const has_errors = ParserBody::parse(out_tu, tokens);
 

@@ -233,7 +233,7 @@ TypeID::sameAs(TypeID other) const noexcept {
 
     auto const this_parameterTypeIDs = this_fn_type.getParameterTypeIDs();
     auto const other_parameterTypeIDs = other_fn_type.getParameterTypeIDs();
-    for (auto i{0uz}; i<this_fn_type.numParameters(); ++i) {
+    for (sz_t i{}; i<this_fn_type.numParameters(); ++i) {
       auto const this_param_typeID = this_parameterTypeIDs[i];
       auto const other_param_typeID = other_parameterTypeIDs[i];
 
@@ -324,7 +324,7 @@ CustomType::definitionToString() const noexcept {
 
   auto const& table = member_table();
   auto const num_members = table.num_variables();
-  for (auto i{0uz}; i<num_members; ++i) {
+  for (sz_t i{}; i<num_members; ++i) {
     auto const& member = table.getVariable(i);
     string_rep.append("\n\t");
     string_rep.append(member.typeID.toString());

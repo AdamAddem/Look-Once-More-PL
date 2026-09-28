@@ -249,25 +249,6 @@ public:
 
 };
 
-// Stabilized table and module exist so Variable* and Function* can be used without worry of the data being relocated
-// They only allow for id-based search which is ~O(1)
-class StabilizedTable {
-  SymbolTable const* table{};
-public:
-  edenInlineCXPR void set(SymbolTable const* to_stabilize) noexcept { table = to_stabilize; }
-  edenInlineNodiscardCXPR SymbolTable::Variable const& getVariable(u16_t variable_id) const noexcept { return table->getVariable(variable_id); }
-  edenInlineNodiscardCXPR SymbolTable::Function const& getFunction(u16_t function_id) const noexcept { return table->getFunction(function_id); }
-};
-
-class StabilizedModule {
-  Module const* module{};
-public:
-  edenInlineCXPR void set(Module const* to_stabilize) noexcept { module = to_stabilize; }
-  edenInlineNodiscardCXPR SymbolTable::Variable const& getVariable(u16_t variable_id) const noexcept { return module->getVariable(variable_id); }
-  edenInlineNodiscardCXPR SymbolTable::Function const& getFunction(u16_t function_id) const noexcept { return module->getFunction(function_id); }
-  edenInlineNodiscardCXPR u32_t getID() const noexcept { return module->getID(); }
-};
-
 #include "table_and_module_sync.hpp"
 static_assert(sizeof(SymbolTable) == SYMBOL_TABLE_SIZE);
 static_assert(alignof(SymbolTable) == SYMBOL_TABLE_ALIGNMENT);

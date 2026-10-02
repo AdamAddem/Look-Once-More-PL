@@ -85,10 +85,6 @@ private:
   mutable eden::swap_vector<Function, eden::swap_vector_settings<4, true>{}> functions;
   mutable eden::swap_vector<Variable> variables;
 
-#define pre assert(variables.empty());
-  constexpr void overrideVariables(eden::swap_vector<Variable>&& new_variables) noexcept { variables = std::move(new_variables); }
-#undef pre
-
   edenInlineNodiscardCXPR Function& current_scope() const noexcept { assert(not functions.empty()); return functions.back(); }
 public:
 
@@ -190,7 +186,6 @@ class Module final : public SymbolTable {
 
 public:
   edenInlineCXPR explicit Module(u16_t module_id) noexcept : id(module_id) {}
-  //edenInlineCXPR Module(Module&&) noexcept = default;
 
   edenInlineNodiscardCXPR sz_t
   totalNumberOfTypes() const noexcept {
@@ -211,8 +206,7 @@ public:
     auto const num_parameters = parameters.size(); assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
 
     TypeID parameter_typeIDs[Settings::MAX_FUNCTION_PARAMETERS];
-    for (auto i{0uz}; i<num_parameters; ++i)
-      parameter_typeIDs[i] = parameters[i].typeID;
+    for (sz_t i{}; i<num_parameters; ++i) parameter_typeIDs[i] = parameters[i].typeID;
 
     return addFunctionType({parameter_typeIDs, num_parameters}, returnTypeID, is_variadic);
   }
@@ -222,7 +216,7 @@ public:
   addCustomType(std::string_view type_name, eden::swap_vector<Variable>&& members) noexcept { pre
     auto const customID = makeNew(custom_types, id, CustomType{type_name});
     auto& custom = custom_types[customID.id];
-    custom.member_table().overrideVariables(std::move(members));
+    custom.member_table().variables = std::move(members);
     return customID;
   }
 #undef pre

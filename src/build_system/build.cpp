@@ -171,7 +171,7 @@ namespace {
 [[nodiscard]] bool
 parse_file(eden::vector<Lexer::Token>& tokens, Parser::TU& tu, fs::path const& path) {
   auto const file = tu.source_files.emplace_back(path);
-  if (Lexer::tokenizeFile(tokens, file))         { print_errors(file); return true; }
+  if (Lexer::tokenizeFile(tokens, file)) { print_errors(file); return true; }
   if (Parser::parseTokens(tu, tokens.to_span())) { print_errors(file); return true; }
   return false;
 }

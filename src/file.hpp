@@ -13,6 +13,7 @@ namespace LOM {
 class File {
   std::string_view text; // purposefully leaks atm
 public:
+  static constexpr char EOF_CHAR = '\0';
   explicit File(std::filesystem::path const& file_path) {
     std::ifstream stream(file_path); if (not stream.is_open()) throw std::runtime_error(std::format("LookOnceMore: {} file not found.", file_path.native()));
 
@@ -23,7 +24,7 @@ public:
     auto const buff_length = file_size + file_path_size + 2; // +2 for the extra null terminators
     auto const file_buff = new char[buff_length];
     stream.read(file_buff, file_size);
-    file_buff[file_size] = '\0';
+    file_buff[file_size] = EOF_CHAR;
 
     std::strncpy(file_buff + file_size + 1, file_path.c_str(), file_path_size + 1);
     text = {file_buff, buff_length};

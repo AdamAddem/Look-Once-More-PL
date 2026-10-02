@@ -1,34 +1,179 @@
 #include "lex.hpp"
-#include "edenlib/vectors/releasing_vector.hpp"
-#include "error.hpp"
-
+#include "edenlib/macros.hpp"
+#include "tokentype.hpp"
 #include <cassert>
 #include <cctype>
 #include <chrono>
-#include <unordered_map>
-#include <print>
+#include <cstdlib>
+#include <string_view>
+#include "error.hpp"
 
-namespace {
 using namespace LOM;
 using namespace LOM::Lexer;
 
-edenInlineNodiscardCXPR bool canStartIdentifier(char c) noexcept { return std::isalpha(c) or c == '_'; }
-edenInlineNodiscardCXPR bool is_num(char c) noexcept { return c >= '0' and c <= '9'; }
+
+namespace {
+
+// this code to make a perfect hash function was ai generated, need to verify / optimize
+struct WordToken { std::string_view word; TokenType type; };
+inline constexpr WordToken wordTokens[]{
+  {"$", TokenType::INVALID_TOKEN},
+  {"fn", TokenType::KEYWORD_FN},
+  {"if", TokenType::KEYWORD_IF},
+  {"else", TokenType::KEYWORD_ELSE},
+  {"u8", TokenType::KEYWORD_u8},
+  {"u16", TokenType::KEYWORD_u16},
+  {"u32", TokenType::KEYWORD_u32},
+  {"u64", TokenType::KEYWORD_u64},
+  {"i8", TokenType::KEYWORD_i8},
+  {"i16", TokenType::KEYWORD_i16},
+  {"i32", TokenType::KEYWORD_i32},
+  {"i64", TokenType::KEYWORD_i64},
+  {"f32", TokenType::KEYWORD_f32},
+  {"f64", TokenType::KEYWORD_f64},
+  {"char", TokenType::KEYWORD_CHAR},
+  {"string", TokenType::KEYWORD_STRING},
+  {"bool", TokenType::KEYWORD_BOOL},
+  {"raw", TokenType::KEYWORD_RAW},
+  {"ref", TokenType::KEYWORD_REF},
+  {"while", TokenType::KEYWORD_WHILE},
+  {"return", TokenType::KEYWORD_RETURN},
+  {"true", TokenType::BOOL_LITERAL},
+  {"false", TokenType::BOOL_LITERAL},
+
+/*
+  {"INTEGER_LITERAL", TokenType::INTEGER_LITERAL},
+  {"FLOAT_LITERAL", TokenType::FLOAT_LITERAL},
+  {"DOUBLE_LITERAL", TokenType::DOUBLE_LITERAL},
+  {"CHAR_LITERAL", TokenType::CHAR_LITERAL},
+  {"BOOL_LITERAL", TokenType::BOOL_LITERAL},
+  {"STRING_LITERAL", TokenType::STRING_LITERAL},
+  {"ESCAPED_STRING_LITERAL", TokenType::ESCAPED_STRING_LITERAL}, */
+
+  {"and", TokenType::KEYWORD_AND},
+  {"or", TokenType::KEYWORD_OR},
+  {"xor", TokenType::KEYWORD_XOR},
+  {"not", TokenType::KEYWORD_NOT},
+  {"eq", TokenType::KEYWORD_EQUALS},
+  {"not_eq", TokenType::KEYWORD_NOT_EQUAL},
+  {"bitand", TokenType::KEYWORD_BITAND},
+  {"bitor", TokenType::KEYWORD_BITOR},
+  {"bitxor", TokenType::KEYWORD_BITXOR},
+  {"bitnot", TokenType::KEYWORD_BITNOT},
+
+  {"cast", TokenType::KEYWORD_CAST},
+  {"global", TokenType::KEYWORD_GLOBAL},
+  {"null", TokenType::KEYWORD_NULL},
+  {"junk", TokenType::KEYWORD_JUNK},
+  {"default", TokenType::KEYWORD_DEFAULT},
+  {"struct", TokenType::KEYWORD_STRUCT},
+  {"pub", TokenType::KEYWORD_PUB},
+  {"import", TokenType::KEYWORD_IMPORT},
+  {"__C", TokenType::DUNDER_CEXTERN},
+  {"__va", TokenType::DUNDER_VA},
+
+
+};
+constexpr sz_t numWordTokens = std::size(wordTokens);
+constexpr sz_t INVALID_TOKEN_IDX = 0;
+
+struct WordHash {
+  u32_t firstWeight;
+  u32_t lastWeight;
+
+  std::array<u8_t, 256> indices;
+  constexpr WordHash(u32_t a, u32_t b) : firstWeight(a), lastWeight(b) {
+    indices.fill(INVALID_TOKEN_IDX);
+  }
+
+  constexpr sz_t bucket(std::string_view word) const noexcept {
+    auto const a = firstWeight * (u8_t) word.front();
+    auto const b = lastWeight * (u8_t) word.back();
+    return (word.size() + a + b) & 255u;
+  }
+};
+
+constexpr auto wordHash = [] consteval {
+  static_assert(numWordTokens < 256);
+  for (u32_t first{1}; first < 128; first += 2) {
+    for (u32_t last{1}; last < 128; last += 2) {
+      WordHash hash{first, last};
+      bool collision = false;
+      for (sz_t i{}; i < numWordTokens; ++i) {
+        auto& index = hash.indices[ hash.bucket(wordTokens[i].word) ];
+        if (index != INVALID_TOKEN_IDX) { collision = true; break; }
+        index = u8_t(i);
+      }
+      if (not collision) return hash;
+    }
+  }
+  throw "No perfect keyword hash: expand the table or the weight search";
+}();
+
+edenNodiscardCXPR TokenType classifyWord(std::string_view word) noexcept {
+  auto const index = wordHash.indices[wordHash.bucket(word)];
+  auto const& candidate = wordTokens[index];
+  return word == candidate.word ? candidate.type : TokenType::IDENTIFIER;
+}
+
+
+enum CharCategory : u8_t { 
+     IDENT_START = 1 << 0, 
+  IDENT_CONTINUE = 1 << 1, 
+           DIGIT = 1 << 2, 
+           SPACE = 1 << 3, 
+         COMMENT = 1 << 4, 
+    FILE_EOF_CAT = 1 << 5, 
+     NEWLINE_CAT = 1 << 6, 
+};
+constexpr u8_t LETTER_OR_UNDER = IDENT_START | IDENT_CONTINUE;
+constexpr u8_t NUMBER = DIGIT | IDENT_CONTINUE;
+constexpr u8_t NEWLINE = SPACE | NEWLINE_CAT;
+constexpr u8_t EOF_OR_NEWLINE = FILE_EOF_CAT | NEWLINE_CAT;
+
+constexpr auto charCategoryTable = [] {
+  std::array<u8_t, 256> table{};
+  static constexpr auto letter_span = 'z' - 'a';
+  for (sz_t c{}; c <= letter_span; ++c) {
+    table[c + (sz_t) 'a'] = LETTER_OR_UNDER;
+    table[c + (sz_t) 'A'] = LETTER_OR_UNDER;
+  }
+  table['_'] = LETTER_OR_UNDER;
+
+  static constexpr auto num_span = '9' - '0';
+  for (sz_t c{}; c <= num_span; ++c)
+    table[c + (sz_t) '0'] = NUMBER;
+  
+  table[' '] = SPACE;
+  table['\t'] = SPACE;
+  table['\n'] = NEWLINE;
+  table['\r'] = SPACE;
+  table['\f'] = SPACE;
+  table['\t'] = SPACE;
+  
+  table['#'] = COMMENT;
+  table[ File::EOF_CHAR ] = FILE_EOF_CAT;
+  return table;
+}();
+
+edenInlineNodiscardCXPR u8_t categorize(char c) noexcept { return charCategoryTable[(sz_t) c]; }
 
 struct Tokenizer {
   eden::vector<Token>& token_list;
   File file;
+  std::string_view text;
   u32_t current_position{};
   bool has_errors{};
 
-  static constexpr char FILE_EOF = '\0';
   explicit Tokenizer(eden::vector<Token>& token_list, File file)
-  : token_list(token_list), file(file) {}
+  : token_list(token_list), file(file), text(file.get_text()) {}
 
-  edenInlineNodiscardCXPR char peek() const noexcept { return file.get_text()[current_position]; }
-  edenInlineNodiscardCXPR char peek_ahead(i64_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
-  edenInlineNodiscardCXPR char take() noexcept { return file.get_text()[current_position++]; }
-  edenInlineNodiscardCXPR char previous() const noexcept { return file.get_text()[current_position - 1]; }
+  edenInlineNodiscardCXPR char peek() const noexcept { return text[current_position]; }
+  edenInlineNodiscardCXPR std::pair<u8_t, u8_t> peek_two() const noexcept { return { text[current_position], text[current_position + 1]}; }
+  edenInlineNodiscardCXPR char peek_ahead(i64_t i = 1) const noexcept { return text[current_position + i]; }
+  
+  edenInlineNodiscardCXPR char take() noexcept { return text[current_position++]; }
+  edenInlineNodiscardCXPR char previous() const noexcept { return text[current_position - 1]; }
   edenInlineCXPR          void pop() noexcept { ++current_position; }
   edenInlineCXPR          void undo() noexcept { --current_position; }
 
@@ -37,253 +182,234 @@ struct Tokenizer {
     report_error(file, 1, current_position, std::string(msg)); has_errors = true;
   }
 
-#define pre assert(previous() == '"');
-  constexpr void grabStringLiteral() noexcept { pre
-    u16_t length = 0;
-    auto const pos = current_position; // grabbing the position after opening quotes
-    auto c = take();
-
-    auto string_type = TokenType::STRING_LITERAL;
-    while (c not_eq FILE_EOF) {
-      switch (c) {
-      case '\"': goto ending_quote_found;
-      case '\n':
-      case FILE_EOF:
+  constexpr void grabStringLiteral() noexcept {
+    Token new_token{ TokenType::STRING_LITERAL, 0, current_position };
+    while (true) {
+      auto const c = peek();
+      if( categorize(c) == EOF_OR_NEWLINE ) {
         error_at_currentpos("Expected ending \" in string literal.");
-        goto ending_quote_found;
-
-      case '\\': string_type = TokenType::ESCAPED_STRING_LITERAL; [[fallthrough]];
-      default: break;
+        if(c != File::EOF_CHAR) pop();
+        return;
       }
-      ++length;
-      c = take();
-    }
+      pop();
 
-    ending_quote_found: // don't crucify me for this pls
-      token_list.emplace_back(string_type, length, pos);
-  }
-#undef pre
-
-#define pre assert(previous() == '\'');
-  constexpr void grabCharLiteral() noexcept { pre
-    u16_t length = 2;
-    auto const pos = current_position;
-    auto const c1 = take();
-    auto const c2 = take();
-
-    if (c1 == '\\') {
-      ++length;
-      if (take() not_eq '\'')
-        error_at_currentpos("Expected ending ' in char literal.");
-    } else if (c2 not_eq '\'')
-        error_at_currentpos("Expected ending ' in char literal.");
-
-    token_list.emplace_back(TokenType::CHAR_LITERAL, length, pos);
-  }
-#undef pre
-
-  constexpr void grabSymbol() noexcept {
-    TokenType type;
-    u16_t length = 1;
-    auto const pos = current_position;
-    auto const c = take();
-    auto const peeked = peek();
-    switch (c) { using enum TokenType;
-    case '+':
-      if (peeked == '+') { pop(); type = PLUSPLUS; length = 2; }
-      else type = PLUS;
-      break;
-    case '-':
-      if (peeked == '-') { pop(); type = MINUSMINUS; length = 2; }
-      else if (peeked == '>') { pop(); type = ARROW; length = 2; }
-      else type = MINUS;
-      break;
-    case '<':
-      if (peeked == '=') { pop(); type = LESSEQ; length = 2;  }
-      else type = LESS;
-      break;
-    case '>':
-      if (peeked == '=') { pop(); type = GTREQ; length = 2;  }
-      else type = GTR;
-      break;
-    case '!':
-      if (peeked == '=') { pop(); type = KEYWORD_NOT_EQUAL; length = 2;  }
-      else type = KEYWORD_NOT;
-      break;
-    case '=':
-      if (peeked == '=') { pop(); type = KEYWORD_EQUALS; length = 2;  }
-      else type = ASSIGN;
-      break;
-
-    case '/': type = SLASH; break;
-    case '*': type = STAR; break;
-    case '%': type = MOD; break;
-    case '(': type = LPAREN; break;
-    case ')': type = RPAREN; break;
-    case '{': type = LBRACE; break;
-    case '}': type = RBRACE; break;
-    case '[': type = LBRACKET; break;
-    case ']': type = RBRACKET; break;
-    case '@': type = ADDR; break;
-    case '&': type = AMPERSAND; break;
-    case ',': type = COMMA; break;
-    case ':': type = COLON; break;
-    case '$': type = DOLLAR; break;
-    case ';': type = SEMI_COLON; break;
-    case '\"': return grabStringLiteral();
-    case '\'': return grabCharLiteral();
-
-    case '.': {
-      type = DOT;
-      if (not isalnum(peek_ahead(-2)) or not isalnum(peeked))
-        error_at_currentpos("Dot operator may not have any space between the preceeding and following expressions. first.second is fine, first. second or first .second is not (Sorry!).");
-      break;
-    }
-
-    default:
-      type = INVALID_TOKEN;
-      --current_position;
-      error_at_currentpos("Unrecognized symbol.");
-      ++current_position;
-    }
-
-    token_list.emplace_back(type, length, pos);
-  }
-
-  constexpr void grabNumber() noexcept {
-    auto newtoken_type = TokenType::INTEGER_LITERAL;
-    u16_t newtoken_length = 0;
-    auto const newtoken_pos = current_position;
-
-    while (peek() not_eq '\0') {
-      auto const c = take();
-      switch (c) {
-      case 'f': newtoken_type = TokenType::FLOAT_LITERAL; goto leave_loop;
-      case '.':
-        if (newtoken_type == TokenType::DOUBLE_LITERAL)
-          error_at_currentpos("Repeated decimal point in float literal.");
-        newtoken_type = TokenType::DOUBLE_LITERAL;
-        [[fallthrough]];
-      case '0': case '1': case '2':
-      case '3': case '4': case '5':
-      case '6': case '7': case '8':
-      case '9': ++newtoken_length; break;
-
-      default: undo(); goto leave_loop;
+      if(c == '"') break;
+      if(c == '\\') {
+        new_token.type = TokenType::ESCAPED_STRING_LITERAL; 
+        if( categorize(peek()) == EOF_OR_NEWLINE ) {
+          error_at_currentpos("Incomplete character escape sequence.");
+          if(c != File::EOF_CHAR) pop();
+          return;
+        }
+        pop();
       }
     }
-    leave_loop:
-    token_list.emplace_back(newtoken_type, newtoken_length, newtoken_pos);
-  }
 
-  constexpr void grabIdentOrKeyword() noexcept {
-    Token new_token{TokenType::INVALID_TOKEN, 0, current_position};
-    auto c = take();
-
-    while (c not_eq '\0') {
-      if (not std::isalnum(c) and c not_eq '_') break;
-
-      c = take();
-      ++new_token.length;
-    }
-    undo();
-
-    const std::string_view word_view{file.get_text().data() + new_token.position, new_token.length};
-    if (auto const iter = stringToTokenType.find(word_view); iter not_eq stringToTokenType.end())
-      new_token.type = iter->second;
-
-    else if (word_view == "elif") {
-      new_token.type = TokenType::KEYWORD_ELSE; token_list.emplace_back(new_token);
-      new_token.type = TokenType::KEYWORD_IF;
-    }
-    else if (word_view == "true" or word_view == "false")
-      new_token.type = TokenType::BOOL_LITERAL;
-    else
-      new_token.type = TokenType::IDENTIFIER;
-
+    new_token.length = current_position - new_token.position;
     token_list.emplace_back(new_token);
   }
 
-  constexpr void skipWS() noexcept {
-    while (std::isspace(peek())) {
-      auto const c = take();
-      if (c == '\0') return;
+  constexpr void grabCharLiteral() noexcept {
+    Token new_token{ TokenType::CHAR_LITERAL, 1, current_position };
+    if( categorize(peek()) == EOF_OR_NEWLINE ) {
+      error_at_currentpos("Incomplete char literal.");
+      if(peek() != File::EOF_CHAR) pop();
+      return;
     }
-  }
 
-#define pre assert(peek() == '#');
-  constexpr void skipComments() noexcept { pre
-    pop();
+    auto const c = take();
+    if( c == '\\' ) {
+      if( categorize(peek()) == EOF_OR_NEWLINE ) {
+        error_at_currentpos("Incomplete char literal.");
+        if(c != File::EOF_CHAR) pop();
+        return;
+      }
 
-    if (peek() not_eq '{') {
-      while ( peek() not_eq '\n' and peek() not_eq FILE_EOF ) pop();
+      ++new_token.length;
+      pop();
+    }
+
+    if( peek() != '\'') {
+      error_at_currentpos("Expected ending ' in char literal.");
+      if( peek() != File::EOF_CHAR) pop();
       return;
     }
 
     pop();
-    sz_t nested{1};
-    while (peek() not_eq FILE_EOF and nested > 0) {
-      auto const first = peek();
-      auto const second = peek_ahead();
+    token_list.emplace_back(new_token);
+  }
 
-      if (first == '#' and second == '{')
-        ++nested, pop();
-      else if (first == '}' and second == '#')
-        --nested, pop();
+  constexpr void grabSymbol() noexcept {
+    TokenType type;
+    auto const pos = current_position;
+    auto const pair = peek_two();
 
-      pop();
+    // all this overengineering shaves like, 1% of the lexing time?
+    // #worthit
+    struct SymbolMapping {
+      bool is_double : 1 = false;
+      TokenType type : 7 = TokenType::INVALID_TOKEN;
+
+      consteval SymbolMapping() = default;
+      consteval SymbolMapping(TokenType t, bool is_double = false) : is_double(is_double), type(t) { }
+    };
+
+    static constexpr auto combine = [] (u8_t first, u8_t second) {
+      return u16_t( ( u16_t(first) << 7 ) | u16_t(second) );
+    };
+    auto const c = combine(pair.first, pair.second);
+
+    static constexpr auto symbol_map = [] consteval {
+      using enum TokenType;
+      static constexpr auto sz = 0b00111111'11111111;
+      std::array<SymbolMapping, sz> first_to_second{};
+
+      // to add a symbol, follow the pattern shown
+      for(sz_t i{}; i<i8_max; ++i) {
+        first_to_second[ combine('+', i) ].type = PLUS;
+        first_to_second[ combine('-', i) ].type = MINUS;
+        first_to_second[ combine('<', i) ].type = LESS;
+        first_to_second[ combine('>', i) ].type = GTR;
+        first_to_second[ combine('!', i) ].type = KEYWORD_NOT;
+        first_to_second[ combine('=', i) ].type = ASSIGN;
+        first_to_second[ combine('/', i) ].type = SLASH;
+        first_to_second[ combine('*', i) ].type = STAR;
+        first_to_second[ combine('%', i) ].type = MOD;
+        first_to_second[ combine('(', i) ].type = LPAREN;
+        first_to_second[ combine(')', i) ].type = RPAREN;
+        first_to_second[ combine('{', i) ].type = LBRACE;
+        first_to_second[ combine('}', i) ].type = RBRACE;
+        first_to_second[ combine('[', i) ].type = LBRACKET;
+        first_to_second[ combine(']', i) ].type = RBRACKET;
+        first_to_second[ combine('@', i) ].type = ADDR;
+        first_to_second[ combine('&', i) ].type = AMPERSAND;
+        first_to_second[ combine(',', i) ].type = COMMA;
+        first_to_second[ combine(':', i) ].type = COLON;
+        first_to_second[ combine('$', i) ].type = DOLLAR;
+        first_to_second[ combine(';', i) ].type = SEMI_COLON;
+    
+        // these three marked as invalid so custom logic can run
+        first_to_second[ combine('\"', i) ].type = INVALID_TOKEN;
+        first_to_second[ combine('\'', i) ].type = INVALID_TOKEN;
+        first_to_second[ combine('.', i) ] .type = INVALID_TOKEN;
+      }
+
+      first_to_second[ combine('-', '-') ] = {MINUSMINUS, 1};
+      first_to_second[ combine('-', '>') ] = {ARROW, 1};
+      first_to_second[ combine('<', '=') ] = {LESSEQ, 1};
+      first_to_second[ combine('>', '=') ] = {GTREQ, 1};
+      first_to_second[ combine('!', '=') ] = {KEYWORD_NOT_EQUAL, 1};
+      first_to_second[ combine('=', '=') ] = {KEYWORD_EQUALS, 1};
+    
+      return first_to_second;
+    }();
+    
+    auto const mapping = symbol_map[ sz_t(c) ];
+    type = mapping.type;
+    current_position += 1 + mapping.is_double;
+    
+    if(type != TokenType::INVALID_TOKEN)
+      return (void) token_list.emplace_back(type, u16_t(current_position - pos), pos);
+
+    switch(pair.first) {
+      case '\"': [[likely]] return grabStringLiteral();
+      case '\'': return grabCharLiteral();
+
+      case '.':
+        type = TokenType::DOT;
+        if ( not(categorize(text[pos - 1]) & IDENT_START) || not(categorize(pair.second) & IDENT_START))
+          error_at_currentpos("Dot operator requires adjacent alphanumeric characters.");
+        break;
+
+      case File::EOF_CHAR: [[unlikely]] current_position = pos; return; // p sure this isn't even possible'
+      default: [[unlikely]]
+        error_at_currentpos("Unrecognized symbol\n.");
+    }
+    token_list.emplace_back(type, u16_t(current_position - pos), pos);
+  }
+
+  constexpr void grabNumber() noexcept {
+    Token new_token{ TokenType::INTEGER_LITERAL, 0, current_position };
+    do { pop(); } while( categorize(peek()) == NUMBER );
+
+    if(peek() == '.') {
+      new_token.type = TokenType::DOUBLE_LITERAL;
+      do { pop(); } while( categorize(peek()) == NUMBER );
+      if(peek() == '.') error_at_currentpos("Repeated decimal point in float literal.");
     }
 
+    new_token.length = current_position - new_token.position;
+    if(peek() == 'f') new_token.type = TokenType::FLOAT_LITERAL, pop();
+
+    token_list.emplace_back(new_token);
   }
-#undef pre
+
+  constexpr void grabIdentOrKeyword() noexcept {
+    auto const pos = current_position;
+    do { pop(); } while( categorize(peek()) & IDENT_CONTINUE );
+
+    auto const length = u16_t(current_position - pos);
+    auto const word = text.substr(pos, length);
+    auto const type = classifyWord(word);
+
+    token_list.emplace_back(type, length, pos);
+  }
+
+  constexpr void skipWS() noexcept {
+    while ( categorize(peek()) & SPACE ) pop();
+  }
+
+  constexpr void skipComments() noexcept {
+    pop();
+
+    if (peek() != '{') {
+      while ( ! (categorize( peek() ) & EOF_OR_NEWLINE) )  pop(); // while not FILE_EOF and not NEWLINE
+      return;
+    }
+    pop(); // '{'
+    
+    sz_t nested{1};
+    do {
+      auto const first = peek();
+      auto const second = peek_ahead();
+      
+      switch(first) {
+        case '#': if(second == '{') ++nested, pop(); break;
+        case '}': if(second == '#') --nested, pop(); break;
+      case File::EOF_CHAR: return;
+        default: break;
+      }
+      pop();
+    } while(nested != 0);
+  }
+
 };
 
-void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] File file) {
-#ifdef STAGE_BENCHMARKS
-  auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("{:>10}, {:>10} | Lexing {}",
-    end_time - begin_time,
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    file.path()
-  );
-#endif
 }
-
-}
-
 
 bool Lexer::tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
-  auto const begin_time = std::chrono::high_resolution_clock::now();
   Tokenizer tokenizer{out_tokens, file};
   if (tokenizer.peek() == '.') {
     tokenizer.error_at_currentpos("File may not start with . for very esoteric reasons.");
     ++tokenizer.current_position;
   }
 
-  while (true) {
-    tokenizer.skipWS();
-    auto const c = tokenizer.peek();
-    if (c == Tokenizer::FILE_EOF) break;
-    if (c == '#') { tokenizer.skipComments(); continue; }
-
-    if (is_num(c))
-      tokenizer.grabNumber();
-    else if (canStartIdentifier(c))
-      tokenizer.grabIdentOrKeyword();
-    else
-      tokenizer.grabSymbol();
-  }
-
-  if (out_tokens.empty()) {
-    tokenizer.error_at_currentpos("Empty file.");
-    return true;
+  loop:
+  tokenizer.skipWS();
+  auto const c = tokenizer.peek();
+  switch(categorize(c)) {
+  case FILE_EOF_CAT: break;
+    
+  case LETTER_OR_UNDER: tokenizer.grabIdentOrKeyword(); goto loop;
+  case NUMBER: tokenizer.grabNumber(); goto loop;
+    
+  case COMMENT: tokenizer.skipComments(); goto loop;
+  default: tokenizer.grabSymbol(); goto loop;
   }
 
   auto const invalid_token = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
-  out_tokens.reserve(out_tokens.size() + INVALID_TOKEN_PADDING);
   for (sz_t i{}; i < INVALID_TOKEN_PADDING; ++i)
     out_tokens.push_back(invalid_token);
-
-  output_benchmark(begin_time, file);
-  return tokenizer.has_errors;
+  
+  return false;
 }

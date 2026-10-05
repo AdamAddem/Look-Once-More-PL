@@ -12,8 +12,14 @@ namespace LOM::Lexer {
 
 struct Token {
   TokenType type;
+  byte_t _pad[1]{};
   u16_t length;
   u32_t position;
+
+  constexpr Token() = default;
+
+  constexpr Token(TokenType type, u16_t length, u32_t position)
+  : type(type), length(length), position(position) {}
 
   edenNodiscardCXPR static Token
   combine(Token leftmost, Token rightmost) noexcept {
@@ -66,7 +72,31 @@ struct Token {
   edenNodiscardCXPR char
   getChar(File const& file) const noexcept {
     assert(type == TokenType::CHAR_LITERAL);
-    return file.get_text()[position]; //TODO: incorrect, doesn't account for escape sequences
+    return file.get_text()[position];
+  }
+
+  edenNodiscardCXPR char
+  getEscapedChar(File const& file) const noexcept {
+    assert(type == TokenType::ESCAPED_CHAR_LITERAL);
+    assert(file.get_text()[position] == '\\');
+
+    auto const c = file.get_text()[position + 1];
+    switch (c) {
+    case '\'': return '\'';
+    case '"':  return '\"';
+    case '?':  return '\?';
+    case '\\': return '\\';
+    case 'a':  return '\a';
+    case 'b':  return '\b';
+    case 'f':  return '\f';
+    case 'n':  return '\n';
+    case 'r':  return '\r';
+    case 't':  return '\t';
+    case 'v':  return '\v';
+    case '0':  return '\0';
+
+    default:   return c; // not the best behavior but wtv
+    }
   }
 
   edenNodiscardCXPR std::string_view
@@ -96,10 +126,10 @@ class TokenView {
   TokenIter end;
 
 public:
-  explicit TokenView(std::span<Token> tokens) noexcept
+  edenInlineCXPR explicit TokenView(std::span<Token> tokens) noexcept
   : begin(tokens.begin()), end(tokens.end()) {}
 
-  TokenView(TokenIter begin, TokenIter end) noexcept
+  edenInlineCXPR TokenView(TokenIter begin, TokenIter end) noexcept
   : begin(begin), end(end) {}
 
   edenInlineNodiscardCXPR Token peek()                    const noexcept  { return *begin; }
@@ -124,8 +154,9 @@ public:
 
   edenNodiscardCXPR Token
   viewAsStringToken() const noexcept {
-    return {TokenType::STRING_LITERAL,
-      static_cast<u16_t>((end-1)->position - begin->position + static_cast<u32_t>(end->length)),
+    return {
+      TokenType::STRING_LITERAL,
+      u16_t((end-1)->position - begin->position + u32_t(end->length)),
       begin->position
     };
   }

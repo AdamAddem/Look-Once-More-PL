@@ -54,8 +54,6 @@ def file_output(lines, out_filename, enum_name, namespace, underlying_type):
 
     out = open(out_filename, "w")
     out.write("#pragma once\n")
-    out.write("#include <string_view>\n")
-    out.write("#include <unordered_map>\n")
     out.write("#include <utility>\n\n")
     out.write(f'namespace {namespace} {{\n')
 
@@ -63,27 +61,6 @@ def file_output(lines, out_filename, enum_name, namespace, underlying_type):
     for entry in entries:
         out.write(f'\t{entry.enum_rep},\n')
     out.write("};\n")
-
-    out.write(f'inline const std::unordered_map<std::string_view, {enum_name}> stringTo{enum_name}{{\n\t')
-    i: int = 0
-    for entry in entries:
-        out.write(f'{{"{entry.string_rep}", {enum_name}::{entry.enum_rep}}}, ')
-        if i == 2:
-            out.write("\n\t")
-            i = 0
-        i += 1
-    out.write("\n};\n\n")
-
-    i = 0
-    out.write(f'constexpr std::string_view {enum_name}ToString({enum_name} e) {{\n\t')
-    out.write("static constexpr std::string_view toString[] = {\n\t")
-    for entry in entries:
-        out.write(f'"{entry.string_rep}",')
-        if i == 2:
-            out.write("\n\t")
-            i = 0
-        i += 1
-    out.write("\n};\n\treturn toString[std::to_underlying(e)];\n}\n")
 
     for category in categories:
         out.write(f'constexpr bool isCategory{category.name}({enum_name} e) {{ return std::to_underlying(e) >= {category.begin} && std::to_underlying(e) < {category.end}; }}\n')

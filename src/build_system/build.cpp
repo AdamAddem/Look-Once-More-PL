@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <print>
 #include <thread>
+#include <unordered_map>
 
 using namespace LOM;
 namespace fs = std::filesystem;

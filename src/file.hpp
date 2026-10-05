@@ -11,13 +11,17 @@
 
 namespace LOM {
 class File {
-  std::string_view text; // purposefully leaks atm
+  std::string_view text;
 public:
   static constexpr char EOF_CHAR = '\0';
+
+  // used for comptime testing
+  consteval explicit File(std::string_view text) : text(text) {}
+
   explicit File(std::filesystem::path const& file_path) {
     std::ifstream stream(file_path); if (not stream.is_open()) throw std::runtime_error(std::format("LookOnceMore: {} file not found.", file_path.native()));
 
-    auto const file_size = static_cast<std::streamsize>(std::filesystem::file_size(file_path));
+    auto const file_size = (std::streamsize) std::filesystem::file_size(file_path);
     auto const file_path_size = file_path.native().size();
 
     //TODO: Find prettier way to do this
@@ -32,7 +36,8 @@ public:
 
   // probably not a good idea to expose these two
   File() = default;
-  constexpr File& operator=(File&) noexcept = default;
+  File(File const&) noexcept = default;
+  constexpr File& operator=(File const&) noexcept = default;
 
   edenInlineNodiscardCXPR std::string_view get_text() const noexcept { return text; }
 
@@ -63,7 +68,8 @@ public:
 };
 
 
-// Frees all text associated with this file, only call this after all compilation has finished.
+// Frees all text associated with this file
+// only call after all compilation has finished
 inline void free_file(File file) noexcept {
   delete[] file.get_text().data();
 }

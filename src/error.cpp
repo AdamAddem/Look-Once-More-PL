@@ -1,5 +1,7 @@
 #include "error.hpp"
 #include "lexing/lex.hpp"
+#include <unordered_map>
+#include "settings.hpp"
 
 #include <print>
 #include <vector>
@@ -7,9 +9,14 @@
 namespace {
 struct Error {
   std::string message;
-  // char _pad[2];
+  byte_t _pad[2]{};
   u16_t length;
   u32_t position;
+
+  Error() = default;
+
+  Error(std::string message, u16_t length, u32_t position)
+  : message(std::move(message)), length(length), position(position) {}
 };
 
 // file_text -> errors
@@ -19,6 +26,7 @@ std::unordered_map< const char*, std::vector<Error> > file_to_errors_map;
 }
 
 // TODO: make all of this thread safe
+static_assert(LOM::Settings::MULTITHREADING_SUPPORT == false);
 namespace LOM {
 
 edenNoInlineCold

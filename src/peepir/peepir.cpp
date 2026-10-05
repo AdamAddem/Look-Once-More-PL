@@ -70,8 +70,11 @@ struct TreeView {
 struct QualifiedTypeID : TypeID {
   Type::Qualifiers qualifiers{};
 
+  // i hate this language so much sometimes
+  // QualifiedTypeID() noexcept = default;
+  // QualifiedTypeID(QualifiedTypeID const&) noexcept = default;
   edenInlineCXPR QualifiedTypeID& operator=(TypeID other) noexcept { TypeID::operator=(other); return *this; }
-  edenInlineCXPR QualifiedTypeID& operator=(QualifiedTypeID&) noexcept = default;
+  // edenInlineCXPR QualifiedTypeID& operator=(QualifiedTypeID const&) noexcept = default;
 };
 
 // i gently unfold the class...
@@ -373,7 +376,8 @@ class Peeper {
     if (not called.isCallable()) {
       if (not called.isError()) error(calling_node, "Call operator used on non-callable.");
       for (sz_t i{}; i<num_parameters; ++i) (void)peepExpression();
-      return res = errorID;
+      res = errorID;
+      return res;
     }
 
     assert(called.isFunction());
@@ -385,12 +389,14 @@ class Peeper {
 
     if (num_parameters < parameter_count) {
       error(calling_node, "Too few parameters for function call.");
-      return res = errorID;
+      res = errorID;
+      return res;
     }
 
     if (num_parameters > parameter_count and not variadic) {
       error(calling_node, "Too many parameters for function call.");
-      return res = errorID;
+      res = errorID;
+      return res;
     }
 
     sz_t i{};

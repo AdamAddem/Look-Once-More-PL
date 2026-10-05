@@ -1,20 +1,16 @@
 #include "lex.hpp"
 #include "edenlib/macros.hpp"
 #include "tokentype.hpp"
-#include <cassert>
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <string_view>
 #include "error.hpp"
 
-using namespace LOM;
-using namespace LOM::Lexer;
-
-
+namespace LOM::Lexer {
 namespace {
 
-// this code to make a perfect hash function was ai generated, need to verify / optimize
+// code to make a perfect hash function was ai generated, need to verify / optimize
 struct WordToken { std::string_view word; TokenType type; };
 inline constexpr WordToken wordTokens[]{
   {"$", TokenType::INVALID_TOKEN},
@@ -41,15 +37,6 @@ inline constexpr WordToken wordTokens[]{
   {"true", TokenType::BOOL_LITERAL},
   {"false", TokenType::BOOL_LITERAL},
 
-/*
-  {"INTEGER_LITERAL", TokenType::INTEGER_LITERAL},
-  {"FLOAT_LITERAL", TokenType::FLOAT_LITERAL},
-  {"DOUBLE_LITERAL", TokenType::DOUBLE_LITERAL},
-  {"CHAR_LITERAL", TokenType::CHAR_LITERAL},
-  {"BOOL_LITERAL", TokenType::BOOL_LITERAL},
-  {"STRING_LITERAL", TokenType::STRING_LITERAL},
-  {"ESCAPED_STRING_LITERAL", TokenType::ESCAPED_STRING_LITERAL}, */
-
   {"and", TokenType::KEYWORD_AND},
   {"or", TokenType::KEYWORD_OR},
   {"xor", TokenType::KEYWORD_XOR},
@@ -71,11 +58,9 @@ inline constexpr WordToken wordTokens[]{
   {"import", TokenType::KEYWORD_IMPORT},
   {"__C", TokenType::DUNDER_CEXTERN},
   {"__va", TokenType::DUNDER_VA},
-
-
 };
 constexpr sz_t numWordTokens = std::size(wordTokens);
-constexpr sz_t INVALID_TOKEN_IDX = 0;
+constexpr sz_t INVALID_TOKEN_IDX = 0; static_assert(wordTokens[INVALID_TOKEN_IDX].type == TokenType::INVALID_TOKEN);
 
 struct WordHash {
   u32_t firstWeight;
@@ -110,49 +95,61 @@ constexpr auto wordHash = [] consteval {
   throw "No perfect keyword hash: expand the table or the weight search";
 }();
 
-edenNodiscardCXPR TokenType classifyWord(std::string_view word) noexcept {
+edenInlineNodiscardCXPR TokenType
+classifyWord(std::string_view word) noexcept {
   auto const index = wordHash.indices[wordHash.bucket(word)];
   auto const& candidate = wordTokens[index];
-  return word == candidate.word ? candidate.type : TokenType::IDENTIFIER;
+
+  auto const condition = word == candidate.word;
+  auto res = TokenType::IDENTIFIER;
+  res = condition ? candidate.type : res;
+  return res;
 }
 
-
-enum CharCategory : u8_t { 
-     IDENT_START = 1 << 0, 
-  IDENT_CONTINUE = 1 << 1, 
-           DIGIT = 1 << 2, 
-           SPACE = 1 << 3, 
-         COMMENT = 1 << 4, 
-    FILE_EOF_CAT = 1 << 5, 
-     NEWLINE_CAT = 1 << 6, 
+namespace Category {
+enum : u8_t {
+   IDENT_START = 1 << 0,
+IDENT_CONTINUE = 1 << 1,
+         DIGIT = 1 << 2,
+   WHITE_SPACE = 1 << 3,
+       COMMENT = 1 << 4,
+       END_LEX = 1 << 5,
+      END_LINE = 1 << 6,
+END_STRING_LITERAL = 1 << 7,
 };
-constexpr u8_t LETTER_OR_UNDER = IDENT_START | IDENT_CONTINUE;
-constexpr u8_t NUMBER = DIGIT | IDENT_CONTINUE;
-constexpr u8_t NEWLINE = SPACE | NEWLINE_CAT;
-constexpr u8_t EOF_OR_NEWLINE = FILE_EOF_CAT | NEWLINE_CAT;
+}
+
+constexpr u8_t LETTER_OR_UNDER = Category::IDENT_START | Category::IDENT_CONTINUE;
+constexpr u8_t NUMBER =          Category::DIGIT       | Category::IDENT_CONTINUE;
+constexpr u8_t NEWLINE =         Category::WHITE_SPACE | Category::END_LINE | Category::END_STRING_LITERAL;
+constexpr u8_t FILE_EOF =        Category::END_LEX     | Category::END_LINE | Category::END_STRING_LITERAL;
+constexpr u8_t WHITE_SPACE =     Category::WHITE_SPACE;
+constexpr u8_t COMMENT =         Category::COMMENT;
+constexpr u8_t DOUBLE_QUOTE =    Category::END_STRING_LITERAL;
 
 constexpr auto charCategoryTable = [] {
   std::array<u8_t, 256> table{};
   static constexpr auto letter_span = 'z' - 'a';
-  for (sz_t c{}; c <= letter_span; ++c) {
-    table[c + (sz_t) 'a'] = LETTER_OR_UNDER;
-    table[c + (sz_t) 'A'] = LETTER_OR_UNDER;
+  for (sz_t i{}; i <= letter_span; ++i) {
+    table[i + (sz_t) 'a'] = LETTER_OR_UNDER;
+    table[i + (sz_t) 'A'] = LETTER_OR_UNDER;
   }
   table['_'] = LETTER_OR_UNDER;
 
   static constexpr auto num_span = '9' - '0';
-  for (sz_t c{}; c <= num_span; ++c)
-    table[c + (sz_t) '0'] = NUMBER;
-  
-  table[' '] = SPACE;
-  table['\t'] = SPACE;
+  for (sz_t i{}; i <= num_span; ++i)
+    table[i + (sz_t) '0'] = NUMBER;
+
+  table[' '] =  WHITE_SPACE;
+  table['\t'] = WHITE_SPACE;
   table['\n'] = NEWLINE;
-  table['\r'] = SPACE;
-  table['\f'] = SPACE;
-  table['\t'] = SPACE;
-  
+  table['\r'] = WHITE_SPACE;
+  table['\f'] = WHITE_SPACE;
+  table['\t'] = WHITE_SPACE;
+
   table['#'] = COMMENT;
-  table[ File::EOF_CHAR ] = FILE_EOF_CAT;
+  table['"'] = DOUBLE_QUOTE;
+  table[ File::EOF_CHAR ] = FILE_EOF;
   return table;
 }();
 
@@ -165,15 +162,15 @@ struct Tokenizer {
   u32_t current_position{};
   bool has_errors{};
 
-  explicit Tokenizer(eden::vector<Token>& token_list, File file)
+  edenInlineCXPR explicit Tokenizer(eden::vector<Token>& token_list, File file)
   : token_list(token_list), file(file), text(file.get_text()) {}
 
-  edenInlineNodiscardCXPR char peek() const noexcept { return text[current_position]; }
-  edenInlineNodiscardCXPR std::pair<u8_t, u8_t> peek_two() const noexcept { return { text[current_position], text[current_position + 1]}; }
-  edenInlineNodiscardCXPR char peek_ahead(i64_t i = 1) const noexcept { return text[current_position + i]; }
-  
+  edenPure edenInlineNodiscardCXPR char peek() const noexcept { return text[current_position]; }
+  edenPure edenInlineNodiscardCXPR std::pair<u8_t, u8_t> peek_two() const noexcept { return { text[current_position], text[current_position + 1]}; }
+  edenPure edenInlineNodiscardCXPR char peek_ahead(i64_t i = 1) const noexcept { return text[current_position + i]; }
+  edenPure edenInlineNodiscardCXPR char previous() const noexcept { return text[current_position - 1]; }
+
   edenInlineNodiscardCXPR char take() noexcept { return text[current_position++]; }
-  edenInlineNodiscardCXPR char previous() const noexcept { return text[current_position - 1]; }
   edenInlineCXPR          void pop() noexcept { ++current_position; }
   edenInlineCXPR          void undo() noexcept { --current_position; }
 
@@ -184,58 +181,58 @@ struct Tokenizer {
 
   constexpr void grabStringLiteral() noexcept {
     Token new_token{ TokenType::STRING_LITERAL, 0, current_position };
-    while (true) {
-      auto const c = peek();
-      if( categorize(c) == EOF_OR_NEWLINE ) {
-        error_at_currentpos("Expected ending \" in string literal.");
-        if(c != File::EOF_CHAR) pop();
-        return;
-      }
-      pop();
 
-      if(c == '"') break;
-      if(c == '\\') {
-        new_token.type = TokenType::ESCAPED_STRING_LITERAL; 
-        if( categorize(peek()) == EOF_OR_NEWLINE ) {
-          error_at_currentpos("Incomplete character escape sequence.");
-          if(c != File::EOF_CHAR) pop();
-          return;
-        }
+    auto c = peek();
+    auto category = categorize(c);
+    while ( not(category & Category::END_STRING_LITERAL) ) {
+      if ( c == '\\') {
+        new_token.type = TokenType::ESCAPED_STRING_LITERAL;
         pop();
       }
+
+      pop();
+      c = peek();
+      category = categorize(c);
     }
 
-    new_token.length = current_position - new_token.position;
-    token_list.emplace_back(new_token);
+    if (c == '\"') {
+      new_token.length = current_position - new_token.position;
+      token_list.emplace_back(new_token);
+      pop();
+    }
+    else {
+      error_at_currentpos("Expected ending \" in string literal.");
+      if (c != File::EOF_CHAR) pop();
+    }
   }
 
   constexpr void grabCharLiteral() noexcept {
     Token new_token{ TokenType::CHAR_LITERAL, 1, current_position };
-    if( categorize(peek()) == EOF_OR_NEWLINE ) {
+
+    auto const c = take();
+    if( categorize(c) & Category::END_LINE ) {
       error_at_currentpos("Incomplete char literal.");
-      if(peek() != File::EOF_CHAR) pop();
+      if(c == File::EOF_CHAR) undo();
       return;
     }
 
-    auto const c = take();
-    if( c == '\\' ) {
-      if( categorize(peek()) == EOF_OR_NEWLINE ) {
-        error_at_currentpos("Incomplete char literal.");
-        if(c != File::EOF_CHAR) pop();
+    if(c == '\\') {
+      if( auto const next = take(); categorize(next) & Category::END_LINE ) {
+        error_at_currentpos("Incomplete escaped char literal.");
+        if(next == File::EOF_CHAR) undo();
         return;
       }
 
+      new_token.type = TokenType::ESCAPED_CHAR_LITERAL;
       ++new_token.length;
-      pop();
     }
 
-    if( peek() != '\'') {
-      error_at_currentpos("Expected ending ' in char literal.");
-      if( peek() != File::EOF_CHAR) pop();
+    if(auto const next = take(); next != '\'') {
+      error_at_currentpos("Incomplete char literal.");
+      if(next == File::EOF_CHAR) undo();
       return;
     }
 
-    pop();
     token_list.emplace_back(new_token);
   }
 
@@ -255,77 +252,80 @@ struct Tokenizer {
     };
 
     static constexpr auto combine = [] (u8_t first, u8_t second) {
-      return u16_t( ( u16_t(first) << 7 ) | u16_t(second) );
+      return sz_t( ( u16_t(first) << 7 ) | u16_t(second) );
     };
-    auto const c = combine(pair.first, pair.second);
 
     static constexpr auto symbol_map = [] consteval {
       using enum TokenType;
       static constexpr auto sz = 0b00111111'11111111;
-      std::array<SymbolMapping, sz> first_to_second{};
+      std::array<SymbolMapping, sz> twotokens_to_type{};
 
       // to add a symbol, follow the pattern shown
       for(sz_t i{}; i<i8_max; ++i) {
-        first_to_second[ combine('+', i) ].type = PLUS;
-        first_to_second[ combine('-', i) ].type = MINUS;
-        first_to_second[ combine('<', i) ].type = LESS;
-        first_to_second[ combine('>', i) ].type = GTR;
-        first_to_second[ combine('!', i) ].type = KEYWORD_NOT;
-        first_to_second[ combine('=', i) ].type = ASSIGN;
-        first_to_second[ combine('/', i) ].type = SLASH;
-        first_to_second[ combine('*', i) ].type = STAR;
-        first_to_second[ combine('%', i) ].type = MOD;
-        first_to_second[ combine('(', i) ].type = LPAREN;
-        first_to_second[ combine(')', i) ].type = RPAREN;
-        first_to_second[ combine('{', i) ].type = LBRACE;
-        first_to_second[ combine('}', i) ].type = RBRACE;
-        first_to_second[ combine('[', i) ].type = LBRACKET;
-        first_to_second[ combine(']', i) ].type = RBRACKET;
-        first_to_second[ combine('@', i) ].type = ADDR;
-        first_to_second[ combine('&', i) ].type = AMPERSAND;
-        first_to_second[ combine(',', i) ].type = COMMA;
-        first_to_second[ combine(':', i) ].type = COLON;
-        first_to_second[ combine('$', i) ].type = DOLLAR;
-        first_to_second[ combine(';', i) ].type = SEMI_COLON;
-    
-        // these three marked as invalid so custom logic can run
-        first_to_second[ combine('\"', i) ].type = INVALID_TOKEN;
-        first_to_second[ combine('\'', i) ].type = INVALID_TOKEN;
-        first_to_second[ combine('.', i) ] .type = INVALID_TOKEN;
+        twotokens_to_type[ combine('+', i) ].type = PLUS;
+        twotokens_to_type[ combine('-', i) ].type = MINUS;
+        twotokens_to_type[ combine('<', i) ].type = LESS;
+        twotokens_to_type[ combine('>', i) ].type = GTR;
+        twotokens_to_type[ combine('!', i) ].type = KEYWORD_NOT;
+        twotokens_to_type[ combine('=', i) ].type = ASSIGN;
+        twotokens_to_type[ combine('/', i) ].type = SLASH;
+        twotokens_to_type[ combine('*', i) ].type = STAR;
+        twotokens_to_type[ combine('%', i) ].type = MOD;
+        twotokens_to_type[ combine('(', i) ].type = LPAREN;
+        twotokens_to_type[ combine(')', i) ].type = RPAREN;
+        twotokens_to_type[ combine('{', i) ].type = LBRACE;
+        twotokens_to_type[ combine('}', i) ].type = RBRACE;
+        twotokens_to_type[ combine('[', i) ].type = LBRACKET;
+        twotokens_to_type[ combine(']', i) ].type = RBRACKET;
+        twotokens_to_type[ combine('@', i) ].type = ADDR;
+        twotokens_to_type[ combine('&', i) ].type = AMPERSAND;
+        twotokens_to_type[ combine(',', i) ].type = COMMA;
+        twotokens_to_type[ combine(':', i) ].type = COLON;
+        twotokens_to_type[ combine('$', i) ].type = DOLLAR;
+        twotokens_to_type[ combine(';', i) ].type = SEMI_COLON;
+
+        // these three require more complex logic to fully lex
+        twotokens_to_type[ combine('\"', i) ].type = STRING_LITERAL;
+        twotokens_to_type[ combine('\'', i) ].type = CHAR_LITERAL;
+        twotokens_to_type[ combine('.', i) ] .type = DOT;
       }
 
-      first_to_second[ combine('-', '-') ] = {MINUSMINUS, 1};
-      first_to_second[ combine('-', '>') ] = {ARROW, 1};
-      first_to_second[ combine('<', '=') ] = {LESSEQ, 1};
-      first_to_second[ combine('>', '=') ] = {GTREQ, 1};
-      first_to_second[ combine('!', '=') ] = {KEYWORD_NOT_EQUAL, 1};
-      first_to_second[ combine('=', '=') ] = {KEYWORD_EQUALS, 1};
-    
-      return first_to_second;
+      // add two character symbols here
+      twotokens_to_type[ combine('+', '+') ] = {PLUSPLUS, true};
+      twotokens_to_type[ combine('-', '-') ] = {MINUSMINUS, true};
+      twotokens_to_type[ combine('-', '>') ] = {ARROW, true};
+      twotokens_to_type[ combine('<', '=') ] = {LESSEQ, true};
+      twotokens_to_type[ combine('>', '=') ] = {GTREQ, true};
+      twotokens_to_type[ combine('!', '=') ] = {KEYWORD_NOT_EQUAL, true};
+      twotokens_to_type[ combine('=', '=') ] = {KEYWORD_EQUALS, true};
+
+      return twotokens_to_type;
     }();
-    
-    auto const mapping = symbol_map[ sz_t(c) ];
+
+    auto const idx = combine(pair.first, pair.second);
+    auto const mapping = symbol_map[idx];
     type = mapping.type;
-    current_position += 1 + mapping.is_double;
-    
-    if(type != TokenType::INVALID_TOKEN)
-      return (void) token_list.emplace_back(type, u16_t(current_position - pos), pos);
-
-    switch(pair.first) {
-      case '\"': [[likely]] return grabStringLiteral();
-      case '\'': return grabCharLiteral();
-
-      case '.':
-        type = TokenType::DOT;
-        if ( not(categorize(text[pos - 1]) & IDENT_START) || not(categorize(pair.second) & IDENT_START))
-          error_at_currentpos("Dot operator requires adjacent alphanumeric characters.");
-        break;
-
-      case File::EOF_CHAR: [[unlikely]] current_position = pos; return; // p sure this isn't even possible'
-      default: [[unlikely]]
-        error_at_currentpos("Unrecognized symbol\n.");
-    }
+    current_position += 1 + u32_t(mapping.is_double);
     token_list.emplace_back(type, u16_t(current_position - pos), pos);
+
+    switch(type) { using enum TokenType;
+    default: [[likely]] return;
+
+    case DOT:  {
+      auto const is_previous_alnum = categorize(text[pos - 1]) & Category::IDENT_START;
+      auto const is_next_alnum = categorize(pair.second) & Category::IDENT_START;
+      if ( not(is_previous_alnum) | not(is_next_alnum) )
+        error_at_currentpos("Dot operator requires adjacent alphanumeric characters.");
+      break;
+    }
+
+    // we pop back here to let the fns add the full token
+    case STRING_LITERAL: token_list.pop_back(); return grabStringLiteral();
+    case CHAR_LITERAL:   token_list.pop_back(); return grabCharLiteral();
+
+    case INVALID_TOKEN:  error_at_currentpos("Unrecognized symbol\n.");
+    }
+
   }
 
   constexpr void grabNumber() noexcept {
@@ -346,7 +346,7 @@ struct Tokenizer {
 
   constexpr void grabIdentOrKeyword() noexcept {
     auto const pos = current_position;
-    do { pop(); } while( categorize(peek()) & IDENT_CONTINUE );
+    do { pop(); } while( categorize(peek()) & Category::IDENT_CONTINUE );
 
     auto const length = u16_t(current_position - pos);
     auto const word = text.substr(pos, length);
@@ -355,29 +355,29 @@ struct Tokenizer {
     token_list.emplace_back(type, length, pos);
   }
 
-  constexpr void skipWS() noexcept {
-    while ( categorize(peek()) & SPACE ) pop();
+  constexpr void skipWhiteSpace() noexcept {
+    while ( categorize(peek()) & Category::WHITE_SPACE ) pop();
   }
 
   constexpr void skipComments() noexcept {
     pop();
 
     if (peek() != '{') {
-      while ( ! (categorize( peek() ) & EOF_OR_NEWLINE) )  pop(); // while not FILE_EOF and not NEWLINE
+      while ( ! (categorize( peek() ) & Category::END_LINE) ) pop();
       return;
     }
     pop(); // '{'
-    
+
     sz_t nested{1};
     do {
       auto const first = peek();
       auto const second = peek_ahead();
-      
+
       switch(first) {
-        case '#': if(second == '{') ++nested, pop(); break;
-        case '}': if(second == '#') --nested, pop(); break;
+      case '#': if(second == '{') ++nested, pop(); break;
+      case '}': if(second == '#') --nested, pop(); break;
       case File::EOF_CHAR: return;
-        default: break;
+      default: break;
       }
       pop();
     } while(nested != 0);
@@ -385,31 +385,121 @@ struct Tokenizer {
 
 };
 
-}
-
-bool Lexer::tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
+constexpr bool impl (eden::vector<Token>& out_tokens, File file) noexcept {
   Tokenizer tokenizer{out_tokens, file};
   if (tokenizer.peek() == '.') {
     tokenizer.error_at_currentpos("File may not start with . for very esoteric reasons.");
     ++tokenizer.current_position;
   }
 
-  loop:
-  tokenizer.skipWS();
-  auto const c = tokenizer.peek();
-  switch(categorize(c)) {
-  case FILE_EOF_CAT: break;
-    
-  case LETTER_OR_UNDER: tokenizer.grabIdentOrKeyword(); goto loop;
-  case NUMBER: tokenizer.grabNumber(); goto loop;
-    
-  case COMMENT: tokenizer.skipComments(); goto loop;
-  default: tokenizer.grabSymbol(); goto loop;
-  }
+  [&] constexpr {
+    while (true) {
+      tokenizer.skipWhiteSpace();
+      auto const c = tokenizer.peek();
+      switch(categorize(c)) {
+      case FILE_EOF: return;
+
+      case LETTER_OR_UNDER: tokenizer.grabIdentOrKeyword(); break;
+      case NUMBER: tokenizer.grabNumber(); break;
+      case COMMENT: tokenizer.skipComments(); break;
+      default: tokenizer.grabSymbol(); break;
+      }
+    }
+  }();
 
   auto const invalid_token = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
   for (sz_t i{}; i < INVALID_TOKEN_PADDING; ++i)
     out_tokens.push_back(invalid_token);
-  
+
   return false;
+};
+
+}
+
+[[nodiscard]] bool tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
+  return impl(out_tokens, file);
+}
+
+}
+
+// TODO: Add tests
+namespace LOM::LexerTest {
+namespace {
+using namespace std::string_view_literals;
+
+consteval bool CharLiterals() {
+  constexpr auto text =
+  "'A' 'B''C'"
+  "\n"
+  "\0..."sv;
+
+  constexpr auto file = File{text};
+
+  eden::vector<Lexer::Token> tokens;
+  Lexer::impl(tokens, file);
+
+  if (tokens.size() != 3 + Lexer::INVALID_TOKEN_PADDING)    throw "Expected three tokens in char literal test.";
+  for (sz_t i{}; i<3; ++i) {
+    if ( tokens[i].type != Lexer::TokenType::CHAR_LITERAL ) throw "Non-char literal in char literal test.";
+    if ( tokens[i].length != 1 )                            throw "Unescaped char literal does not have length 1.";
+    if ( (sz_t) tokens[i].getChar(file) != 'A' + i )        throw "Char literal has incorrect value.";
+  }
+
+  return true;
+}
+
+consteval bool EscapedCharLiterals() {
+  constexpr auto text =
+  "'\\n' '\\t' '\\r'"
+  "\n"
+  "\0..."sv;
+
+  constexpr auto file = File{text};
+
+  eden::vector<Lexer::Token> tokens;
+  Lexer::impl(tokens, file);
+
+  if (tokens.size() != 3 + Lexer::INVALID_TOKEN_PADDING) throw "Expected three tokens in escaped char literal test.";
+
+  for (sz_t i{}; i<3; ++i) {
+    if ( tokens[i].type != Lexer::TokenType::ESCAPED_CHAR_LITERAL ) throw "Non-escaped-char literal in escaped char literal test.";
+    if ( tokens[i].length != 2 ) throw "Escaped char does not have length 2.";
+  }
+
+  if ( tokens[0].getEscapedChar(file) != '\n' ) throw "Escaped Char literal has incorrect value.";
+  if ( tokens[1].getEscapedChar(file) != '\t' ) throw "Escaped Char literal has incorrect value.";
+  if ( tokens[2].getEscapedChar(file) != '\r' ) throw "Escaped Char literal has incorrect value.";
+
+  return true;
+}
+
+consteval bool StringLiterals() {
+  constexpr auto text =
+  " \"Hello, World!\""      "\n"
+  " \"Back\"\"To\"\"Back\"" "\n" // TODO: Implement string literal concatenation
+  "\0..."sv;
+
+  constexpr auto file = File{text};
+
+  eden::vector<Lexer::Token> tokens;
+  Lexer::impl(tokens, file);
+
+  if (tokens.size() != 4 + Lexer::INVALID_TOKEN_PADDING)    throw "Expected four tokens in string literal test.";
+
+  for (sz_t i{}; i<4; ++i)
+    if (tokens[i].type != Lexer::TokenType::STRING_LITERAL) throw "Non string literal in string literal test.";
+
+  if (tokens[0].getString(file) != "Hello, World!") throw "String literal differs from text.";
+  if (tokens[1].getString(file) != "Back")          throw "String literal differs from text.";
+  if (tokens[2].getString(file) != "To")            throw "String literal differs from text.";
+  if (tokens[3].getString(file) != "Back")          throw "String literal differs from text.";
+
+  return true;
+}
+
+[[maybe_unused]] constexpr auto CharLiteralsTestFailure = CharLiterals();
+[[maybe_unused]] constexpr auto EscapedCharLiteralsTestFailure = EscapedCharLiterals();
+[[maybe_unused]] constexpr auto StringLiteralsTestFailure = StringLiterals();
+
+}
 }

@@ -634,14 +634,14 @@ class ParserBody {
 
     auto& if_data = nodes[if_node_idx].if_data;
     if_data.num_substatements = num_substatements;
-    auto const final_token = tokens.take();
+    if_data.has_else = false;
 
+    auto final_token = tokens.take();
     if (tokens.pop_if(TokenType::KEYWORD_ELSE)) {
       if_data.has_else = true;
-      return parseStatement();
+      final_token = parseStatement();
     }
 
-    if_data.has_else = false;
     return final_token;
   }
 #undef pre

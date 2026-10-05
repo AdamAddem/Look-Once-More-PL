@@ -1,8 +1,4 @@
 #pragma once
-#include "edenlib/typedefs.hpp"
-
-#include <string_view>
-#include <unordered_map>
 #include <utility>
 
 namespace LOM::Lexer {
@@ -13,6 +9,7 @@ enum class TokenType : u8_t {
 	FLOAT_LITERAL,
 	DOUBLE_LITERAL,
 	CHAR_LITERAL,
+	ESCAPED_CHAR_LITERAL,
 	BOOL_LITERAL,
 	STRING_LITERAL,
 	ESCAPED_STRING_LITERAL,
@@ -84,19 +81,18 @@ enum class TokenType : u8_t {
 	DUNDER_CEXTERN,
 	DUNDER_VA,
 };
+constexpr bool isCategoryLITERALS(TokenType e) { return std::to_underlying(e) >= 2 && std::to_underlying(e) < 10; }
+constexpr bool isCategoryNUMERIC_LITERALS(TokenType e) { return std::to_underlying(e) >= 2 && std::to_underlying(e) < 8; }
+constexpr bool isCategorySYMBOLS(TokenType e) { return std::to_underlying(e) >= 10 && std::to_underlying(e) < 36; }
+constexpr bool isCategoryVAR_QUALIFIERS(TokenType e) { return std::to_underlying(e) >= 30 && std::to_underlying(e) < 32; }
+constexpr bool isCategoryKEYWORDS(TokenType e) { return std::to_underlying(e) >= 36 && std::to_underlying(e) < 75; }
+constexpr bool isCategoryBITWISE(TokenType e) { return std::to_underlying(e) >= 36 && std::to_underlying(e) < 46; }
+constexpr bool isCategoryPRIMITIVES(TokenType e) { return std::to_underlying(e) >= 46 && std::to_underlying(e) < 59; }
+constexpr bool isCategoryPOINTERS(TokenType e) { return std::to_underlying(e) >= 60 && std::to_underlying(e) < 62; }
+constexpr bool isCategoryDUNDER(TokenType e) { return std::to_underlying(e) >= 75 && std::to_underlying(e) < 77; }
 
-constexpr bool isCategoryLITERALS(TokenType e) { return std::to_underlying(e) >= 2 && std::to_underlying(e) < 9; }
-constexpr bool isCategoryNUMERIC_LITERALS(TokenType e) { return std::to_underlying(e) >= 2 && std::to_underlying(e) < 7; }
-constexpr bool isCategorySYMBOLS(TokenType e) { return std::to_underlying(e) >= 9 && std::to_underlying(e) < 35; }
-constexpr bool isCategoryVAR_QUALIFIERS(TokenType e) { return std::to_underlying(e) >= 29 && std::to_underlying(e) < 31; }
-constexpr bool isCategoryKEYWORDS(TokenType e) { return std::to_underlying(e) >= 35 && std::to_underlying(e) < 74; }
-constexpr bool isCategoryBITWISE(TokenType e) { return std::to_underlying(e) >= 35 && std::to_underlying(e) < 45; }
-constexpr bool isCategoryPRIMITIVES(TokenType e) { return std::to_underlying(e) >= 45 && std::to_underlying(e) < 58; }
-constexpr bool isCategoryPOINTERS(TokenType e) { return std::to_underlying(e) >= 59 && std::to_underlying(e) < 61; }
-constexpr bool isCategoryDUNDER(TokenType e) { return std::to_underlying(e) >= 74 && std::to_underlying(e) < 76; }
-
-#define TOKENTYPE_LITERALS_CASES case INTEGER_LITERAL: case FLOAT_LITERAL: case DOUBLE_LITERAL: case CHAR_LITERAL: case BOOL_LITERAL: case STRING_LITERAL: case ESCAPED_STRING_LITERAL: 
-#define TOKENTYPE_NUMERIC_LITERALS_CASES case INTEGER_LITERAL: case FLOAT_LITERAL: case DOUBLE_LITERAL: case CHAR_LITERAL: case BOOL_LITERAL: 
+#define TOKENTYPE_LITERALS_CASES case INTEGER_LITERAL: case FLOAT_LITERAL: case DOUBLE_LITERAL: case CHAR_LITERAL: case ESCAPED_CHAR_LITERAL: case BOOL_LITERAL: case STRING_LITERAL: case ESCAPED_STRING_LITERAL: 
+#define TOKENTYPE_NUMERIC_LITERALS_CASES case INTEGER_LITERAL: case FLOAT_LITERAL: case DOUBLE_LITERAL: case CHAR_LITERAL: case ESCAPED_CHAR_LITERAL: case BOOL_LITERAL: 
 #define TOKENTYPE_SYMBOLS_CASES case PLUS: case PLUSPLUS: case MINUS: case MINUSMINUS: case SLASH: case STAR: case MOD: case ASSIGN: case LPAREN: case RPAREN: case LBRACE: case RBRACE: case LBRACKET: case RBRACKET: case LESS: case ARROW: case GTR: case LESSEQ: case GTREQ: case SEMI_COLON: case COLON: case DOLLAR: case ADDR: case AMPERSAND: case COMMA: case DOT: 
 #define TOKENTYPE_VAR_QUALIFIERS_CASES case COLON: case DOLLAR: 
 #define TOKENTYPE_KEYWORDS_CASES case KEYWORD_AND: case KEYWORD_OR: case KEYWORD_XOR: case KEYWORD_NOT: case KEYWORD_EQUALS: case KEYWORD_NOT_EQUAL: case KEYWORD_BITAND: case KEYWORD_BITOR: case KEYWORD_BITXOR: case KEYWORD_BITNOT: case KEYWORD_u8: case KEYWORD_u16: case KEYWORD_u32: case KEYWORD_u64: case KEYWORD_i8: case KEYWORD_i16: case KEYWORD_i32: case KEYWORD_i64: case KEYWORD_f32: case KEYWORD_f64: case KEYWORD_CHAR: case KEYWORD_STRING: case KEYWORD_BOOL: case KEYWORD_DEVOID: case KEYWORD_RAW: case KEYWORD_REF: case KEYWORD_IF: case KEYWORD_ELSE: case KEYWORD_WHILE: case KEYWORD_RETURN: case KEYWORD_CAST: case KEYWORD_GLOBAL: case KEYWORD_NULL: case KEYWORD_JUNK: case KEYWORD_DEFAULT: case KEYWORD_FN: case KEYWORD_STRUCT: case KEYWORD_PUB: case KEYWORD_IMPORT: 

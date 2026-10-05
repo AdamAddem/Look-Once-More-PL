@@ -283,7 +283,6 @@ class Lowerer final {
       auto const member = member_table.getVariable(i);
       auto const member_typeID = member.typeID;
       member_types[i] = translateType(member_typeID);
-      ++i;
     }
 
     auto const res = llvm::StructType::create(tu->context, llvm::ArrayRef(member_types, i), custom_type.nameof());

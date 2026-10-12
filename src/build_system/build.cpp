@@ -27,8 +27,8 @@ union TUnion {
   Parser::TU parser_tu;
   PeepIR::TU peepir_tu;
 
-  edenInlineCXPR explicit TUnion(u16_t tu_id) : parser_tu(tu_id) { m.source_files.reserve(1); }
-  edenInlineCXPR ~TUnion() { peepir_tu.~TU(); }
+  InlineCXPR explicit TUnion(u16_t tu_id) : parser_tu(tu_id) { m.source_files.reserve(1); }
+  InlineCXPR ~TUnion() { peepir_tu.~TU(); }
 };
 static_assert( sizeof(Parser::TU) == sizeof(PeepIR::TU) );
 
@@ -75,12 +75,12 @@ class Globals {
 
 public:
 
-  edenInlineNodiscardCXPR static sz_t numTUs() noexcept { return tu_list.size(); }
-  edenInlineNodiscardCXPR static TUnion& getTU(u16_t tu_id) noexcept { return tu_list[tu_id]; }
-  edenInlineNodiscardCXPR static fs::path const& getTUPath(u16_t tu_id) noexcept { return module_paths[tu_id]; }
+  InlineNodiscardCXPR static sz_t numTUs() noexcept { return tu_list.size(); }
+  InlineNodiscardCXPR static TUnion& getTU(u16_t tu_id) noexcept { return tu_list[tu_id]; }
+  InlineNodiscardCXPR static fs::path const& getTUPath(u16_t tu_id) noexcept { return module_paths[tu_id]; }
 
-  edenInlineNodiscardCXPR static std::span<TUnion> getUserTUs() noexcept { return tu_list.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule TU
-  edenInlineNodiscardCXPR static std::span<fs::path> getUserTUPaths() noexcept { return module_paths.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule path
+  InlineNodiscardCXPR static std::span<TUnion> getUserTUs() noexcept { return tu_list.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule TU
+  InlineNodiscardCXPR static std::span<fs::path> getUserTUPaths() noexcept { return module_paths.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule path
 
   friend void LOM::build();
 
@@ -118,7 +118,7 @@ void compileExtern() {
   system(command.c_str());
 }
 
-edenNoInlineCold void
+NoInlineCold void
 print_parsed() noexcept {
   for (auto const& tu : Globals::getUserTUs()) {
     std::println("\n--- Parser Output --- {}", tu.m.name);
@@ -127,16 +127,16 @@ print_parsed() noexcept {
   }
 }
 
-edenNoInlineCold void
+NoInlineCold void
 print_peeped() noexcept {
   for (auto const& tu : Globals::getUserTUs()) {
     std::println("\n--- Peep Output --- {}", tu.m.name);
     PeepIR::printPeep(tu.peepir_tu);
-    std::println("\n--- Parser Output ---");
+    std::println("\n--- Peep Output ---");
   }
 }
 
-edenNoInlineCold void
+NoInlineCold void
 print_errors(File file) {
   std::println("\n--- Errors --- {}", file.path());
   std::println("{}", get_file_errors(file));
@@ -145,27 +145,27 @@ print_errors(File file) {
 
 }
 
-edenHot edenPure [[nodiscard]] Module&
+HotFN PureFN [[nodiscard]] Module&
 LOM::getModule(u16_t module_id) noexcept {
   assert(module_id < Globals::numTUs());
   return Globals::getTU(module_id).m.module;
 }
 
 // returns nullptr if not found
-edenPure [[nodiscard]] Module*
+PureFN [[nodiscard]] Module*
 LOM::getModule(std::string_view module_name) noexcept {
   auto const iter = Globals::module_map.find(module_name);
   if (iter == Globals::module_map.end()) return nullptr;
   return &getModule(iter->second);
 }
 
-edenPure [[nodiscard]] std::string_view
+PureFN [[nodiscard]] std::string_view
 LOM::getNameOfModule(u16_t module_id) noexcept {
   assert(module_id < Globals::numTUs());
   return Globals::getTU(module_id).m.name;
 }
 
-edenPure [[nodiscard]] Module& LOM::getCModule() noexcept { return getModule(C_TU_IDX); }
+PureFN [[nodiscard]] Module& LOM::getCModule() noexcept { return getModule(C_TU_IDX); }
 
 namespace {
 

@@ -1,12 +1,12 @@
 #pragma once
-#include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
 #include "file.hpp"
 #include "tokentype.hpp"
 
+#include "edenlib/shortened_macros.hpp"
 #include "edenlib/vectors/vector.hpp"
-#include <utility>
 #include <span>
+#include <utility>
 
 namespace LOM::Lexer {
 
@@ -21,7 +21,7 @@ struct Token {
   constexpr Token(TokenType type, u16_t length, u32_t position)
   : type(type), length(length), position(position) {}
 
-  edenNodiscardCXPR static Token
+  NodiscardCXPR static Token
   combine(Token leftmost, Token rightmost) noexcept {
     return {
       leftmost.type,
@@ -31,7 +31,7 @@ struct Token {
   }
 
   // expensive
-  edenNodiscardCXPR u64_t
+  NodiscardCXPR u64_t
   getInteger(File const& file) const noexcept {
     assert(type == TokenType::INTEGER_LITERAL);
     auto const begin = file.get_text().data() + position;
@@ -42,7 +42,7 @@ struct Token {
   }
 
   // expensive
-  edenNodiscardCXPR float
+  NodiscardCXPR float
   getFloat(File const& file) const noexcept {
     assert(type == TokenType::FLOAT_LITERAL);
     auto const begin = file.get_text().data() + position;
@@ -53,7 +53,7 @@ struct Token {
   }
 
   // expensive
-  edenNodiscardCXPR double
+  NodiscardCXPR double
   getDouble(File const& file) const noexcept {
     assert(type == TokenType::DOUBLE_LITERAL);
     auto const begin = file.get_text().data() + position;
@@ -63,19 +63,19 @@ struct Token {
     return res;
   }
 
-  edenNodiscardCXPR bool
+  NodiscardCXPR bool
   getBool(File const& file) const noexcept {
     assert(type == TokenType::BOOL_LITERAL);
     return file.get_text()[position] == 't';
   }
 
-  edenNodiscardCXPR char
+  NodiscardCXPR char
   getChar(File const& file) const noexcept {
     assert(type == TokenType::CHAR_LITERAL);
     return file.get_text()[position];
   }
 
-  edenNodiscardCXPR char
+  NodiscardCXPR char
   getEscapedChar(File const& file) const noexcept {
     assert(type == TokenType::ESCAPED_CHAR_LITERAL);
     assert(file.get_text()[position] == '\\');
@@ -99,24 +99,24 @@ struct Token {
     }
   }
 
-  edenNodiscardCXPR std::string_view
+  NodiscardCXPR std::string_view
   getString(File const& file) const noexcept {
     assert(type == TokenType::STRING_LITERAL);
     return file.view_at(length, position);
   }
 
-  edenNodiscardCXPR std::string_view
+  NodiscardCXPR std::string_view
   originalString(File const& file) const noexcept
   { return file.view_at(length, position); }
 
-  edenInlineNodiscardCXPR bool is(TokenType token_type) const noexcept { return type == token_type; }
-  edenInlineNodiscardCXPR bool isIdentifier()           const noexcept { return type == TokenType::IDENTIFIER; }
-  edenInlineNodiscardCXPR bool isPrimitive()            const noexcept { return isCategoryPRIMITIVES(type); }
-  edenInlineNodiscardCXPR bool isLiteral()              const noexcept { return isCategoryLITERALS(type); }
-  edenInlineNodiscardCXPR bool isNumericLiteral()       const noexcept { return isCategoryNUMERIC_LITERALS(type); }
-  edenInlineNodiscardCXPR bool isPointer()              const noexcept { return isCategoryPOINTERS(type); }
-  edenInlineNodiscardCXPR bool isVarQualifier()         const noexcept { return isCategoryVAR_QUALIFIERS(type); }
-  edenInlineNodiscardCXPR bool isInvalid()              const noexcept { return type == TokenType::INVALID_TOKEN; }
+  InlineNodiscardCXPR bool is(TokenType token_type) const noexcept { return type == token_type; }
+  InlineNodiscardCXPR bool isIdentifier()           const noexcept { return type == TokenType::IDENTIFIER; }
+  InlineNodiscardCXPR bool isPrimitive()            const noexcept { return isCategoryPRIMITIVES(type); }
+  InlineNodiscardCXPR bool isLiteral()              const noexcept { return isCategoryLITERALS(type); }
+  InlineNodiscardCXPR bool isNumericLiteral()       const noexcept { return isCategoryNUMERIC_LITERALS(type); }
+  InlineNodiscardCXPR bool isPointer()              const noexcept { return isCategoryPOINTERS(type); }
+  InlineNodiscardCXPR bool isVarQualifier()         const noexcept { return isCategoryVAR_QUALIFIERS(type); }
+  InlineNodiscardCXPR bool isInvalid()              const noexcept { return type == TokenType::INVALID_TOKEN; }
 
 };
 
@@ -126,33 +126,31 @@ class TokenView {
   TokenIter end;
 
 public:
-  edenInlineCXPR explicit TokenView(std::span<Token> tokens) noexcept
+  InlineCXPR explicit TokenView(std::span<Token> tokens) noexcept
   : begin(tokens.begin()), end(tokens.end()) {}
 
-  edenInlineCXPR TokenView(TokenIter begin, TokenIter end) noexcept
+  InlineCXPR TokenView(TokenIter begin, TokenIter end) noexcept
   : begin(begin), end(end) {}
 
-  edenInlineNodiscardCXPR Token peek()                    const noexcept  { return *begin; }
-  edenInlineNodiscardCXPR bool  peek_is(TokenType type)   const noexcept  { return begin->type == type; }
-  edenInlineNodiscardCXPR Token peek_ahead(long distance) const noexcept  { return *(begin + distance); }
-  edenInlineCXPR          void  set_peek(TokenType type)        noexcept  { begin->type = type; }
-  edenInlineNodiscardCXPR Token take()                          noexcept  { return *begin++; }
-  edenInlineNodiscardCXPR Token previous()                const noexcept  { return *(begin - 1); }
-  edenInlineCXPR          void  pop()                           noexcept  { ++begin; }
-  edenInlineCXPR          bool  pop_if(TokenType type)          noexcept  { if (begin->type not_eq type) return false; ++begin; return true; }
-  edenInlineCXPR          void  undo()                          noexcept  { --begin; }
-  edenInlineCXPR          void  pop_if_valid()                  noexcept { if (not begin->is(TokenType::INVALID_TOKEN)) ++begin; }
+  InlineNodiscardCXPR Token peek()                    const noexcept  { return *begin; }
+  InlineNodiscardCXPR bool  peek_is(TokenType type)   const noexcept  { return begin->type == type; }
+  InlineNodiscardCXPR Token peek_ahead(long distance) const noexcept  { return *(begin + distance); }
+  InlineCXPR          void  set_peek(TokenType type)        noexcept  { begin->type = type; }
+  InlineNodiscardCXPR Token take()                          noexcept  { return *begin++; }
+  InlineNodiscardCXPR Token previous()                const noexcept  { return *(begin - 1); }
+  InlineCXPR          void  pop()                           noexcept  { ++begin; }
+  InlineCXPR          bool  pop_if(TokenType type)          noexcept  { if (begin->type not_eq type) return false; ++begin; return true; }
+  InlineCXPR          void  undo()                          noexcept  { --begin; }
+  InlineCXPR          void  pop_if_valid()                  noexcept { if (not begin->is(TokenType::INVALID_TOKEN)) ++begin; }
 
-  edenInlineNodiscardCXPR Token
+  InlineNodiscardCXPR Token
   take_if_valid() noexcept {
     auto const res = *begin;
     if (not res.is(TokenType::INVALID_TOKEN)) ++begin;
     return res;
   }
 
-  void print(File file) const;
-
-  edenNodiscardCXPR Token
+  NodiscardCXPR Token
   viewAsStringToken() const noexcept {
     return {
       TokenType::STRING_LITERAL,
@@ -163,7 +161,7 @@ public:
 
 };
 
-inline constexpr sz_t INVALID_TOKEN_PADDING = 8;
+static constexpr sz_t INVALID_TOKEN_PADDING = 8;
 
 // Returns whether an error occured.
 // Populates out_tokens and pads with invalid tokens.

@@ -24,7 +24,6 @@ add_executable(lom
         src/lexing/lex.hpp
         src/lexing/lex.cpp
         src/lexing/tokentype.hpp
-        src/lexing/tokenview.cpp
 
         src/parsing/parse.hpp
         src/parsing/parse.cpp

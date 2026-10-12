@@ -1,5 +1,5 @@
 #pragma once
-#include "edenlib/macros.hpp"
+#include "edenlib/shortened_macros.hpp"
 #include "settings.hpp"
 #include <string_view>
 
@@ -9,10 +9,10 @@ class Module;
 void build();
 
 // returns nullptr if non-existent
-edenPure [[nodiscard]] Module* getModule(std::string_view module_name) noexcept;
+PureFN [[nodiscard]] Module* getModule(std::string_view module_name) noexcept;
 
-edenPure edenHot [[nodiscard]] Module& getModule(u16_t module_id) noexcept;
-edenPure [[nodiscard]] std::string_view getNameOfModule(u16_t module_id) noexcept;
-edenPure [[nodiscard]] Module& getCModule() noexcept;
+PureFN HotFN [[nodiscard]] Module& getModule(u16_t module_id) noexcept;
+PureFN [[nodiscard]] std::string_view getNameOfModule(u16_t module_id) noexcept;
+PureFN [[nodiscard]] Module& getCModule() noexcept;
 
 }

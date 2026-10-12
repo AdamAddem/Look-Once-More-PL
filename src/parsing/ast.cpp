@@ -3,7 +3,24 @@
 #include <print>
 
 namespace LOM::AST {
-edenNoInlineCold void print_ast(eden::vector<ASTNode> const& nodes, File const& file) noexcept {
+
+NoInlineCold NodiscardCXPR
+static char const* operatorToString(Operator e) noexcept {
+  static constexpr char const* toString[] = {
+    "+","-","*",
+    "/","%","=",
+    "<",">","<=",
+    ">=","and","or",
+    "xor","bitand","bitor",
+    "bitxor","eq","not_eq",
+    "++","--","-",
+    "@", "&", "bitnot","not",
+    "++","--","->", "."
+};
+  return toString[std::to_underlying(e)];
+}
+
+NoInlineCold void print_ast(eden::vector<ASTNode> const& nodes, File const& file) noexcept {
   auto curr = nodes.begin();
   const auto end = nodes.end();
   std::print("\n\t");
@@ -16,7 +33,7 @@ edenNoInlineCold void print_ast(eden::vector<ASTNode> const& nodes, File const& 
     case DECLARATION_RW: std::print("RW DECLARATION OF {} WITH TYPE {}", curr->original_string(file), curr->declaration_type().toString()); break;
     case DECLARATION_JUNK_RO: std::print("RO DECLARATION OF {} WITH TYPE {}, JUNK INITIALIZED", curr->original_string(file), curr->declaration_type().toString()); break;
     case DECLARATION_JUNK_RW: std::print("RW DECLARATION OF {} WITH TYPE {}, JUNK INITIALIZED", curr->original_string(file), curr->declaration_type().toString()); break;
-    case IF: std::print("IF{} W/ {} SUB_STATEMENTS", curr->if_has_else() ? " W/ ELSE" : "", curr->if_numstatements()); break;
+    case IF: std::print("IF{} W/ {} SUB_STATEMENTS", curr->has_else() ? " W/ ELSE" : "", curr->if_numstatements()); break;
     case WHILE: std::print("WHILE W/ {} SUB_STATEMENTS", curr->while_numstatements()); break;
     case RETURN: std::print("RETURN{}", curr->return_has_value() ? "" : " W/ NO VALUE"); break;
 

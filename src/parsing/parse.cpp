@@ -21,7 +21,7 @@ using namespace LOM::AST;
 
 namespace {
 
-edenNoInlineCold [[noreturn]] void throw_notfound() edenThrows(0) { throw 0; }
+NoInlineCold [[noreturn]] void throw_notfound() Throws(0) { throw 0; }
 
 struct Expression {
   u32_t left_idx;
@@ -67,7 +67,7 @@ class ParserBody {
     imports.emplace_back("__C");
   }
 
-  edenNodiscardCXPR u8_t
+  NodiscardCXPR u8_t
   current_file_idx() const noexcept {
     assert((tu.source_files.size() - 1) <= u8_max);
     return u8_t(tu.source_files.size() - 1);
@@ -75,14 +75,14 @@ class ParserBody {
 
   // adds an uninitialized node containing only the current file idx and node_type
   // returns index of node
-  edenInlineNodiscardCXPR sz_t
+  InlineNodiscardCXPR sz_t
   insertTypedNode(ASTNode::NodeType node_type) noexcept {
     auto const new_node_idx = nodes.size();
     nodes.emplace_back(node_type, current_file_idx());
     return new_node_idx;
   }
 
-  edenInlineNodiscardCXPR ASTNode
+  InlineNodiscardCXPR ASTNode
   newNode(Token token, ASTNode::NodeType type = ASTNode::EMPTY) const noexcept {
     return ASTNode{
             .type = type,
@@ -92,13 +92,13 @@ class ParserBody {
     };
   }
 
-  edenNoInlineCold void
+  NoInlineCold void
   error(Token err, std::string_view msg) noexcept {
     report_error(current_file, err, std::string(msg)); has_errors = true;
   }
 
 #define pre assert(tokens.previous().is(TokenType::LBRACKET));
-  edenNodiscardCXPR TypeID parseArrayType() noexcept { pre
+  NodiscardCXPR TypeID parseArrayType() noexcept { pre
     auto const& current_file = tu.source_files.back();
     auto const token = tokens.take();
     u64_t array_size;
@@ -118,7 +118,7 @@ class ParserBody {
 #undef pre
 
 #define pre assert(pointer_token.isPointer());
-  edenNodiscardCXPR TypeID parsePointerType(Token pointer_token) noexcept { pre
+  NodiscardCXPR TypeID parsePointerType(Token pointer_token) noexcept { pre
     auto x = parseType();
     x.addPointer(pointer_token.is(TokenType::KEYWORD_RAW));
     return x;
@@ -126,7 +126,7 @@ class ParserBody {
 #undef pre
 
 #define pre assert(primitive_token.isPrimitive());
-  edenNodiscardCXPR TypeID parsePrimitiveType(Token primitive_token) const noexcept { pre
+  NodiscardCXPR TypeID parsePrimitiveType(Token primitive_token) const noexcept { pre
     static constexpr sz_t TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER = std::to_underlying(TokenType::KEYWORD_u8) - std::to_underlying(PrimitiveType::U8);
     return getPrimitiveLiteralID(
       static_cast<PrimitiveType::PrimitiveTypeEnum>(
@@ -139,7 +139,7 @@ class ParserBody {
   }
 #undef pre
 
-  edenNodiscardCXPR TypeID parseType() noexcept {
+  NodiscardCXPR TypeID parseType() noexcept {
     auto const& current_file = tu.source_files.back();
     auto const token = tokens.take();
 
@@ -161,7 +161,7 @@ class ParserBody {
     }
   }
 
-  edenNodiscardCXPR std::string_view parseIdentifier() noexcept {
+  NodiscardCXPR std::string_view parseIdentifier() noexcept {
     if (not tokens.peek_is(TokenType::IDENTIFIER)) {
       error(tokens.take_if_valid(), "Expected identifier.");
       return "!ERROR!";
@@ -171,7 +171,7 @@ class ParserBody {
 
   // opening parenthesis must be popped, and the next token must not be closing parenthesis (?)
 //#define pre assert(tokens.previous().is(TokenType::LPAREN));
-  edenNodiscardCXPR u32_t generateParameters() { //pre
+  NodiscardCXPR u32_t generateParameters() { //pre
     auto const parameter = generateAssignmentExpression();
     if (tokens.pop_if(TokenType::RPAREN))
       return expression_tree.create(PLACEHOLDER_NODE, parameter, 0);
@@ -186,7 +186,7 @@ class ParserBody {
 
 #define pre assert(tokens.peek().isLiteral());
   template <bool negate = false>
-  edenNodiscardCXPR u32_t generateLiteral() { pre
+  NodiscardCXPR u32_t generateLiteral() { pre
     auto const token = tokens.take();
     ASTNode node = newNode(token);
 
@@ -226,7 +226,7 @@ class ParserBody {
 #undef pre
 
 #define pre assert(module_name_token.isIdentifier() or module_name_token.is(TokenType::DUNDER_CEXTERN)); assert(tokens.peek_is(TokenType::DOT));
-  edenNodiscardCXPR u32_t generateModuleAccess(Token module_name_token) { pre
+  NodiscardCXPR u32_t generateModuleAccess(Token module_name_token) { pre
     auto const dot_token = tokens.take();
     auto module_access_node = newNode(dot_token, ASTNode::MODULE_ACCESS);
     module_access_node.module_access_data.module_length = module_name_token.length;
@@ -242,7 +242,7 @@ class ParserBody {
   }
 #undef pre
 
-  edenNodiscardCXPR u32_t generatePrimaryExpression() {
+  NodiscardCXPR u32_t generatePrimaryExpression() {
     switch (tokens.peek().type) { using enum TokenType;
     TOKENTYPE_LITERALS_CASES return generateLiteral();
     case DUNDER_CEXTERN:     return generateModuleAccess(tokens.take());
@@ -272,7 +272,7 @@ class ParserBody {
     }
   }
 
-  edenNodiscardCXPR u32_t generatePostfixExpression() {
+  NodiscardCXPR u32_t generatePostfixExpression() {
     auto left = generatePrimaryExpression();
     while (true) {
       auto const token = tokens.peek();
@@ -325,7 +325,7 @@ class ParserBody {
     }
   }
 
-  edenNodiscardCXPR u32_t generatePrefixExpression() {
+  NodiscardCXPR u32_t generatePrefixExpression() {
     auto const token = tokens.peek();
     Operator opr;
     switch (token.type) {
@@ -361,7 +361,7 @@ class ParserBody {
     return expression_tree.create(node, generatePrefixExpression());
   }
 
-  edenNodiscardCXPR u32_t generateFactorExpression() {
+  NodiscardCXPR u32_t generateFactorExpression() {
     auto left = generatePrefixExpression();
     while (true) {
       auto const token = tokens.peek();
@@ -379,7 +379,7 @@ class ParserBody {
     }
   }
 
-  edenNodiscardCXPR u32_t generateTermExpression() {
+  NodiscardCXPR u32_t generateTermExpression() {
     auto left = generateFactorExpression();
     while (true) {
       auto const token = tokens.peek();
@@ -396,7 +396,7 @@ class ParserBody {
     }
   }
 
-  edenNodiscardCXPR u32_t generateRelationalExpression() {
+  NodiscardCXPR u32_t generateRelationalExpression() {
     auto left = generateTermExpression();
     while (true) {
       auto const token = tokens.peek();
@@ -417,7 +417,7 @@ class ParserBody {
     }
   }
 
-  edenNodiscardCXPR u32_t generateBitwiseExpression() {
+  NodiscardCXPR u32_t generateBitwiseExpression() {
     auto left = generateRelationalExpression();
     while (true) {
       auto const token = tokens.peek();
@@ -435,7 +435,7 @@ class ParserBody {
     }
   }
 
-  edenNodiscardCXPR u32_t generateLogicalExpression() {
+  NodiscardCXPR u32_t generateLogicalExpression() {
     auto left = generateBitwiseExpression();
     while (true) {
       auto const token = tokens.peek();
@@ -453,7 +453,7 @@ class ParserBody {
     }
   }
 
-  edenNodiscardCXPR u32_t generateAssignmentExpression() {
+  NodiscardCXPR u32_t generateAssignmentExpression() {
     auto const left = generateLogicalExpression();
     if (tokens.peek_is(TokenType::ASSIGN)) {
       auto const token = tokens.take();
@@ -546,13 +546,12 @@ class ParserBody {
       tokens.pop();
     }
   }
-
-  edenInlineCXPR void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
+  InlineCXPR void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
 
   // parses  `name  : or $  type`
   // returns name token, qualifiers, and typeID
   template <bool is_parameter = false>
-  edenNodiscardCXPR std::tuple<Token, Type::Qualifiers, TypeID>
+  NodiscardCXPR std::tuple<Token, Type::Qualifiers, TypeID>
   parseHalfDeclaration() noexcept {
     auto const identifier_token = tokens.take();
     Type::Qualifiers qualifiers;
@@ -631,6 +630,9 @@ class ParserBody {
         break;
       }
     }
+
+    if (num_substatements == 0)
+      error(tokens.peek(), "if statement with empty body.");
 
     auto& if_data = nodes[if_node_idx].if_data;
     if_data.num_substatements = num_substatements;

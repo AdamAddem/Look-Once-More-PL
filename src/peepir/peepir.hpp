@@ -80,27 +80,25 @@ struct Instruction {
   };
   using enum InstructionType;
 
-  // structured this way to abuse the common subsequence exception for unions
-  // structs dont inherit from CommonData as that would disqualify them from being standard-layout which is a requirement for this to work
   InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
+
   struct ModuleMemberData    { u16_t module_id; u16_t member_id; u16_t module_length; u16_t member_length; };
   struct TypeMemberData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; };
 
-  struct LocalData           { u32_t idx; /* byte_t _extra[4]; */  };
+  struct LocalData           { u32_t idx; byte_t _pad[4]{}; };
 
   struct SignedLiteralData   { i64_t value; };
   struct UnsignedLiteralData { u64_t value; };
-  struct FloatLiteralData    { f32_t value; /* byte_t _extra[4]; */  };
+  struct FloatLiteralData    { f32_t value; byte_t _pad[4]{}; };
   struct DoubleLiteralData   { f64_t value; };
-  struct BoolLiteralData     { bool  value; /* byte_t _extra[7]; */  };
-  struct CharLiteralData     { char  value; /* byte_t _extra[7]; */  };
+  struct BoolLiteralData     { bool  value; byte_t _pad[7]{}; };
+  struct CharLiteralData     { char  value; byte_t _pad[7]{}; };
 
-  struct CastAssignData      { u32_t bitwidth; /* byte_t _extra[4]; */  };
+  struct CastAssignData      { u32_t bitwidth; byte_t _pad[4]{}; };
   struct CastData            { TypeID destination_typeID; };
   struct SubscriptData       { TypeID array_typeID;  };
   struct DereferenceData     { TypeID dereference_typeID; };
-  struct CallData            { u32_t num_parameters; /* byte_t _extra[4]; */ };
-#undef common_subsequence
+  struct CallData            { u32_t num_parameters; byte_t _pad[4]{}; };
 
   union {
     ModuleMemberData    module_member_data;
@@ -119,12 +117,12 @@ struct Instruction {
     CallData            call_data;
   };
 
-  edenInlineCXPR explicit Instruction() noexcept {}
-  edenInlineCXPR explicit Instruction(InstructionType type, u8_t file_idx, u16_t length_in_file, u32_t position_in_file) noexcept
+  InlineCXPR Instruction() noexcept {}
+  InlineCXPR explicit Instruction(InstructionType type, u8_t file_idx, u16_t length_in_file, u32_t position_in_file) noexcept
   : type(type), file_idx(file_idx), length_in_file(length_in_file), position_in_file(position_in_file) {}
 
-  edenInlineCXPR explicit Instruction(InstructionType type) noexcept { this->type = type; }
-  edenInlineNodiscardCXPR bool is_literal() const noexcept { return eden::enumBetween(type, I8_LITERAL, ESCAPED_STRING_LITERAL); }
+  InlineCXPR explicit Instruction(InstructionType type) noexcept { this->type = type; }
+  InlineNodiscardCXPR bool is_literal() const noexcept { return eden::enumBetween(type, I8_LITERAL, ESCAPED_STRING_LITERAL); }
 
 #define pre assert(is_literal());
   constexpr void adjust_literal(u64_t bitwidth, bool make_signed) noexcept { pre
@@ -178,44 +176,47 @@ struct Instruction {
 static_assert(alignof(Instruction) == 8);
 static_assert(sizeof(Instruction) == 16);
 
-class Block {
-  struct br_data {  u32_t next_block_idx; };
-  struct brc_data { u32_t true_block_idx; u32_t false_block_idx; };
+class alignas(8) Block {
+  struct br_data  { i16_t next_block_offset{}; };
+  struct brc_data { i16_t true_block_offset{}; i16_t false_block_offset{}; };
 public:
 
-  u32_t first_instruction_idx;
-  enum class Terminator : u32_t {NONE, BR, BRC, RET} //when done peeping, there should be no ret besides the last block
-  terminator_type;
+  u16_t num_instructions{};
+  enum class Terminator : u16_t {NONE, BR, BRC, RET} // when done peeping, there should be no ret besides the last block
+  terminator_type{Terminator::NONE};
+
+  constexpr Block() = default;
 
   union {
+    brc_data brc{};
     br_data br;
-    brc_data brc;
   };
 
   constexpr void
-  set_brc(u32_t true_block_idx, u32_t false_block_idx) noexcept {
-    if (terminator_type not_eq Terminator::RET) {
-      terminator_type = Terminator::BRC;
-      brc = {true_block_idx, false_block_idx};
-    }
+  end_with_brc(i16_t true_block_offset, i16_t false_block_offset) noexcept {
+    auto const not_ret = terminator_type != Terminator::RET;
+    terminator_type = not_ret ? Terminator::BRC : terminator_type;
+    brc.true_block_offset = true_block_offset;
+    brc.false_block_offset = false_block_offset;
   }
 
   constexpr void
-  set_br(u32_t next_block_idx) noexcept {
-    if (terminator_type not_eq Terminator::RET) {
-      terminator_type = Terminator::BR;
-      br.next_block_idx = next_block_idx;
-    }
+  end_with_br(i16_t next_block_offset) noexcept {
+    auto const not_ret = terminator_type != Terminator::RET;
+    terminator_type = not_ret ? Terminator::BR : terminator_type;
+    br.next_block_offset = next_block_offset;
   }
 
   constexpr void
-  set_ret() noexcept {
-    if (terminator_type == Terminator::NONE)
-      terminator_type = Terminator::RET;
+  end_with_ret() noexcept {
+    terminator_type = Terminator::RET;
   }
+
 };
+static_assert(sizeof(Block) == 8);
 
 struct Function {
+  static constexpr sz_t RETURN_LOCAL_IDX = 0;
   bool is_public;
   u8_t file_idx;
   u16_t id_in_module;

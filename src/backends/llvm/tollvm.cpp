@@ -1,15 +1,4 @@
 #include "tollvm.hpp"
-#include "build_system/build.hpp"
-#include "error.hpp"
-#include "parsing/ast.hpp"
-#include "peepir/peepir.hpp"
-#include "settings.hpp"
-#include "edenlib/vectors/swap_vector.hpp"
-
-#include <cassert>
-#include <chrono>
-#include <filesystem>
-#include <print>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -21,6 +10,22 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/TargetParser/Host.h>
+
+#include "build_system/build.hpp"
+#include "error.hpp"
+#include "parsing/ast.hpp"
+#include "peepir/peepir.hpp"
+#include "settings.hpp"
+
+#include "edenlib/vectors/swap_vector.hpp"
+
+#include <cassert>
+#include <chrono>
+#include <filesystem>
+#include <print>
+
+
+#include "edenlib/shortened_macros.hpp"
 using namespace LOM;
 
 namespace {
@@ -134,7 +139,6 @@ class Lowerer final {
   llvm::IntegerType* i1; llvm::IntegerType* i8;
   llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
   llvm::Type* f32; llvm::Type* f64; llvm::Type* devoid; llvm::PointerType* ptr;
-
   llvm::Value* i64_0;
   llvm::Value* bool_true; llvm::Value* bool_false;
 
@@ -148,13 +152,13 @@ class Lowerer final {
 
   /* Variables used when lowering a function */
   File current_file;
-  llvm::Type* return_type;
-  llvm::Function* llvmfunc;
+  llvm::Type* return_type{};
+  llvm::Function* llvmfunc{};
   llvm::IRBuilder<> builder;
   eden::vector<llvm::AllocaInst*> locals;
 
   eden::vector<PeepIR::Instruction> instructions; sz_t instruction_idx{};
-  eden::vector<PeepIR::Block> mir_blocks;
+  eden::vector<PeepIR::Block> peepir_blocks;
   eden::vector<llvm::BasicBlock*> llvm_blocks;
   /* Variables used when lowering a function */
 
@@ -244,7 +248,7 @@ class Lowerer final {
       case PRIMITIVE: {
         auto const& primitive = typeID.getPrimitiveType();
         switch (primitive.getUnderlyingPrimitiveType()) { using enum PrimitiveType::PrimitiveTypeEnum;
-        case STRING:        edenUnreachable("WIP");
+        case STRING:        Unreachable("WIP");
         case F32: return f32;
         case F64: return f64;
         case U7: case U8: case I8: case CHAR: case BOOL: return i8;
@@ -252,13 +256,13 @@ class Lowerer final {
         case U31: case U32: case I32:                    return i32;
         case U63: case U64: case I64:                    return i64;
         default:
-          edenUnreachable("Invalid primitive type.");
+          Unreachable("Invalid primitive type.");
         }
       }
 
       case CUSTOM: break;
-      case FUNCTION: edenUnreachable("Functions should be translated via translateFunctionType.");
-      default: edenUnreachable("Invalid type being translated.");
+      case FUNCTION: Unreachable("Functions should be translated via translateFunctionType.");
+      default: Unreachable("Invalid type being translated.");
       }
     }
 
@@ -384,7 +388,7 @@ class Lowerer final {
       return load;
     }
     default:
-      edenUnreachable("Invalid unary peep instruction type.");
+      Unreachable("Invalid unary peep instruction type.");
     }
   }
 
@@ -409,7 +413,7 @@ class Lowerer final {
     case FMOD: return builder.CreateFRem(left, right);
 
     case ASSIGN:
-      edenUnreachable("Assign shouldn't be called here.");
+      Unreachable("Assign shouldn't be called here.");
 
     case ULESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULT, left, right);
     case SLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLT, left, right);
@@ -442,7 +446,7 @@ class Lowerer final {
       : llvm::CmpInst::Predicate::ICMP_NE,
       left, right);
     default:
-      edenUnreachable("Invalid binary peep instruction type.");
+      Unreachable("Invalid binary peep instruction type.");
     }
   }
 
@@ -463,7 +467,7 @@ class Lowerer final {
       break;
 
     default:
-      edenUnreachable("Invalid assign peep instruction type.");
+      Unreachable("Invalid assign peep instruction type.");
     }
 
     return builder.CreateStore(right, left);
@@ -474,8 +478,8 @@ class Lowerer final {
     auto const& instruction = instructions[instruction_idx++];
     switch (instruction.type) {
       using enum PeepIR::Instruction::InstructionType;
-    case NOOP:
-      return nullptr;
+    case NOOP: return nullptr;
+
     case FUNCTION: {
       auto const function = tu->module.getFunction(instruction.original_string(current_file)); assert(function);
       return function;
@@ -604,7 +608,7 @@ class Lowerer final {
     }
 
     default:
-      edenUnreachable("Invalid peep instruction type.");
+      Unreachable("Invalid peep instruction type.");
     }
   }
 
@@ -671,33 +675,34 @@ class Lowerer final {
     }
 
     default:
-      edenUnreachable("Invalid peep instruction type.");
+      Unreachable("Invalid peep instruction type.");
     }
   }
 
-  void genBlock(u32_t instruction_cut_off, sz_t block_idx) {
+  void genBlock(sz_t block_idx) {
     llvm::Value* branch_value{};
-    while (instruction_idx < instruction_cut_off)
+    auto const& block = peepir_blocks[block_idx];
+
+    auto const instruction_cutoff = instruction_idx + block.num_instructions;
+    while (instruction_idx < instruction_cutoff)
       branch_value = genValueExpression();
 
-    auto const& block = mir_blocks[block_idx];
-    switch (block.terminator_type) {
-      using enum PeepIR::Block::Terminator;
+    switch (block.terminator_type) { using enum PeepIR::Block::Terminator;
     case BR:
       builder.CreateBr(
-        llvm_blocks[block.br.next_block_idx]);
+        llvm_blocks[block.br.next_block_offset + (i16_t)block_idx]);
       break;
     case BRC:
       builder.CreateCondBr(
         builder.CreateTrunc(branch_value, i1),
-        llvm_blocks[block.brc.true_block_idx],
-        llvm_blocks[block.brc.false_block_idx]);
+        llvm_blocks[block.brc.true_block_offset + (i16_t)block_idx],
+        llvm_blocks[block.brc.false_block_offset + (i16_t)block_idx]);
       break;
     case RET:
       builder.CreateRet(branch_value);
       break;
     default:
-      edenUnreachable("Invalid block terminator type.");
+      Unreachable("Invalid block terminator type.");
     }
   }
 
@@ -712,14 +717,11 @@ class Lowerer final {
     // initialize state for new function
     {
       instructions = std::move(func.instructions);
-      mir_blocks = std::move(func.blocks);
+      peepir_blocks = std::move(func.blocks);
       current_file = func_file;
 
       auto const func_type = translateFunctionType(func.typeID);
       return_type = func_type->getReturnType();
-
-      auto const num_params = func_type->getNumParams();
-      auto const arg_types = func_type->param_begin();
 
       auto const linkage = func.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
       llvmfunc = llvm::Function::Create(
@@ -727,56 +729,51 @@ class Lowerer final {
         func.nameof(),
         &tu->module);
 
-      auto const entry = llvm::BasicBlock::Create(tu->context, "", llvmfunc);
-      builder.SetInsertPoint(entry);
-      llvm_blocks.emplace_back(entry);
-      for (sz_t i{1}; i<mir_blocks.size(); ++i) {
-        llvm_blocks.emplace_back(
-          llvm::BasicBlock::Create(tu->context, "", llvmfunc));
-      }
+      llvm_blocks.reserve(peepir_blocks.size());
+      for (sz_t i{}; i<peepir_blocks.size(); ++i)
+        llvm_blocks.emplace_back_unchecked(llvm::BasicBlock::Create(tu->context, "", llvmfunc));
+      builder.SetInsertPoint(llvm_blocks.front());
 
-      auto arg = llvmfunc->arg_begin();
       locals.reserve(func.locals.size() + 1);
-      locals.emplace_back(
-        (return_type->isVoidTy()) ? nullptr
-        : builder.CreateAlloca(return_type, nullptr) );
+      locals.emplace_back_unchecked(
+        return_type->isVoidTy()
+        ? nullptr : builder.CreateAlloca(return_type) );
 
-      for (sz_t i{}; i<num_params; ++i) {
-        llvm::AllocaInst* param_alloca = builder.CreateAlloca(arg_types[i], nullptr);
+      auto const param_types = func_type->param_begin();
+      auto const num_params = func_type->getNumParams();
+      auto arg = llvmfunc->arg_begin();
+
+      sz_t i{};
+      for (; i<num_params; ++i) {
+        auto const param_alloca = builder.CreateAlloca(param_types[i]);
         builder.CreateStore(arg, param_alloca);
-        locals.emplace_back(param_alloca);
+        locals.emplace_back_unchecked(param_alloca);
         ++arg;
       }
 
       auto const num_locals = func.locals.size();
-      for (auto i{num_params + 1}; i<num_locals; ++i) {
-        locals.emplace_back(
-          builder.CreateAlloca(translateType(func.locals[i]), nullptr)
-          );
+      for (; i<num_locals; ++i) {
+        locals.emplace_back_unchecked( builder.CreateAlloca(translateType(func.locals[i])) );
       }
-
 
     }
 
-    // codegen
-    {
-      auto const num_blocks = mir_blocks.size();
-      sz_t block_idx{};
-      while (block_idx < (num_blocks - 1)) {
-        genBlock(mir_blocks[block_idx+1].first_instruction_idx, block_idx);
-        ++block_idx;
-        builder.SetInsertPoint(llvm_blocks[block_idx]);
-      }
-      builder.SetInsertPoint(&llvmfunc->back());
+    auto const num_blocks = peepir_blocks.size();
+    for (sz_t i{}; i<num_blocks; ++i) {
+      builder.SetInsertPoint(llvm_blocks[i]);
+      genBlock(i);
+    }
 
-      return_type->isVoidTy()
-      ? builder.CreateRetVoid()
-      : builder.CreateRet( builder.CreateLoad(locals[0]->getAllocatedType(), locals[0]) );
+    /*
+    builder.SetInsertPoint(&llvmfunc->back());
 
-      if (verifyFunction(*llvmfunc, &llvm::errs())) {
-        tu->module.print(llvm::outs(), nullptr);
-        std::quick_exit(1);
-      }
+    return_type->isVoidTy()
+    ? builder.CreateRetVoid()
+    : builder.CreateRet( builder.CreateLoad(locals[0]->getAllocatedType(), locals[0]) ); */
+
+    if (verifyFunction(*llvmfunc, &llvm::errs())) {
+      tu->module.print(llvm::outs(), nullptr);
+      std::quick_exit(1);
     }
 
     return llvmfunc;

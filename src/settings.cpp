@@ -1,5 +1,6 @@
 #include "settings.hpp"
 #include "edenlib/typedefs.hpp"
+#include "edenlib/shortened_macros.hpp"
 
 #include <cassert>
 #include <filesystem>
@@ -34,11 +35,16 @@ std::unordered_map<std::string_view, Args> const stringToArgs{
 };
 
 constexpr std::string_view hello_world = {
-  "__C puts(str: ref u8) i32;"
-  "\npub main: () i32 {"
-  "\n\t__C.puts(\"Hello, World!\");"
-  "\n\treturn 0;"
-  "\n}"
+R"(
+__C puts(str: ref u8) i32;
+
+main: () i32 {
+  __C.puts("Hello, World!");
+
+  return 0;
+}
+)"
+
 };
 
 }
@@ -61,8 +67,9 @@ std::string_view getExecutableName() noexcept   { return output_name; }
 std::string_view getExternFlags() noexcept      { return extern_flags; }
 u8_t getOptimizationLevel() noexcept            { return optimization_level; }
 
-void setArgs(unsigned argc, const char* argv[]) {
-  namespace fs = std::filesystem;
+namespace fs = std::filesystem;
+void setArgs(int _argc, const char** argv) {
+  auto const argc = (sz_t) _argc;
   if (std::string_view(argv[1]) == "init") {
     fs::create_directory("build");
     fs::create_directory("extern");
@@ -104,7 +111,7 @@ void setArgs(unsigned argc, const char* argv[]) {
     case Args::O3:    optimization_level = 3; break;
 
     default:
-      std::unreachable();
+      Unreachable("Invalid argument.");
     }
 
   }

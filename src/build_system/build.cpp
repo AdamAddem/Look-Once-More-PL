@@ -40,14 +40,15 @@ class Globals {
 
   static void init() {
     module_paths.reserve(4);
-    module_paths.emplace_back(extern_path);
-    module_paths.emplace_back(src_path);
+    module_paths.emplace_back_unchecked(extern_path);
+    module_paths.emplace_back_unchecked(src_path);
     for (auto const& entry : fs::directory_iterator{src_path}) {
       if (not entry.is_directory()) continue;
       if (is_empty(entry)) continue;
 
       module_paths.emplace_back( entry.path() );
     }
+
     auto const num_tus = module_paths.size();
     module_map.reserve(num_tus);
     module_map.emplace("__C", C_TU_IDX);
@@ -55,7 +56,7 @@ class Globals {
     // we do this malarky instead of using a vector because TUnion's move/copy constructor cannot be implemented in any satisfactory way
     // and vector requires a movable object even if we reserve upfront
     auto const tu_array = std::start_lifetime_as_array<TUnion>(::operator new(num_tus * sizeof(TUnion), align_t{64}), num_tus);
-    tu_list.reset( tu_array, num_tus );
+    tu_list.reset(tu_array, num_tus);
 
     std::construct_at<TUnion>(tu_array, C_TU_IDX)->m.name = "__C";
     for (sz_t i{MAIN_TU_IDX}; i<num_tus; ++i) {
@@ -186,8 +187,8 @@ parse_module(Parser::TU& tu, u16_t tu_id) {
   bool has_error = false;
   for (auto const& entry : fs::directory_iterator{directory}) {
     auto const& path = entry.path();
-    if (not entry.is_regular_file()) throw std::runtime_error(std::format("Sorry! Submodules not supported yet. Module Path: {}", path.string()));
-    if (path.extension() != ".lom")  continue;
+    if (entry.is_directory()) throw std::runtime_error(std::format("Sorry! Submodules not supported yet. Module Path: {}", path.string()));
+    if (path.extension() != ".lom") continue;
 
     has_error |= parse_file(tokens, tu, path);
     tokens.clear();
@@ -196,7 +197,7 @@ parse_module(Parser::TU& tu, u16_t tu_id) {
   return has_error;
 }
 
-// returns whether compilation should stop (due to error or outputing parser)
+// returns true if compilation should stop (due to error or outputing parser)
 [[nodiscard]] bool
 parse_modules() {
   bool has_error = false;
@@ -205,24 +206,24 @@ parse_modules() {
   {
     auto& tu = Globals::getTU(MAIN_TU_IDX);
     static auto const path = fs::path{"src/main.lom"};
-    if (not fs::exists(path)) std::println(stderr, "LookOnceMore: main.lom not found."), std::abort();
+    if (not fs::exists(path)) throw std::runtime_error("LookOnceMore: main.lom not found.");
 
-    eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<>, 32};
+    eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<32>};
     has_error = parse_file(tokens, tu.parser_tu, path);
   }
 
   auto const num_tus = Globals::numTUs();
   for (auto i{MAIN_TU_IDX + 1}; i<num_tus; ++i) {
     auto& ptu = Globals::getTU((u16_t) i).parser_tu;
-    if (parse_module(ptu, i)) has_error = true;
+
+    has_error |= parse_module(ptu, i);
   }
 
-  if (has_error) { return true; }
-  if (Settings::do_output_parser) { print_parsed(); return true; }
-  return false;
+  if (Settings::do_output_parser && not has_error) { print_parsed(); return true; }
+  return has_error;
 }
 
-// returns whether compilation should stop (due to error or outputing peep)
+// returns true if compilation should stop (due to error or outputing peep)
 [[nodiscard]] bool
 peep_modules() {
   bool has_error = false;
@@ -239,13 +240,13 @@ peep_modules() {
 }
 
 void compile_modules() {
-  auto const tu_paths = Globals::getUserTUPaths();
   auto const tus = Globals::getUserTUs();
+  auto const tu_paths = Globals::getUserTUPaths();
 
-  for (auto [tu, path] : eden::iter_over_both(tus, tu_paths)) {
+  for (auto [tu, path] : eden::iter_over(tus, tu_paths)) {
     auto& peeped = tu.peepir_tu;
     [[maybe_unused]]
-    auto const compiled = Backend::codegen( std::move(peeped), path );
+    auto const compiled = Backend::codegen( peeped, path );
 
 #ifdef NO_MEASUREMENT
     if (Settings::do_output_asm)    compiled->createASMFile(path);

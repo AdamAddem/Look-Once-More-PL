@@ -785,7 +785,7 @@ class Peeper {
     peepScopedStatement(while_node.while_data.num_substatements);
     if (is_current_block_empty())
       addInstruction(Instruction{Instruction::NOOP});
-    current_block.end_with_br(condition_idx);
+    current_block.end_with_br( eden::narrow<i16_t>(condition_idx) - eden::narrow<i16_t>(current_block_index()) );
 
     forceNewBlock();
     auto const after_loop_offset = eden::narrow<i16_t>(current_block_index() - condition_idx);

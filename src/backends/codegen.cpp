@@ -8,8 +8,8 @@
 
 namespace LOM {
 
-std::unique_ptr<Backend> Backend::codegen(PeepIR::TU&& vtu, std::filesystem::path const& file) {
-  return ToLLVM::codegen(std::move(vtu), file);
+std::unique_ptr<Backend> Backend::codegen(PeepIR::TU& vtu, std::filesystem::path const& file) {
+  return ToLLVM::codegen(vtu, file);
 }
 
 //.... it works?

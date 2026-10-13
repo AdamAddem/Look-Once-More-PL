@@ -30,7 +30,37 @@ using namespace LOM;
 
 namespace {
 
-struct TU : Backend {
+struct TargetStruct {
+  static constexpr std::string_view CPU = "generic";
+  static constexpr std::string_view Features = "";
+
+  std::string err;
+  llvm::Triple triple;
+  llvm::TargetMachine* machine;
+  llvm::DataLayout data_layout;
+
+  TargetStruct() {
+    llvm::InitializeAllTargetInfos();
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmParsers();
+    llvm::InitializeAllAsmPrinters();
+
+    triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
+    auto const target = llvm::TargetRegistry::lookupTarget(triple, err);
+    if (not target) {
+      llvm::errs() << err;
+      std::quick_exit(1);
+    }
+
+    machine = target->createTargetMachine(triple, CPU, Features, {}, llvm::Reloc::PIC_);
+    data_layout = machine->createDataLayout();
+    machine->Options.MCOptions.AsmVerbose = true;
+  }
+
+}Target;
+
+struct TU final : Backend {
   llvm::LLVMContext context;
   llvm::Module module;
 
@@ -40,28 +70,18 @@ struct TU : Backend {
   void printModule(llvm::raw_ostream& out = llvm::outs()) const
   { module.print(out, nullptr); }
 
-  [[nodiscard]] std::filesystem::path
-  createASMFile(std::filesystem::path const& output_path) override {
-    static constexpr std::string_view asm_folder = "build/asm/";
+  void createASMFile(std::filesystem::path const& output_path) override {
     std::filesystem::path asm_path = asm_folder;
-    asm_path.append(output_path.string());
+    asm_path.append(output_path.native());
     std::filesystem::create_directories(asm_path.parent_path());
-#ifdef _WIN32
-    asm_path.replace_extension(".asm");
-#else
-    asm_path.replace_extension(".s");
-#endif
+    asm_path.replace_extension(asm_extension);
 
     createFile(asm_path, llvm::CodeGenFileType::AssemblyFile);
-    return asm_path;
   }
 
-  [[nodiscard]] std::filesystem::path
-  createIRFile(std::filesystem::path const& output_path) override {
-    static constexpr std::string_view ir_path = "build/llvm_ir/";
-
-    std::filesystem::path file_path = ir_path;
-    file_path.append(output_path.string());
+  void createIRFile(std::filesystem::path const& output_path) override {
+    std::filesystem::path file_path = ToLLVM::ir_path;
+    file_path.append(output_path.native());
     std::filesystem::create_directories(file_path.parent_path());
     file_path.replace_extension(".ll");
 
@@ -73,12 +93,10 @@ struct TU : Backend {
     }
 
     printModule(dest);
-    return file_path;
   }
 
   [[nodiscard]] std::filesystem::path
   createObjectFile(std::filesystem::path const& output_path) override {
-    static constexpr std::string_view object_folder = "build/obj/";
 
     std::filesystem::path obj_path = object_folder;
     obj_path.append(output_path.string());
@@ -96,39 +114,24 @@ struct TU : Backend {
     llvm::InitializeAllAsmParsers();
     llvm::InitializeAllAsmPrinters();
 
-    static const llvm::Triple target_triple{llvm::sys::getDefaultTargetTriple()};
-    module.setTargetTriple(target_triple);
-    std::string err;
-    auto const target = llvm::TargetRegistry::lookupTarget(module.getTargetTriple(), err);
-    if (not target) {
-      llvm::errs() << err;
-      std::quick_exit(1);
-    }
-
-    static constexpr std::string_view CPU = "generic";
-    static constexpr std::string_view Features = "";
-    static const llvm::TargetOptions opt;
-    auto const target_machine = target->createTargetMachine(
-      target_triple, CPU, Features, opt, llvm::Reloc::PIC_);
-    target_machine->Options.MCOptions.AsmVerbose = true;
-    module.setDataLayout(target_machine->createDataLayout());
+    module.setTargetTriple(Target.triple);
+    module.setDataLayout(Target.data_layout);
 
     std::error_code EC;
     llvm::raw_fd_ostream dest(output_path.string(), EC, llvm::sys::fs::OF_None);
     if (EC) {
       llvm::errs() << "Could not open file: " << output_path.string() << " | " << EC.message() << '\n';
-      assert(false);
+      std::exit(1);
     }
 
     llvm::legacy::PassManager pass;
-    if (target_machine->addPassesToEmitFile(pass, dest, nullptr, filetype)) {
+    if (Target.machine->addPassesToEmitFile(pass, dest, nullptr, filetype)) {
       llvm::errs() << "Target machine can't emit a file of this type";
-      assert(false);
+      std::exit(1);
     }
 
     pass.run(module);
     dest.flush();
-    delete target_machine;
   }
 };
 
@@ -398,11 +401,12 @@ class Lowerer final {
     auto const right = genValueExpression();
 
     switch (type) { using enum PeepIR::Instruction::InstructionType;
-    case ADD: return builder.CreateAdd(left, right);
-    case FADD: return builder.CreateFAdd(left, right);
-    case SUB: return builder.CreateSub(left, right);
-    case FSUB: return builder.CreateFSub(left, right);
-    case MULT: return builder.CreateMul(left, right);
+    case ADD:   return builder.CreateAdd(left, right);
+    case FADD:  return builder.CreateFAdd(left, right);
+
+    case SUB:   return builder.CreateSub(left, right);
+    case FSUB:  return builder.CreateFSub(left, right);
+    case MULT:  return builder.CreateMul(left, right);
     case FMULT: return builder.CreateFMul(left, right);
 
     case UDIV: return builder.CreateUDiv(left, right);
@@ -418,21 +422,26 @@ class Lowerer final {
     case ULESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULT, left, right);
     case SLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLT, left, right);
     case FLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OLT, left, right);
-    case UGTR: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_UGT, left, right);
-    case SGTR: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SGT, left, right);
-    case FGTR: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OGT, left, right);
-    case ULEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULE, left, right);
-    case SLEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLE, left, right);
-    case FLEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OLE, left, right);
-    case UGEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_UGE, left, right);
-    case SGEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SGE, left, right);
-    case FGEQ: return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OGE, left, right);
 
-    case AND: return builder.CreateLogicalAnd(builder.CreateTrunc(left, i1), builder.CreateTrunc(right, i1));
-    case OR: return builder.CreateLogicalOr(builder.CreateTrunc(left, i1), builder.CreateTrunc(right, i1));
+    case UGTR:  return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_UGT, left, right);
+    case SGTR:  return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SGT, left, right);
+    case FGTR:  return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OGT, left, right);
+
+    case ULEQ:  return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULE, left, right);
+    case SLEQ:  return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLE, left, right);
+    case FLEQ:  return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OLE, left, right);
+
+    case UGEQ:  return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_UGE, left, right);
+    case SGEQ:  return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SGE, left, right);
+    case FGEQ:  return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OGE, left, right);
+
+    case AND:    return builder.CreateLogicalAnd(builder.CreateTrunc(left, i1), builder.CreateTrunc(right, i1));
+    case OR:     return builder.CreateLogicalOr(builder.CreateTrunc(left, i1), builder.CreateTrunc(right, i1));
+
     case BITAND: return builder.CreateAnd(left, right);
-    case BITOR: return builder.CreateOr(left, right);
+    case BITOR:  return builder.CreateOr(left, right);
     case BITXOR: return builder.CreateXor(left, right);
+
     case EQ:
       return builder.CreateCmp(
       left->getType()->isFloatingPointTy()
@@ -838,7 +847,7 @@ public:
 
 }
 
-std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU&& peeped_tu, std::filesystem::path const& file) {
+std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU& peeped_tu, std::filesystem::path const& file) {
 #ifdef STAGE_BENCHMARKS
   auto const begin_time = std::chrono::high_resolution_clock::now();
 #endif

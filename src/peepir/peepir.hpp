@@ -60,7 +60,9 @@ struct Instruction {
     UGTR, SGTR, FGTR,
     ULEQ, SLEQ, FLEQ,
     UGEQ, SGEQ, FGEQ,
-    EQ, NEQ, AND, OR,
+    EQ, NEQ,
+
+    AND, OR,
     BITAND, BITOR, BITXOR,
 
     SUBSCRIPT,
@@ -101,6 +103,7 @@ struct Instruction {
   struct CallData            { u32_t num_parameters; byte_t _pad[4]{}; };
 
   union {
+    u64_t _;
     ModuleMemberData    module_member_data;
     TypeMemberData      type_member_data;
     LocalData           local_data;
@@ -118,10 +121,10 @@ struct Instruction {
   };
 
   InlineCXPR Instruction() noexcept {}
-  InlineCXPR explicit Instruction(InstructionType type, u8_t file_idx, u16_t length_in_file, u32_t position_in_file) noexcept
+  InlineCXPR Instruction(InstructionType type, u8_t file_idx, u16_t length_in_file, u32_t position_in_file) noexcept
   : type(type), file_idx(file_idx), length_in_file(length_in_file), position_in_file(position_in_file) {}
 
-  InlineCXPR explicit Instruction(InstructionType type) noexcept { this->type = type; }
+  InlineCXPR explicit Instruction(InstructionType type) noexcept : type(type) {}
   InlineNodiscardCXPR bool is_literal() const noexcept { return eden::enumBetween(type, I8_LITERAL, ESCAPED_STRING_LITERAL); }
 
 #define pre assert(is_literal());
@@ -138,7 +141,7 @@ struct Instruction {
 #undef pre
 
 #define pre assert(type == ESCAPED_STRING_LITERAL);
-  edenNodiscardCXPR std::string escaped_string_value(File file) const noexcept { pre
+  NodiscardCXPR std::string escaped_string_value(File file) const noexcept { pre
     std::string res;
     auto const orig = original_string(file);
     res.reserve(orig.size() + 1);
@@ -154,22 +157,22 @@ struct Instruction {
   }
 #undef pre
 
-  edenInlineNodiscardCXPR std::string_view original_string(File file) const noexcept { return file.view_at(length_in_file, position_in_file); }
+  InlineNodiscardCXPR std::string_view original_string(File file) const noexcept { return file.view_at(length_in_file, position_in_file); }
 
 #define pre assert(type == MODULE_GLOBAL);
-  edenInlineNodiscardCXPR std::string_view module_variable_name() const noexcept { pre return getModule(module_member_data.module_id).getVariable(module_member_data.member_id).nameof(); }
+  InlineNodiscardCXPR std::string_view module_variable_name() const noexcept { pre return getModule(module_member_data.module_id).getVariable(module_member_data.member_id).nameof(); }
 #undef pre
 
 #define pre assert(type == MODULE_FUNCTION);
-  edenInlineNodiscardCXPR std::string_view module_function_name(File file) const noexcept { pre return file.view_at(module_member_data.member_length, position_in_file + 1); }
+  InlineNodiscardCXPR std::string_view module_function_name(File file) const noexcept { pre return file.view_at(module_member_data.member_length, position_in_file + 1); }
 #undef pre
 
 #define pre assert(type == MODULE_GLOBAL or type == MODULE_FUNCTION);
-  edenInlineNodiscardCXPR std::string_view module_name(File file) const noexcept { pre return file.view_at(module_member_data.module_length, position_in_file - module_member_data.module_length); }
+  InlineNodiscardCXPR std::string_view module_name(File file) const noexcept { pre return file.view_at(module_member_data.module_length, position_in_file - module_member_data.module_length); }
 #undef pre
 
 #define pre assert(type == TYPE_VARIABLE);
-  edenInlineNodiscardCXPR TypeID custom_typeID() const noexcept { pre return TypeID{ .derived = Type::CUSTOM, .module_id = type_member_data.custom_type_module_id, .id = type_member_data.custom_type_id }; }
+  InlineNodiscardCXPR TypeID custom_typeID() const noexcept { pre return TypeID{ .derived = Type::CUSTOM, .module_id = type_member_data.custom_type_module_id, .id = type_member_data.custom_type_id }; }
 #undef pre
 
 };

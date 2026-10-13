@@ -16,7 +16,7 @@ extern bool const& do_build;
 std::string_view getExecutableName() noexcept;
 std::string_view getExternFlags() noexcept;
 u8_t getOptimizationLevel() noexcept;
-void setArgs(unsigned argc, const char* argv[]);
+void setArgs(int, const char**);
 
 static constexpr sz_t MAX_FUNCTION_PARAMETERS = 8;
 static constexpr sz_t MAX_TYPELIST_MEMBERS = 8;
@@ -30,14 +30,14 @@ static constexpr auto ONLY_PRIMITIVES_ARITHMETIC = true;
 // lol
 #ifdef __clang__
 inline constexpr std::string_view external_compiler{"clang"};
-#elif defined(__GNUC__)
+#elifdef __GNUC__
 inline constexpr std::string_view external_compiler{"gcc"};
 #else
 inline constexpr std::string_view external_compiler;
 #endif
 
 // #define PROFILE
-#define STAGE_BENCHMARKS
+// #define STAGE_BENCHMARKS
 
 #ifndef PROFILE
 #ifndef STAGE_BENCHMARKS

@@ -1,35 +1,28 @@
 # Raylib Example, use --extern_flags: -lraylib
-# Window
 __C InitWindow(w: i32, h: i32, title: ref u8);
-__C CloseWindow();
-__C WindowShouldClose() bool;
-
-# Drawing
-__C BeginDrawing();
-__C EndDrawing();
+__C CloseWindow();  __C WindowShouldClose() bool;
+__C BeginDrawing(); __C EndDrawing();
 __C ClearBackground(color: u32);
-__C DrawLine(x1: i32, y1: i32, x2: i32, y2: i32, color: u32);
+__C DrawText(text: ref u8, x: i32, y: i32, font_size: i32, color: u32);
+__C TextFormat(fmt: ref u8, __va) ref u8;
 
-import Foo;
+import Math;
 pub main: () i32 {
     __C.InitWindow(1280, 720, "Cube");
-    bg_color: u32 = cast<u32>(0) - 1;
+    bg_color: u32 = 0;
+    text_color: u32 = cast<u32>(0) - 1; # set to all 1's, aka black
 
+    res: i32 = Math.fib(8);
     while not __C.WindowShouldClose() {
-        __C.BeginDrawing();
-        __C.ClearBackground( bg_color );
+        __C.BeginDrawing(); __C.ClearBackground(bg_color);
+
+        __C.DrawText(
+            __C.TextFormat("Fibonacci(8) = %i", res),
+            195, 300, 100, text_color);
+
         __C.EndDrawing();
     }
 
     __C.CloseWindow();
-
-    n: i32 = Foo.fib(8);
-    return n;
-}
-
-test: () i32 {
-
-    if true { return 1; }
-    else { return 0; }
-
+    return 0;
 }

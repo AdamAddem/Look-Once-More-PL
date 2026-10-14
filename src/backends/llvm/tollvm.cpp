@@ -726,10 +726,7 @@ class Lowerer final {
         llvm_blocks.emplace_back_unchecked(llvm::BasicBlock::Create(tu->context, "", llvmfunc));
       builder.SetInsertPoint(llvm_blocks.front());
 
-      locals.reserve(fn.locals.size() + 1);
-      locals.emplace_back_unchecked(
-        return_type->isVoidTy()
-        ? nullptr : builder.CreateAlloca(return_type) );
+      locals.reserve(fn.locals.size());
 
       auto const param_types = func_type->param_begin();
       auto const num_params = func_type->getNumParams();

@@ -1,5 +1,5 @@
 builds/
-example/build/
+example/
 tests/
 .idea/
 compile_flags.txt

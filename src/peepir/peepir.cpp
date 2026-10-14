@@ -25,7 +25,6 @@ NodiscardCXPR Instruction::InstructionType
 castForType(TypeID typeID) noexcept {
   if (typeID.isPointer()) return Instruction::PCAST;
   switch (typeID.derived) { using enum Type::DerivedType;
-  case ERROR: return Instruction::UCAST;
   case PRIMITIVE: {
     auto const primitive = PrimitiveType::getTypeFromID(typeID).getUnderlyingPrimitiveType();
     switch (primitive) { using enum PrimitiveType::PrimitiveTypeEnum;
@@ -48,6 +47,7 @@ castForType(TypeID typeID) noexcept {
     }
   }
 
+  case ERROR: return Instruction::UCAST;
   default: edenUnreachable("This shouldn't happen!");
   }
 }
@@ -80,16 +80,13 @@ struct QualifiedTypeID : TypeID {
   // edenInlineCXPR QualifiedTypeID& operator=(QualifiedTypeID const&) noexcept = default;
 };
 
-class InstructonManager {
-
-};
-
 // i gently unfold the class...
-class Peeper {
+class PeepingContext {
   Module& module;
+  Symbol::Function const* current_function{};
   File current_file;
   TreeView nodes;
-  FunctionType const* current_function_type;
+  FunctionType const* current_function_type{};
 
   eden::vector<TypeID> locals;
   eden::vector<Instruction> instructions;
@@ -97,15 +94,19 @@ class Peeper {
 
   Block current_block{};
   bool has_error{};
+  u32_t previous_blocks_total_instructions{};
 
-  constexpr explicit Peeper(Module& module) : module(module) {}
+  constexpr explicit PeepingContext(Module& module) : module(module) {}
 
-  InlineNodiscardCXPR u32_t current_block_index() const noexcept { return blocks.size(); }
-  InlineNodiscardCXPR bool is_current_block_empty() const noexcept { return current_block.num_instructions == 0; }
+  InlineNodiscardCXPR ssz_t current_block_index() const noexcept { return blocks.size(); }
+  InlineNodiscardCXPR bool is_current_block_empty() const noexcept { return previous_blocks_total_instructions == instructions.size(); }
 
   constexpr void forceNewBlock() noexcept {
+    [[maybe_unused]] auto const a = instructions.size();
+    current_block.num_instructions = eden::narrow<u16_t>(instructions.size() - previous_blocks_total_instructions);
     blocks.emplace_back(current_block);
     current_block = {};
+    previous_blocks_total_instructions = instructions.size();
   }
 
   // call before any instructions are made
@@ -123,7 +124,6 @@ class Peeper {
   }
 
   constexpr void addInstruction(Instruction new_instruction = {}) {
-    ++current_block.num_instructions;
     instructions.emplace_back(new_instruction);
   }
 
@@ -136,15 +136,15 @@ class Peeper {
     return true;
   }
 
-  edenNoInlineCold void
+  NoInlineCold void
   error(auto err, std::string msg) noexcept { report_error(current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
 
-  edenInlineNodiscardCXPR static Instruction
+  InlineNodiscardCXPR static Instruction
   makeInstruction(ASTNode node, Instruction::InstructionType type = Instruction::NOOP) noexcept {
     return Instruction { type, node.file_idx, node.length_in_file, node.position_in_file };
   }
 
-  edenNodiscardCXPR QualifiedTypeID
+  NodiscardCXPR QualifiedTypeID
   peepLiteral(ASTNode node) noexcept {
     QualifiedTypeID res;
     auto new_instruction = makeInstruction(node);
@@ -182,46 +182,49 @@ class Peeper {
     return res;
   }
 
-#define pre assert(module_access_node.type == ASTNode::MODULE_ACCESS);
-  edenNodiscardCXPR QualifiedTypeID
+#define pre Assume(module_access_node.type == ASTNode::MODULE_ACCESS);
+  NodiscardCXPR QualifiedTypeID
   peepModuleAccess(ASTNode module_access_node) noexcept { pre
     Instruction module_symbol = makeInstruction(module_access_node);
-    module_symbol.module_member_data.member_length = module_access_node.module_access_data.member_length;
+
+    module_symbol.module_member_data.module_id     = module_access_node.module_access_data.module_id;
+    module_symbol.module_member_data.member_id     = module_access_node.module_access_data._pad; // added to make this a single 8byte write
     module_symbol.module_member_data.module_length = module_access_node.module_access_data.module_length;
+    module_symbol.module_member_data.member_length = module_access_node.module_access_data.member_length;
 
     auto const instruction_idx = instructions.size();
     addInstruction(Instruction{Instruction::NOOP});
     QualifiedTypeID res;
 
-    auto const module = getModule(module_access_node.module_name(current_file)); assert(module);
-    module_symbol.module_member_data.module_id = module->getID();
+    auto const& imported_module = module_access_node.accessed_module();
+    module_symbol.module_member_data.module_id = imported_module.getID();
 
     auto const member_name = module_access_node.module_member_name(current_file);
     assert(module_access_node.length_in_file == 1);
 
-    if (auto const member_function = module->getPublicFunction(member_name)) {
-      assert(member_function->id not_eq SymbolTable::INVALID_ID);
+    if (auto const member_function = imported_module.getPublicFunction(member_name)) {
+      assert(member_function->id not_eq Symbol::INVALID_ID);
       module_symbol.type = Instruction::MODULE_FUNCTION;
       module_symbol.module_member_data.member_id = member_function->id;
       res = member_function->getTypeID();
     }
-    else if (auto const member_variable = module->getPublicVariable(member_name)) {
+    else if (auto const member_variable = imported_module.getPublicVariable(member_name)) {
       edenUnreachable("Globals unimplemented.");
-      assert(member_variable->id not_eq SymbolTable::INVALID_ID);
+      assert(member_variable->id not_eq Symbol::INVALID_ID);
       module_symbol.type = Instruction::MODULE_GLOBAL;
       module_symbol.module_member_data.member_id = member_variable->id;
       res = member_variable->typeID;
       res.qualifiers = member_variable->qualifiers;
     }
     else {
-      ASTNode member_node_fake {
+      ASTNode const member_node_fake {
         .type = ASTNode::EMPTY,
         .file_idx = 0,
         .length_in_file = module_access_node.module_access_data.member_length,
         .position_in_file = module_access_node.position_in_file + 1,
-        .base = 0
+        ._ = 0
       };
-      error(member_node_fake, "Identifier is not a public member of module.");
+      error(member_node_fake, "Identifier not a (public) member of module.");
       module_symbol.type = Instruction::NOOP;
       res = errorID;
       res.qualifiers.writable = true;
@@ -232,8 +235,8 @@ class Peeper {
   }
 #undef pre
 
-#define pre assert(member_access_node.type == ASTNode::MEMBER_ACCESS);
-  edenNodiscardCXPR QualifiedTypeID
+#define pre Assume(member_access_node.type == ASTNode::MEMBER_ACCESS);
+  NodiscardCXPR QualifiedTypeID
   peepMemberAccess(ASTNode member_access_node) noexcept { pre
     Instruction type_member = makeInstruction(member_access_node, Instruction::TYPE_VARIABLE);
     auto const instruction_idx = instructions.size();
@@ -258,14 +261,14 @@ class Peeper {
     auto const identifier = std::string_view(identifier_node.identifier_val(current_file));
 
     if (auto const member_variable = member_table.getPublicVariable(identifier)) {
-      assert(member_variable->id not_eq SymbolTable::INVALID_ID);
+      assert(member_variable->id not_eq Symbol::INVALID_ID);
       type_member.type_member_data.member_id = member_variable->id;
       auto const var_typeID = member_variable->typeID;
       res = var_typeID;
       if (member_expression.qualifiers.writable) res.qualifiers = member_variable->qualifiers;
     }
     else if (auto const member_function = member_table.getPublicFunction(identifier)) {
-      Unreachable("Member functions unimplemented."); assert(member_function->id not_eq SymbolTable::INVALID_ID);
+      Unreachable("Member functions unimplemented."); assert(member_function->id not_eq Symbol::INVALID_ID);
       type_member.type_member_data.member_id = member_function->id;
       auto const fn_typeID = TypeID{.derived = Type::FUNCTION, .module_id = member_function->type_module_id, .id = member_function->type_id};
       res = fn_typeID;
@@ -280,17 +283,17 @@ class Peeper {
   }
 #undef pre
 
-#define pre assert(identifier_node.type == ASTNode::IDENTIFIER);
-  edenNodiscardCXPR QualifiedTypeID
+#define pre Assume(identifier_node.type == ASTNode::IDENTIFIER);
+  NodiscardCXPR QualifiedTypeID
   peepIdentifier(ASTNode identifier_node) noexcept { pre
     Instruction identifier_instructon = makeInstruction(identifier_node);
     auto const identifier = current_file.view_at(identifier_node.length_in_file, identifier_node.position_in_file);
     QualifiedTypeID res;
 
-    if (auto const variable = module.getLocal(identifier)) {
+    if (auto const variable = current_function->getLocal(identifier)) {
       identifier_instructon.type = Instruction::LOCAL;
       res = variable->typeID;
-      identifier_instructon.local_data.idx = variable->id + 1; // + 1 to offset for return type
+      identifier_instructon.local_data.idx = variable->id;
     }
     else if (auto const function = module.getFunction(identifier)) {
       identifier_instructon.type = Instruction::FUNCTION;
@@ -301,7 +304,7 @@ class Peeper {
       res = global->typeID;
     }
     else {
-      error(identifier_node, "Unrecognized identifier.");
+      error(identifier_node, std::format("Unrecognized identifier {}", identifier));
       res = errorID;
     }
 
@@ -310,8 +313,8 @@ class Peeper {
   }
 #undef pre
 
-#define pre assert(subscript_node.type == ASTNode::SUBSCRIPT);
-  edenNodiscardCXPR QualifiedTypeID
+#define pre Assume(subscript_node.type == ASTNode::SUBSCRIPT);
+  NodiscardCXPR QualifiedTypeID
   peepSubscriptExpression(ASTNode subscript_node) noexcept { pre
     Instruction subscript_instruction = makeInstruction(subscript_node, Instruction::SUBSCRIPT);
     auto const subscript_idx = instructions.size();
@@ -347,8 +350,8 @@ class Peeper {
   }
 #undef pre
 
-#define pre assert(cast_node.type == ASTNode::CAST);
-  edenNodiscardCXPR QualifiedTypeID
+#define pre Assume(cast_node.type == ASTNode::CAST);
+  NodiscardCXPR QualifiedTypeID
   peepCastExpression(ASTNode cast_node) noexcept { pre
     QualifiedTypeID res;
     Instruction cast_instruction = makeInstruction(cast_node);
@@ -375,8 +378,8 @@ class Peeper {
   }
 #undef pre
 
-#define pre assert(calling_node.type == ASTNode::CALLING);
-  edenNodiscardCXPR QualifiedTypeID
+#define pre Assume(calling_node.type == ASTNode::CALLING);
+  NodiscardCXPR QualifiedTypeID
   peepCallingExpression(ASTNode calling_node) noexcept { pre
     auto const args_passed_count = calling_node.call_data.num_parameters;
     {
@@ -415,13 +418,13 @@ class Peeper {
 
     for (auto const& parameter_typeID : parameters) {
       auto const given_parameter_idx = instructions.size();
-      auto const given_parameter_typeID = peepExpression();
-      auto& given_parameter_instr = instructions[given_parameter_idx];
+      auto const argument_typeID = peepExpression();
+      auto& argument_instr = instructions[given_parameter_idx];
 
-      if (given_parameter_typeID.coercibleTo(parameter_typeID))
-        coerceIfIntegerLiteral(given_parameter_instr, parameter_typeID);
+      if (argument_typeID.coercibleTo(parameter_typeID))
+        coerceIfIntegerLiteral(argument_instr, parameter_typeID);
       else {
-        error(given_parameter_instr, std::format("Cannot coerce parameter of type '{}' to type '{}'.", given_parameter_typeID.toString(), parameter_typeID.toString()));
+        error(argument_instr, std::format("Cannot coerce parameter of type '{}' to type '{}'.", argument_typeID.toString(), parameter_typeID.toString()));
         res = errorID;
       }
     }
@@ -435,8 +438,8 @@ class Peeper {
 #undef pre
 
   //TODO: Add Short Circuiting
-#define pre assert(binary_node.type == ASTNode::BINARY);
-  edenNodiscardCXPR QualifiedTypeID
+#define pre Assume(binary_node.type == ASTNode::BINARY);
+  NodiscardCXPR QualifiedTypeID
   peepBinaryExpression(ASTNode binary_node) noexcept { pre
     Instruction binary_instruction = makeInstruction(binary_node);
     auto const binary_idx = instructions.size();
@@ -602,8 +605,8 @@ class Peeper {
   }
 #undef pre
 
-#define pre assert(unary_node.type == ASTNode::UNARY);
-  edenNodiscardCXPR QualifiedTypeID
+#define pre Assume(unary_node.type == ASTNode::UNARY);
+  NodiscardCXPR QualifiedTypeID
   peepUnaryExpression(ASTNode unary_node) noexcept { pre
     Instruction unary_instruction = makeInstruction(unary_node);
     auto const unary_idx = instructions.size();
@@ -672,7 +675,7 @@ class Peeper {
         break;
       }
 
-      expression = expression.getPointerType().getPointedTypeID();
+      expression = expression.getPointedTypeID();
       break;
     default:
       edenUnreachable("Invalid unary operator.");
@@ -705,7 +708,7 @@ class Peeper {
   }
 #undef pre
 
-  edenNodiscardCXPR QualifiedTypeID
+  NodiscardCXPR QualifiedTypeID
   peepExpression() noexcept {
     auto const node = nodes.take();
     switch (node.type) { using enum ASTNode::NodeType;
@@ -738,7 +741,7 @@ class Peeper {
     }
   }
 
-#define pre assert(return_node.type == ASTNode::RETURN);
+#define pre Assume(return_node.type == ASTNode::RETURN);
   constexpr void peepReturnStatement(ASTNode return_node) noexcept { pre
     auto const return_typeID = current_function_type->getReturnTypeID();
     if (not return_node.return_data.has_value) {
@@ -771,7 +774,7 @@ class Peeper {
       peepStatement();
   }
 
-#define pre assert(while_node.type == ASTNode::WHILE);
+#define pre Assume(while_node.type == ASTNode::WHILE);
   constexpr void peepWhileLoop(ASTNode while_node) noexcept { pre
     fallthroughToNewBlock();
     auto const condition_idx = current_block_index();
@@ -780,21 +783,23 @@ class Peeper {
       error(while_node, "While Loop condition not boolean.");
 
     forceNewBlock();
-    auto const loop_body_offset = eden::narrow<i16_t>(current_block_index() - condition_idx);
+    auto const loop_body_offset = current_block_index() - condition_idx;
 
     peepScopedStatement(while_node.while_data.num_substatements);
     if (is_current_block_empty())
       addInstruction(Instruction{Instruction::NOOP});
-    current_block.end_with_br( eden::narrow<i16_t>(condition_idx) - eden::narrow<i16_t>(current_block_index()) );
+    current_block.end_with_br( eden::narrow<i16_t>( condition_idx - current_block_index() ) );
 
     forceNewBlock();
-    auto const after_loop_offset = eden::narrow<i16_t>(current_block_index() - condition_idx);
+    auto const after_loop_offset = current_block_index() - condition_idx;
 
-    blocks[condition_idx].end_with_brc(loop_body_offset, after_loop_offset);
+    blocks[condition_idx].end_with_brc(
+      eden::narrow<i16_t>(loop_body_offset),
+      eden::narrow<i16_t>(after_loop_offset));
   }
 #undef pre
 
-#define pre assert(if_node.type == ASTNode::IF);
+#define pre Assume(if_node.type == ASTNode::IF);
   constexpr void peepIfStatement(ASTNode if_node) noexcept { pre
     auto const condition = peepExpression();
     if (not condition.isBool()) {
@@ -806,25 +811,27 @@ class Peeper {
 
     forceNewBlock();
     auto const true_block_idx = current_block_index();
-    auto const true_block_offset = eden::narrow<i16_t>(true_block_idx - condition_block_idx);
+    auto const true_block_offset = true_block_idx - condition_block_idx;
     peepScopedStatement(if_node.if_data.num_substatements); // true statement(s)
 
     forceNewBlock();
-    auto const false_block_offset = eden::narrow<i16_t>(current_block_index() - condition_block_idx);
+    auto const false_block_offset = current_block_index() - condition_block_idx;
 
     if (if_node.has_else()) {
       peepStatement();
       fallthroughToNewBlock();
     }
 
-    auto const after_block_offset = eden::narrow<i16_t>(current_block_index() - condition_block_idx); // equal to false_block_offset if no 'else' statements
+    auto const after_block_offset = current_block_index() - condition_block_idx; // equal to false_block_offset if no 'else' statements
 
-    blocks[true_block_idx].end_with_br(after_block_offset);
-    blocks[condition_block_idx].end_with_brc(true_block_offset, false_block_offset);
+    blocks[true_block_idx].end_with_br( eden::narrow<i16_t>(after_block_offset) );
+    blocks[condition_block_idx].end_with_brc(
+      eden::narrow<i16_t>(true_block_offset),
+      eden::narrow<i16_t>(false_block_offset));
   }
 #undef pre
 
-#define pre assert(decl_node.isDeclaration());
+#define pre Assume(decl_node.isDeclaration());
   constexpr void peepVarDeclaration(ASTNode decl_node) noexcept { pre
     QualifiedTypeID qualified_typeID;
     qualified_typeID = decl_node.declaration_type();
@@ -855,8 +862,6 @@ class Peeper {
   constexpr void peepStatement() noexcept {
     auto const node = nodes.take();
     switch (node.type) { using enum ASTNode::NodeType;
-    case EMPTY:        Unreachable("Empty node peeped in peepStatement.");
-
     case DECLARATION_JUNK_RO: case DECLARATION_JUNK_RW:
     case DECLARATION_RO:      case DECLARATION_RW:
       return peepVarDeclaration(node);
@@ -881,18 +886,19 @@ class Peeper {
     case STRING_LITERAL:
       return (void)peepLiteral(node);
 
-    default: edenUnreachable("Invalid ASTNode while peeping statement.");
+    default: Unreachable("Invalid ASTNode while peeping statement.");
     }
   }
 
   constexpr void peepUntilEmpty() noexcept {
     assert(instructions.empty());
     assert(blocks.empty());
+    Assume(previous_blocks_total_instructions == 0);
     while (not nodes.empty())
       peepStatement();
 
-    if (not is_current_block_empty()) // flush the last block
-      blocks.emplace_back(current_block);
+    makeNewBlock(); // flush the last block
+    previous_blocks_total_instructions = 0;
 
     if (blocks.back().terminator_type == Block::Terminator::NONE)
       error(nodes.previous(), "Expected return at end of function body.");
@@ -925,26 +931,26 @@ public:
   NodiscardCXPR static bool
   peepTU(Parser::TU& parsed_tu) {
     auto& module = parsed_tu.module;
-    Peeper peeper(module);
+    PeepingContext peeper(module);
 
     for (auto& parsed_fn : parsed_tu.functions) {
-      auto const fn_typeID = module.getFunction(parsed_fn.id_in_module).getTypeID();
-      auto const& fn_type = fn_typeID.getFunctionType();
+
       peeper.current_file = parsed_tu.source_files[parsed_fn.file_idx];
       peeper.nodes.begin = parsed_fn.body.cbegin();
       peeper.nodes.end = parsed_fn.body.cend();
-      peeper.current_function_type = &fn_type;
 
-      auto const parameter_typeIDs = fn_type.getParameterTypeIDs();
-      peeper.locals.reserve(parameter_typeIDs.size() + 1); // + return type
-      peeper.locals.emplace_back_unchecked(fn_type.getReturnTypeID());
-      for (auto const parameter_typeID : parameter_typeIDs)
-        peeper.locals.emplace_back_unchecked(parameter_typeID);
+      {
+        auto const& table_fn = module.getFunction(parsed_fn.id_in_module);
+        peeper.current_function = &table_fn;
+        peeper.current_function_type = &table_fn.getTypeID().getFunctionType();
+      }
 
+      auto const fn_parameterIDs = peeper.current_function_type->getParameterTypeIDs();
+      peeper.locals.copy_append_range( fn_parameterIDs );
       peeper.peepUntilEmpty();
 
       // transmutate the Parser::Function into a PeepIR::Function inplace
-      // hopefully all this copying is optimized away
+      // hopefully all this copying is optimized away. TODO: Verify it is
       auto const is_public = parsed_fn.is_public;
       auto const file_idx = parsed_fn.file_idx;
       auto const id_in_module = parsed_fn.id_in_module;
@@ -958,7 +964,7 @@ public:
       peeped_fn.id_in_module = id_in_module;
       peeped_fn.name_len = name_len;
       peeped_fn.name_ptr = name_ptr;
-      peeped_fn.typeID = fn_typeID;
+      peeped_fn.type = peeper.current_function_type;
       peeped_fn.locals = std::move(peeper.locals);
       peeped_fn.instructions = std::move(peeper.instructions);
       peeped_fn.blocks = std::move(peeper.blocks);
@@ -985,19 +991,14 @@ sz_t printPeepInstruction(Instruction instruction, File file, std::string_view m
   case MODULE_GLOBAL: std::println("GLOBAL {} FROM MODULE {}", instruction.module_variable_name(), instruction.module_name(file)); break;
   case MODULE_FUNCTION: {
     auto const& fn = getModule(instruction.module_member_data.module_id).getFunction(instruction.module_member_data.member_id);
-    std::println("FUNCTION {} FROM MODULE {} WITH SIGNATURE {}", fn.nameof(), module_name, fn.getTypeID().toString());
+    std::println("FUNCTION {} FROM MODULE {}", fn.nameof(), module_name);
     break;
   }
 
   // this doesn't have to be one line but its really funny
   case TYPE_VARIABLE: std::println("TYPE_VARIABLE {}", getModule(instruction.type_member_data.custom_type_module_id).getCustomType( TypeID{ .derived = Type::CUSTOM, .module_id = instruction.type_member_data.custom_type_module_id, .id = instruction.type_member_data.custom_type_id } ).member_table().getVariable(instruction.type_member_data.member_id).nameof()); break;
 
-  case LOCAL:
-    if (instruction.local_data.idx == Function::RETURN_LOCAL_IDX)
-      std::println("RETURN SLOT");
-    else
-      std::println("LOCAL {}", instruction.local_data.idx);
-    break;
+  case LOCAL: std::println("LOCAL {}", instruction.local_data.idx); break;
 
   case I8_LITERAL: std::println("I8_LITERAL {}", instruction.signed_literal_data.value); break;
   case I16_LITERAL: std::println("I16_LITERAL {}", instruction.signed_literal_data.value); break;
@@ -1120,7 +1121,7 @@ void PeepIR::printPeep(TU const& tu) {
     std::println("{}{}: {} {{",
     func.is_public ? "pub " : "",
     func.nameof(),
-    func.typeID.toString());
+    func.type->toString());
 
     std::println("Block count: {}", func.blocks.size());
 
@@ -1152,8 +1153,8 @@ static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] 
 
 bool PeepIR::lowerToPeep(Parser::TU& parsed_tu) {
   auto const begin_time = std::chrono::high_resolution_clock::now();
+  bool const has_error = PeepingContext::peepTU(parsed_tu);
 
-  bool const has_error = Peeper::peepTU(parsed_tu);
   output_benchmark(begin_time, parsed_tu.name);
   return has_error;
 }

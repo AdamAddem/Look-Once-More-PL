@@ -29,7 +29,7 @@ TypeID::getType() const noexcept {
   }
 } */
 
-edenNoInlineCold [[nodiscard]] std::string
+NoInlineCold [[nodiscard]] std::string
 TypeID::toString() const noexcept {
   if (isPointer()) {
     auto x = *this;
@@ -43,28 +43,28 @@ TypeID::toString() const noexcept {
   case DEVOID:      return "devoid";
   case ERROR:       return "!ERROR!";
 
-  case PRIMITIVE:   return primitiveToString();
-  case ARRAY:       return arrayToString();
-  case FUNCTION:    return functionToString();
-  case CUSTOM:      return customToString();
+  case PRIMITIVE:   return getPrimitiveType().toString();
+  case ARRAY:       return getArrayType().toString();
+  case FUNCTION:    return getFunctionType().toString();
+  case CUSTOM:      return getCustomType().toString();
   default:
     edenUnreachable("Invalid derived type.");
   }
 }
 
-#define pre edenAssume(isArray());
+#define pre Assume(isArray());
 [[nodiscard]] ArrayType const& TypeID::getArrayType() const noexcept { pre return getModule(module_id).getArrayType(*this); }
 #undef pre
 
-#define pre edenAssume(isFunction());
+#define pre Assume(isFunction());
 [[nodiscard]] FunctionType const& TypeID::getFunctionType() const noexcept { pre return getModule(module_id).getFunctionType(*this); }
 #undef pre
 
-#define pre edenAssume(isCustom());
+#define pre Assume(isCustom());
 [[nodiscard]] CustomType const& TypeID::getCustomType() const noexcept { pre return getModule(module_id).getCustomType(*this); }
 #undef pre
 
-edenNodiscardCXPR static bool
+NodiscardCXPR static bool
 primitiveCoercibleFromTo(PrimitiveType const& from, PrimitiveType const& to) noexcept {
   switch (from.getUnderlyingPrimitiveType()) { using enum PrimitiveType::PrimitiveTypeEnum;
   case I8:
@@ -90,11 +90,11 @@ primitiveCoercibleFromTo(PrimitiveType const& from, PrimitiveType const& to) noe
 
   case STRING: return false;
   default:
-    edenUnreachable("Invalid primitive type.");
+    Unreachable("Invalid primitive type.");
   }
 }
 
-edenNodiscardCXPR static bool
+NodiscardCXPR static bool
 primitiveCastableFromTo(PrimitiveType const& from, PrimitiveType const& to) noexcept {
   switch (from.getUnderlyingPrimitiveType()) { using enum PrimitiveType::PrimitiveTypeEnum;
   case I8:
@@ -116,14 +116,8 @@ primitiveCastableFromTo(PrimitiveType const& from, PrimitiveType const& to) noex
 
   case STRING: return false;
   default:
-    edenUnreachable("Invalid primitive type.");
+    Unreachable("Invalid primitive type.");
   }
-}
-
-edenNodiscardCXPR static bool
-pointerCoercibleFromTo(PointerType const& from, PointerType const& to) noexcept {
-  if (to.isRaw() and from.isRef()) return false;
-  return from.getPointedTypeID().sameAs( to.getPointedTypeID() );
 }
 
 [[nodiscard]] bool
@@ -134,24 +128,22 @@ TypeID::coercibleTo(TypeID other) const noexcept {
   if (isPointer()) {
     if (not other.isPointer()) return false;
 
-    auto const pointed = getPointerType().getPointedTypeID();
-    auto const other_pointed = other.getPointerType().getPointedTypeID();
-    if (not pointed.sameAs(other_pointed)) return false;
-    if (other.isTopLevelPtrRaw()) return this->isTopLevelPtrRaw();
+    if (not getPointedTypeID().sameAs(other.getPointedTypeID())) return false;
+    if (other.isTopLevelPtrRaw()) return isTopLevelPtrRaw();
     return true;
   }
 
-  // bodge to accept ref u8 -> string conversion. TODO: Change
-  if (other.isPointer() and this->isPrimitive()) {
+  if (other.isPointer()) {
+    if (isPointer()) return true; // pointer casts are unchecked currently
+
+    // bodge to accept string -> ref u8 conversion. TODO: Change
+    if (not isPrimitive()) return false;
     if (not getPrimitiveType().isString()) return false;
     if (other.isTopLevelPtrRaw()) return false;
-
-    auto const other_pointedID = other.getPointerType().getPointedTypeID();
-    return other_pointedID == PrimitiveType::u8ID();
+    return other.getPointedTypeID() == PrimitiveType::u8ID();
   }
 
   if (derived != other.derived) return false;
-
   switch (derived) { using enum Type::DerivedType;
   case DEVOID:
   case ERROR:      edenUnreachable("This should've returned earlier.");
@@ -162,89 +154,60 @@ TypeID::coercibleTo(TypeID other) const noexcept {
   case CUSTOM:     return false;
 
   case PRIMITIVE:  return primitiveCoercibleFromTo( this->getPrimitiveType() , other.getPrimitiveType() );
-  case POINTER:    return pointerCoercibleFromTo( this->getPointerType(), other.getPointerType() );
-
-
   default: edenUnreachable("Invalid derived type.");
   }
-
 }
 
 [[nodiscard]] bool
 TypeID::castableTo(TypeID other) const noexcept {
   if (sameAs(other)) return true;
+  if (isError() or other.isError()) return true;
 
-  // bodge to accept ref u8 -> string conversion. TODO: Change
-  if (other.isPointer() and this->isPrimitive()) {
+  if (other.isPointer()) {
+    if (isPointer()) return true; // pointer casts are unchecked currently
+
+    // bodge to accept string -> ref u8 conversion. TODO: Change
+    if (not isPrimitive()) return false;
     if (not getPrimitiveType().isString()) return false;
     if (other.isTopLevelPtrRaw()) return false;
-
-    auto const other_pointedID = other.getPointerType().getPointedTypeID();
-    return other_pointedID == PrimitiveType::u8ID();
+    return other.getPointedTypeID() == PrimitiveType::u8ID();
   }
 
   if (derived != other.derived) return false;
 
   switch (derived) { using enum Type::DerivedType;
-  case DEVOID:
-  case ERROR:      edenUnreachable("Only one devoid instance allowed, this should've returned earlier.");
-  case FUNCTION:   edenUnreachable("Why in the world would this run?");
+  case PRIMITIVE:   return primitiveCastableFromTo( this->getPrimitiveType(), other.getPrimitiveType() );
 
   // can only cast to self which has been checked earlier
-  case ARRAY:       return false;
-  case CUSTOM:      return false;
+  case ARRAY:
+  case CUSTOM: return false;
 
-  case POINTER:     return true; // pointer are currently unchecked
-
-  case PRIMITIVE:   return primitiveCastableFromTo( this->getPrimitiveType(), other.getPrimitiveType() );
-  default:          edenUnreachable("Invalid derived type.");
+  case DEVOID:
+  case ERROR:      Unreachable("Only one devoid/error instance allowed, this should've returned earlier.");
+  case FUNCTION:   Unreachable("Why in the world would this run?");
+  default:         Unreachable("Invalid derived type.");
   }
 }
 
-
 [[nodiscard]] bool
 TypeID::sameAs(TypeID other) const noexcept {
-  if (*this == other) return true;
-
   if (derived != other.derived) return false;
   if (ptr_specs != other.ptr_specs) return false;
 
   if (isPointer()) {
-    // other should be pointer if this is
-    return getPointerType().getPointedTypeID().sameAs(other.getPointerType().getPointedTypeID());
+    return getMostPointedTypeID().sameAs(other.getMostPointedTypeID());
   }
 
   switch (derived) { using enum Type::DerivedType;
   case DEVOID:
   case ERROR:
-  case PRIMITIVE: return false;
+  case CUSTOM:
+  case PRIMITIVE: return *this == other;
 
-  case POINTER: edenUnreachable("Should have succeeded earlier.");
+  case ARRAY:    return getArrayType().sameAs(other.getArrayType());
+  case FUNCTION: return getFunctionType().sameAs(other.getFunctionType());
 
-  case ARRAY: return getArrayType().sameAs( other.getArrayType() );
-
-  case FUNCTION: {
-    auto const& this_fn_type = getFunctionType();
-    auto const& other_fn_type = other.getFunctionType();
-
-    if (this_fn_type.numParameters() != other_fn_type.numParameters()) return false;
-    if (this_fn_type.isVariadic() != other_fn_type.isVariadic()) return false;
-    if (not this_fn_type.getReturnTypeID().sameAs( other_fn_type.getReturnTypeID() )) return false;
-
-    auto const this_parameterTypeIDs = this_fn_type.getParameterTypeIDs();
-    auto const other_parameterTypeIDs = other_fn_type.getParameterTypeIDs();
-    for (sz_t i{}; i<this_fn_type.numParameters(); ++i) {
-      auto const this_param_typeID = this_parameterTypeIDs[i];
-      auto const other_param_typeID = other_parameterTypeIDs[i];
-
-      if (not this_param_typeID.sameAs(other_param_typeID)) return false;
-    }
-    return true;
-  }
-
-  case CUSTOM: return false; // custom types can only be the same bitwise
-
-  default: edenUnreachable("Invalid derived type.");
+  default: Unreachable("Invalid derived type.");
   }
 
 }
@@ -254,10 +217,9 @@ CustomType::CustomType(std::string_view name) noexcept : Type(CUSTOM),  name_len
 [[nodiscard]] SymbolTable&       CustomType::member_table()       noexcept { return *std::launder( (SymbolTable*) symboltable_buff ); }
 [[nodiscard]] SymbolTable const& CustomType::member_table() const noexcept { return *std::launder( (SymbolTable const*) symboltable_buff ); }
 
-edenNoInlineCold [[nodiscard]] std::string
-TypeID::primitiveToString() const noexcept {
-  auto const primitive_type = PrimitiveType::getTypeFromID(*this).getUnderlyingPrimitiveType();
-  switch (primitive_type) { using enum PrimitiveType::PrimitiveTypeEnum;
+NoInlineCold [[nodiscard]] std::string
+PrimitiveType::toString() const noexcept {
+  switch (primitive_type) {
   case I8:      return "i8";
   case I16:     return "i16";
   case I32:     return "i32";
@@ -275,48 +237,41 @@ TypeID::primitiveToString() const noexcept {
   case BOOL:    return "bool";
   case CHAR:    return "char";
   case STRING:  return "string";
-  default: edenUnreachable("Invalid primitive type.");
+  default: Unreachable("Invalid primitive type.");
   }
 }
 
-edenNoInlineCold [[nodiscard]] std::string
-TypeID::arrayToString() const noexcept {
-  auto const& array_type = getModule(module_id).getArrayType(*this);
-  return std::format("[{}]{}", array_type.getSize(), array_type.getSubtypeID().toString());
+NoInlineCold [[nodiscard]] std::string
+ArrayType::toString() const noexcept {
+  return std::format("[{}]{}", getSize(), getSubtypeID().toString());
 }
 
-edenNoInlineCold [[nodiscard]] std::string
-TypeID::functionToString() const noexcept {
-  auto const& fn_type = getModule(module_id).getFunctionType(*this);
-  auto const parameter_typeIDs = fn_type.getParameterTypeIDs();
-  auto const return_typeID = fn_type.getReturnTypeID();
+NoInlineCold [[nodiscard]] std::string
+FunctionType::toString() const noexcept {
+  auto const parameter_typeIDs = getParameterTypeIDs();
+  auto const return_typeID = getReturnTypeID();
   std::string string_rep("(");
   for (auto parameter : parameter_typeIDs) {
     string_rep.append( parameter.toString() );
     string_rep.append(", ");
   }
 
-  if (fn_type.isVariadic()) {
+  if (isVariadic()) {
     string_rep.append("...");
   }
-  else if (fn_type.numParameters() not_eq 0) {
+  else if (numParameters() not_eq 0) {
     string_rep.pop_back();
     string_rep.pop_back();
   }
 
   string_rep.append(") ");
-  if (return_typeID.derived not_eq Type::DEVOID)
+  if (return_typeID.derived not_eq DEVOID)
     string_rep.append(return_typeID.toString());
 
   return string_rep;
 }
 
-edenNoInlineCold [[nodiscard]] std::string
-TypeID::customToString() const noexcept {
-  return getModule(module_id).getCustomType(*this).toString();
-}
-
-edenNoInlineCold [[nodiscard]] std::string
+NoInlineCold [[nodiscard]] std::string
 CustomType::definitionToString() const noexcept {
   std::string string_rep("struct ");
   string_rep.append(nameof());

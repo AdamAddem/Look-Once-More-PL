@@ -13,7 +13,7 @@ struct TU;
 
 namespace LOM::PeepIR {
 
-edenNodiscardCXPR static char
+NodiscardCXPR static char
 charToEscapeSequenceEquivalent(char c) {
   switch (c) {
   case 'n':   return '\n';
@@ -82,30 +82,26 @@ struct Instruction {
   };
   using enum InstructionType;
 
-  InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
-
-  struct ModuleMemberData    { u16_t module_id; u16_t member_id; u16_t module_length; u16_t member_length; };
-  struct TypeMemberData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; };
-
+  struct ModuleAccessData    { u16_t module_id; u16_t member_id; u16_t module_length; u16_t member_length; };
+  struct TypeAccessData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; };
   struct LocalData           { u32_t idx; byte_t _pad[4]{}; };
-
   struct SignedLiteralData   { i64_t value; };
   struct UnsignedLiteralData { u64_t value; };
   struct FloatLiteralData    { f32_t value; byte_t _pad[4]{}; };
   struct DoubleLiteralData   { f64_t value; };
   struct BoolLiteralData     { bool  value; byte_t _pad[7]{}; };
   struct CharLiteralData     { char  value; byte_t _pad[7]{}; };
-
   struct CastAssignData      { u32_t bitwidth; byte_t _pad[4]{}; };
   struct CastData            { TypeID destination_typeID; };
   struct SubscriptData       { TypeID array_typeID;  };
   struct DereferenceData     { TypeID dereference_typeID; };
   struct CallData            { u32_t num_parameters; byte_t _pad[4]{}; };
 
+  InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
   union {
-    u64_t _;
-    ModuleMemberData    module_member_data;
-    TypeMemberData      type_member_data;
+    u64_t _{};
+    ModuleAccessData    module_member_data;
+    TypeAccessData      type_member_data;
     LocalData           local_data;
     SignedLiteralData   signed_literal_data;
     UnsignedLiteralData unsigned_literal_data;
@@ -140,7 +136,8 @@ struct Instruction {
   }
 #undef pre
 
-#define pre assert(type == ESCAPED_STRING_LITERAL);
+  // expensive and poopy
+#define pre Assume(type == ESCAPED_STRING_LITERAL);
   NodiscardCXPR std::string escaped_string_value(File file) const noexcept { pre
     std::string res;
     auto const orig = original_string(file);
@@ -159,19 +156,19 @@ struct Instruction {
 
   InlineNodiscardCXPR std::string_view original_string(File file) const noexcept { return file.view_at(length_in_file, position_in_file); }
 
-#define pre assert(type == MODULE_GLOBAL);
+#define pre Assume(type == MODULE_GLOBAL);
   InlineNodiscardCXPR std::string_view module_variable_name() const noexcept { pre return getModule(module_member_data.module_id).getVariable(module_member_data.member_id).nameof(); }
 #undef pre
 
-#define pre assert(type == MODULE_FUNCTION);
+#define pre Assume(type == MODULE_FUNCTION);
   InlineNodiscardCXPR std::string_view module_function_name(File file) const noexcept { pre return file.view_at(module_member_data.member_length, position_in_file + 1); }
 #undef pre
 
-#define pre assert(type == MODULE_GLOBAL or type == MODULE_FUNCTION);
+#define pre Assume(type == MODULE_GLOBAL or type == MODULE_FUNCTION);
   InlineNodiscardCXPR std::string_view module_name(File file) const noexcept { pre return file.view_at(module_member_data.module_length, position_in_file - module_member_data.module_length); }
 #undef pre
 
-#define pre assert(type == TYPE_VARIABLE);
+#define pre Assume(type == TYPE_VARIABLE);
   InlineNodiscardCXPR TypeID custom_typeID() const noexcept { pre return TypeID{ .derived = Type::CUSTOM, .module_id = type_member_data.custom_type_module_id, .id = type_member_data.custom_type_id }; }
 #undef pre
 
@@ -210,28 +207,21 @@ public:
     br.next_block_offset = next_block_offset;
   }
 
-  constexpr void
-  end_with_ret() noexcept {
-    terminator_type = Terminator::RET;
-  }
+  constexpr void end_with_ret() noexcept
+  { terminator_type = Terminator::RET; }
 
 };
 static_assert(sizeof(Block) == 8);
 
 struct Function {
-  static constexpr sz_t RETURN_LOCAL_IDX = 0;
-  bool is_public;
-  u8_t file_idx;
-  u16_t id_in_module;
-  u32_t name_len;
-  const char* name_ptr;
+  GENERIC_FN_DEF
 
-  TypeID typeID;
+  FunctionType const* type;
   eden::vector<TypeID> locals;
   eden::vector<Instruction> instructions;
   eden::vector<Block> blocks;
 
-  edenInlineNodiscardCXPR std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
+  InlineNodiscardCXPR std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
 }; static_assert(sizeof(Function) == FUNCTION_SIZE); static_assert(alignof(Function) == FUNCTION_ALIGN);
 
 struct TU {

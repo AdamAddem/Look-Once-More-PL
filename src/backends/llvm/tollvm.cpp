@@ -97,7 +97,6 @@ struct TU final : Backend {
 
   [[nodiscard]] std::filesystem::path
   createObjectFile(std::filesystem::path const& output_path) override {
-
     std::filesystem::path obj_path = object_folder;
     obj_path.append(output_path.string());
     std::filesystem::create_directories(obj_path.parent_path());
@@ -108,12 +107,6 @@ struct TU final : Backend {
   }
 
   void createFile(std::filesystem::path const& output_path, llvm::CodeGenFileType filetype) {
-    llvm::InitializeAllTargetInfos();
-    llvm::InitializeAllTargets();
-    llvm::InitializeAllTargetMCs();
-    llvm::InitializeAllAsmParsers();
-    llvm::InitializeAllAsmPrinters();
-
     module.setTargetTriple(Target.triple);
     module.setDataLayout(Target.data_layout);
 
@@ -148,7 +141,8 @@ class Lowerer final {
   // aligned and removed padding to make operator== faster
   struct alignas(8) TypeMapKey { u16_t module_id; u16_t _pad{}; u32_t type_id; bool operator==(TypeMapKey const&) const noexcept = default; };
   eden::swap_map<TypeMapKey, llvm::Type*> custom_type_map;
-  eden::swap_map<TypeMapKey, llvm::Type*> function_type_map;
+
+  eden::swap_map<FunctionType const*, llvm::Type*> function_type_map;
 
   struct alignas(4) FunctionMapKey { u16_t module_id; u16_t fn_id; bool operator==(FunctionMapKey const&) const noexcept = default; };
   eden::swap_map<FunctionMapKey, llvm::Value*> function_imports;
@@ -166,9 +160,9 @@ class Lowerer final {
   /* Variables used when lowering a function */
 
   [[nodiscard]] llvm::Value*
-  getFunctionImport(PeepIR::Instruction module_function) {
-    auto const module_id = module_function.module_member_data.module_id;
-    auto const member_id = module_function.module_member_data.member_id;
+  getFunctionImport(PeepIR::Instruction module_fn) {
+    auto const module_id = module_fn.module_member_data.module_id;
+    auto const member_id = module_fn.module_member_data.member_id;
     auto const key = FunctionMapKey{ .module_id = module_id, .fn_id = member_id  };
 
     // search for existing
@@ -177,47 +171,37 @@ class Lowerer final {
       if (element) return element->value;
     }
 
-    auto const& imported_module = getModule(module_id);
-    auto const& imported_module_name = getNameOfModule(module_id);
-    auto const& function = imported_module.getFunction(member_id);
+    auto const& imported_tu = getPeepTU(module_id);
+    auto const& imported_fn = imported_tu.functions[member_id];
+    auto const& imported_module_name = imported_tu.name;
 
     // TODO: this is atrocious please fix this IMMEDIATELY
     std::string_view full_function_name;
     std::string tmp;
     if (imported_module_name == "__C")
-      full_function_name = function.nameof();
+      full_function_name = imported_fn.nameof();
     else {
       tmp.append(imported_module_name);
       tmp.push_back('.');
-      tmp.append(function.nameof());
+      tmp.append(imported_fn.nameof());
       full_function_name = tmp;
     }
 
-    auto const function_type = translateFunctionType(function.getTypeID());
-
+    auto const function_type = translateFunctionType(imported_fn.type);
     auto const res = tu->module.getOrInsertFunction(full_function_name, function_type).getCallee();
     function_imports.emplace_back(key, res);
     return res;
   }
 
-#define pre assert(function_typeID.isFunction());
   [[nodiscard]] llvm::FunctionType*
-  translateFunctionType(TypeID function_typeID) noexcept { pre
-    auto const module_id = function_typeID.module_id;
-    auto const type_id = function_typeID.id;
-    auto const key = TypeMapKey{
-      .module_id = module_id,
-      .type_id = type_id
-    };
-
+  translateFunctionType(FunctionType const* fn_type) noexcept {
     // search for existing
     {
-      auto const element = function_type_map[key];
+      auto const element = function_type_map[fn_type];
       if (element) return llvm::cast<llvm::FunctionType>(element->value);
     }
 
-    auto const& fn_type = function_typeID.getFunctionType();
-    auto const parameter_typeIDs = fn_type.getParameterTypeIDs();
+    auto const parameter_typeIDs = fn_type->getParameterTypeIDs();
     auto const num_params = parameter_typeIDs.size();
 
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
@@ -225,14 +209,13 @@ class Lowerer final {
       arg_types[i] = translateType( parameter_typeIDs[i] );
 
     // hack
-    auto const return_typeID = fn_type.getReturnTypeID();
+    auto const return_typeID = fn_type->getReturnTypeID();
     auto const llvm_return_type = return_typeID.isBool() ? i1 : translateType(return_typeID);
 
-    auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, fn_type.isVariadic());
-    function_type_map.emplace_back(key, res);
+    auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, fn_type->isVariadic());
+    function_type_map.emplace_back(fn_type, res);
     return res;
   }
-#undef pre
 
   [[nodiscard]] llvm::Type*
   translateType(TypeID typeID) noexcept {
@@ -715,7 +698,7 @@ class Lowerer final {
     }
   }
 
-  llvm::Function* compileFunction(PeepIR::Function& func, File func_file) {
+  llvm::Function* compileFunction(PeepIR::Function& fn, File func_file) {
     // reset state
     {
       instruction_idx = 0;
@@ -725,17 +708,17 @@ class Lowerer final {
 
     // initialize state for new function
     {
-      instructions = std::move(func.instructions);
-      peepir_blocks = std::move(func.blocks);
+      instructions = std::move(fn.instructions);
+      peepir_blocks = std::move(fn.blocks);
       current_file = func_file;
 
-      auto const func_type = translateFunctionType(func.typeID);
+      auto const func_type = translateFunctionType(fn.type);
       return_type = func_type->getReturnType();
 
-      auto const linkage = func.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
+      auto const linkage = fn.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
       llvmfunc = llvm::Function::Create(
         func_type, linkage, 0,
-        func.nameof(),
+        fn.nameof(),
         &tu->module);
 
       llvm_blocks.reserve(peepir_blocks.size());
@@ -743,7 +726,7 @@ class Lowerer final {
         llvm_blocks.emplace_back_unchecked(llvm::BasicBlock::Create(tu->context, "", llvmfunc));
       builder.SetInsertPoint(llvm_blocks.front());
 
-      locals.reserve(func.locals.size() + 1);
+      locals.reserve(fn.locals.size() + 1);
       locals.emplace_back_unchecked(
         return_type->isVoidTy()
         ? nullptr : builder.CreateAlloca(return_type) );
@@ -760,9 +743,9 @@ class Lowerer final {
         ++arg;
       }
 
-      auto const num_locals = func.locals.size();
+      auto const num_locals = fn.locals.size();
       for (; i<num_locals; ++i) {
-        locals.emplace_back_unchecked( builder.CreateAlloca(translateType(func.locals[i])) );
+        locals.emplace_back_unchecked( builder.CreateAlloca(translateType(fn.locals[i])) );
       }
 
     }

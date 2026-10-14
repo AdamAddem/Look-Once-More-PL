@@ -162,13 +162,13 @@ InlineNodiscardCXPR bool is(char c) noexcept {
   return categorize(c) & category;
 }
 
-struct Tokenizer {
+struct LexingContext {
   eden::vector<Token>& token_list;
   File file;
   u32_t current_position{};
   bool has_errors{};
 
-  InlineCXPR explicit Tokenizer(eden::vector<Token>& token_list, File file)
+  InlineCXPR explicit LexingContext(eden::vector<Token>& token_list, File file)
   : token_list(token_list), file(file) {}
 
   PureFN InlineNodiscardCXPR char peek() const noexcept { return file.get_text()[current_position]; }
@@ -417,7 +417,7 @@ struct Tokenizer {
 };
 
 constexpr bool impl(eden::vector<Token>& out_tokens, File file) noexcept {
-  Tokenizer tokenizer{out_tokens, file};
+  LexingContext tokenizer{out_tokens, file};
   if (tokenizer.peek() == '.') {
     tokenizer.error_at_currentpos("File may not start with . for very esoteric reasons.");
     ++tokenizer.current_position;
@@ -453,7 +453,7 @@ constexpr bool impl(eden::vector<Token>& out_tokens, File file) noexcept {
 
 }
 
-// TODO: Add tests
+// TODO: Add more tests
 namespace LOM::LexerTest {
 namespace {
 using namespace std::string_view_literals;

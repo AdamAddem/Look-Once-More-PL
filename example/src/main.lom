@@ -24,5 +24,12 @@ pub main: () i32 {
     __C.CloseWindow();
 
     n: i32 = Foo.fib(8);
-    return 0;
+    return n;
+}
+
+test: () i32 {
+
+    if true { return 1; }
+    else { return 0; }
+
 }

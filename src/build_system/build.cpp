@@ -32,11 +32,21 @@ union TUnion {
 };
 static_assert( sizeof(Parser::TU) == sizeof(PeepIR::TU) );
 
+enum class BuildStage : sz_t {
+  START,
+  PARSING,
+  PEEPING,
+  LOWERING,
+  LINKING,
+  DONE
+};
+
 class Globals {
   inline static constinit eden::vector<fs::path> extern_objects_paths{};
   inline static constinit eden::vector<fs::path> module_paths{};
   inline static std::unordered_map<std::string_view, u16_t> module_map{};
   inline static constinit eden::owned_span<TUnion> tu_list{};
+  inline static constinit std::atomic build_stage{0uz};
 
   static void init() {
     module_paths.reserve(4);
@@ -74,25 +84,43 @@ class Globals {
     }
   }
 
+  static void resetAllState() {
+    build_stage.store(sz_t(BuildStage::START));
+    for (auto& kv : module_map) {
+      if (kv.first not_eq std::string_view("__C")) delete[] kv.first.data();
+    }
+
+    for (auto& tu : tu_list) tu.~TUnion();
+    ::operator delete(tu_list.data(), tu_list.size() * sizeof(TUnion), align_t{64});
+  }
+
 public:
+  inline static constinit auto const& module_to_index_map = module_map;
+
+  InlineNodiscardCXPR static BuildStage getCurrentBuildStage() noexcept { return BuildStage{build_stage.load()}; }
+  InlineNodiscardCXPR static bool isParsingCompleted() noexcept { return build_stage.load() > sz_t(BuildStage::PARSING); }
+  InlineNodiscardCXPR static bool isPeepingCompleted() noexcept { return build_stage.load() > sz_t(BuildStage::PEEPING); }
+
+  template <BuildStage NextStage>
+  constexpr static void progressTo() noexcept {
+    assert(build_stage.load() != sz_t(BuildStage::DONE));
+    assert(NextStage != BuildStage::START);
+    assert(build_stage.load() + 1 == sz_t(NextStage));
+    build_stage.fetch_add(1);
+  }
 
   InlineNodiscardCXPR static sz_t numTUs() noexcept { return tu_list.size(); }
-  InlineNodiscardCXPR static TUnion& getTU(u16_t tu_id) noexcept { return tu_list[tu_id]; }
+  InlineNodiscardCXPR static TUnion& getTU(u16_t tu_id) noexcept { assert(tu_id < numTUs()); return tu_list[tu_id]; }
   InlineNodiscardCXPR static fs::path const& getTUPath(u16_t tu_id) noexcept { return module_paths[tu_id]; }
+
 
   InlineNodiscardCXPR static std::span<TUnion> getUserTUs() noexcept { return tu_list.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule TU
   InlineNodiscardCXPR static std::span<fs::path> getUserTUPaths() noexcept { return module_paths.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule path
 
   friend void LOM::build();
-
-  friend Module* LOM::getModule(std::string_view) noexcept;
-  friend Module& LOM::getModule(u16_t module_id) noexcept;
-  friend std::string_view LOM::getNameOfModule(u16_t module_id) noexcept;
-
   friend void compileExtern();
 };
 
-// LOL
 void compileExtern() {
   if (not fs::exists(extern_path) or is_empty(fs::directory_entry(extern_path))) return;
 
@@ -102,7 +130,7 @@ void compileExtern() {
   case 1: command.append(" -O1 "); break;
   case 2: command.append(" -O2 "); break;
   case 3: command.append(" -O3 "); break;
-  default: edenUnreachable("Invalid optimization level.");
+  default: Unreachable("Invalid optimization level.");
   }
 
   command.append("-c ");
@@ -117,7 +145,75 @@ void compileExtern() {
 
   command.push_back(')');
   system(command.c_str());
+
+  // spin until parsing is finished
+
 }
+
+}
+
+// returns nullptr if not found
+PureFN [[nodiscard]] Module* LOM::getModule(std::string_view module_name) noexcept {
+  assert(Globals::getCurrentBuildStage() == BuildStage::PARSING);
+  auto const iter = Globals::module_to_index_map.find(module_name);
+  if (iter == Globals::module_to_index_map.end()) return nullptr;
+  return &Globals::getTU(iter->second).m.module;
+}
+
+PureFN [[nodiscard]] std::optional<u16_t> LOM::getModuleID(std::string_view module_name) noexcept {
+  assert(Globals::getCurrentBuildStage() == BuildStage::PARSING);
+  auto const iter = Globals::module_to_index_map.find(module_name);
+  if (iter == Globals::module_to_index_map.end()) return std::nullopt;
+  return iter->second;
+}
+
+PureFN HotFN [[nodiscard]] Module& LOM::getModule(u16_t module_id) noexcept {
+  assert(Globals::isParsingCompleted());
+  return Globals::getTU(module_id).m.module;
+}
+PureFN [[nodiscard]] std::string_view LOM::getNameOfModule(u16_t module_id) noexcept {
+  assert(Globals::isParsingCompleted());
+  return Globals::getTU(module_id).m.name;
+}
+PureFN [[nodiscard]] Parser::TU& LOM::getParserTU(u16_t module_id) noexcept {
+  assert(Globals::isParsingCompleted());
+  return Globals::getTU(module_id).parser_tu;
+}
+PureFN [[nodiscard]] PeepIR::TU& LOM::getPeepTU(u16_t module_id) noexcept {
+  assert(Globals::isPeepingCompleted());
+  return Globals::getTU(module_id).peepir_tu;
+}
+
+static_assert(not Settings::MULTITHREADING_SUPPORT);
+void LOM::addExternDeclaration(
+  std::string_view name,
+  eden::swap_vector16<Symbol::Variable>&& arguments,
+  TypeID const& return_typeID,
+  bool is_variadic) noexcept {
+  assert(Globals::getCurrentBuildStage() == BuildStage::PARSING);
+
+  auto& cTU = Globals::getTU(C_TU_IDX).peepir_tu;
+  auto& cModule = cTU.module;
+  auto const fn_typeID = cModule.addFunctionType(arguments.to_span(), return_typeID, is_variadic);
+  auto const fn_id = cModule.addFunction(name, std::move(arguments), fn_typeID, true);
+
+  auto& fn = cTU.functions.emplace_back();
+  fn.is_public = true;
+  fn.file_idx = 0;
+  fn.id_in_module = fn_id;
+  fn.name_len = name.length();
+  fn.name_ptr = name.data();
+
+  // this is rlly dumb, but PeepIR Function holds a type*
+  // but this function is run during parsing so we can't materialize fn_typeID just yet
+  // ordinarily we'd make cTU a parseTU and later transmute to a peepTU
+  // but we'd also have to transmute the functions too, and thats so much work
+  // this lets us just store the typeID where the pointer is for now
+  // the thread handling compileExtern will undo this later
+  fn.type = std::bit_cast<FunctionType const*>(fn_typeID); // TODO: theres gotta be a better way
+}
+
+namespace {
 
 NoInlineCold void
 print_parsed() noexcept {
@@ -144,34 +240,9 @@ print_errors(File file) {
   std::println("\n--- Errors ---");
 }
 
-}
-
-HotFN PureFN [[nodiscard]] Module&
-LOM::getModule(u16_t module_id) noexcept {
-  assert(module_id < Globals::numTUs());
-  return Globals::getTU(module_id).m.module;
-}
-
-// returns nullptr if not found
-PureFN [[nodiscard]] Module*
-LOM::getModule(std::string_view module_name) noexcept {
-  auto const iter = Globals::module_map.find(module_name);
-  if (iter == Globals::module_map.end()) return nullptr;
-  return &getModule(iter->second);
-}
-
-PureFN [[nodiscard]] std::string_view
-LOM::getNameOfModule(u16_t module_id) noexcept {
-  assert(module_id < Globals::numTUs());
-  return Globals::getTU(module_id).m.name;
-}
-
-PureFN [[nodiscard]] Module& LOM::getCModule() noexcept { return getModule(C_TU_IDX); }
-
-namespace {
 
 [[nodiscard]] bool
-parse_file(eden::vector<Lexer::Token>& tokens, Parser::TU& tu, fs::path const& path) {
+parseFile(eden::vector<Lexer::Token>& tokens, Parser::TU& tu, fs::path const& path) {
   auto const file = tu.source_files.emplace_back(path);
   if (Lexer::tokenizeFile(tokens, file)) { print_errors(file); return true; }
   if (Parser::parseTokens(tu, tokens.to_span())) { print_errors(file); return true; }
@@ -180,7 +251,7 @@ parse_file(eden::vector<Lexer::Token>& tokens, Parser::TU& tu, fs::path const& p
 
 // populates tu and returns whether an error was encountered
 [[nodiscard]] bool
-parse_module(Parser::TU& tu, u16_t tu_id) {
+parseModule(Parser::TU& tu, u16_t tu_id) {
   eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<>, 32};
   auto const& directory = Globals::getTUPath(tu_id);
 
@@ -190,7 +261,7 @@ parse_module(Parser::TU& tu, u16_t tu_id) {
     if (entry.is_directory()) throw std::runtime_error(std::format("Sorry! Submodules not supported yet. Module Path: {}", path.string()));
     if (path.extension() != ".lom") continue;
 
-    has_error |= parse_file(tokens, tu, path);
+    has_error |= parseFile(tokens, tu, path);
     tokens.clear();
   }
 
@@ -199,7 +270,7 @@ parse_module(Parser::TU& tu, u16_t tu_id) {
 
 // returns true if compilation should stop (due to error or outputing parser)
 [[nodiscard]] bool
-parse_modules() {
+parseModules() {
   bool has_error = false;
 
   // handle main first
@@ -209,14 +280,13 @@ parse_modules() {
     if (not fs::exists(path)) throw std::runtime_error("LookOnceMore: main.lom not found.");
 
     eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<32>};
-    has_error = parse_file(tokens, tu.parser_tu, path);
+    has_error = parseFile(tokens, tu.parser_tu, path);
   }
 
   auto const num_tus = Globals::numTUs();
   for (auto i{MAIN_TU_IDX + 1}; i<num_tus; ++i) {
     auto& ptu = Globals::getTU((u16_t) i).parser_tu;
-
-    has_error |= parse_module(ptu, i);
+    has_error |= parseModule(ptu, i);
   }
 
   if (Settings::do_output_parser && not has_error) { print_parsed(); return true; }
@@ -225,7 +295,7 @@ parse_modules() {
 
 // returns true if compilation should stop (due to error or outputing peep)
 [[nodiscard]] bool
-peep_modules() {
+peepModules() {
   bool has_error = false;
   for (auto& tu : Globals::getUserTUs()) {
     if (not PeepIR::lowerToPeep(tu.parser_tu)) continue;
@@ -239,7 +309,8 @@ peep_modules() {
   return false;
 }
 
-void compile_modules() {
+void lowerModules() {
+
   auto const tus = Globals::getUserTUs();
   auto const tu_paths = Globals::getUserTUPaths();
 
@@ -272,24 +343,36 @@ void LOM::build() {
   auto const begin_time = std::chrono::high_resolution_clock::now();
 
   std::jthread compile_extern;
-  if constexpr (not Settings::external_compiler.empty()) {
-    if (Settings::do_output_obj) compile_extern = std::jthread(compileExtern);
-  }
+  if (Settings::do_output_obj) compile_extern = std::jthread(compileExtern);
 
   if (not fs::exists(src_path))
     throw std::runtime_error("LookOnceMore: src directory not found!");
 
   Globals::init();
-  if (parse_modules()) return;
-  if (peep_modules())  return;
 
-  compile_modules();
-  output_benchmark(begin_time);
+  Globals::progressTo<BuildStage::PARSING>();
+  if (parseModules()) return;
+
+  // adjust the c module stuff mentioned in addExternDeclaration
+  auto& cTU = Globals::getTU(C_TU_IDX).peepir_tu;
+  auto const& cModule = Globals::getTU(C_TU_IDX).peepir_tu.module;
+  for (auto& f : cTU.functions)
+    f.type = &cModule.getFunctionType( std::bit_cast<TypeID>(f.type) );
 
   if (compile_extern.joinable()) {
     compile_extern.join();
     Globals::module_paths.move_append_range( Globals::extern_objects_paths.to_span() );
   }
+
+  Globals::progressTo<BuildStage::PEEPING>();
+  if (peepModules()) return;
+
+  Globals::progressTo<BuildStage::LOWERING>();
+  lowerModules();
+  output_benchmark(begin_time);
+
+  Globals::progressTo<BuildStage::LINKING>();
+
 
 #ifdef NO_MEASUREMENT
   if (Settings::do_linking) {
@@ -297,15 +380,9 @@ void LOM::build() {
     Backend::linkObjects(objs);
   }
 #endif
-
+  Globals::progressTo<BuildStage::DONE>();
 
 #ifdef PROFILE
-  for (auto& kv : Globals::module_map) {
-    if (kv.first not_eq std::string_view("__C")) delete[] kv.first.data();
-  }
-
-  auto& tu_list = Globals::tu_list;
-  for (auto& tu : tu_list) tu.~TUnion();
-  ::operator delete(tu_list.data(), tu_list.size() * sizeof(TUnion), align_t{64});
+  Globals::resetAllState();
 #endif
 }

@@ -11,12 +11,25 @@
   eden::vector<File> source_files; \
   std::string_view name;
 
+#define GENERIC_FN_DEF \
+  bool  is_public; \
+  u8_t  file_idx; \
+  u16_t id_in_module; \
+  u32_t name_len; \
+  const char* name_ptr; \
+
 namespace LOM {
 
 struct GenericTU {
   GenericTU() = delete;
   ~GenericTU() = delete;
   GENERIC_TU_DEF
+};
+
+struct GenericFunction {
+  GenericFunction() = delete;
+  ~GenericFunction() = delete;
+  GENERIC_FN_DEF
 };
 
 // By making Parser::TU and PeepIR::TU the same size and alignment, we can transmutate Parser::TU into PeepIR::TU within the same memory

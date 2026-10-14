@@ -14,6 +14,9 @@ namespace Symbol { struct Variable; }
 class Module;
 struct TypeID;
 
+static constexpr auto C_TU_IDX = 0uz;
+static constexpr auto MAIN_TU_IDX = 1uz;
+
 void build();
 
 // call during parsing
@@ -28,6 +31,8 @@ PureFN [[nodiscard]] std::string_view getNameOfModule(u16_t module_id) noexcept;
 // only call these after their respective phases
 PureFN [[nodiscard]] Parser::TU& getParserTU(u16_t module_id) noexcept;
 PureFN [[nodiscard]] PeepIR::TU& getPeepTU(u16_t module_id) noexcept;
+
+PureFN [[nodiscard]] u16_t getNumTUs() noexcept;
 
 // call during parsing
 void addExternDeclaration(

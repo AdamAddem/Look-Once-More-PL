@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-namespace LOM::AST {
+namespace LOM::Parser {
 enum class Operator : u8_t {
   ADD,
   SUBTRACT,
@@ -40,7 +40,6 @@ enum class Operator : u8_t {
   ARROW,
   DOT,
 };
-
 
 // TODO: Overengineer more.
 struct ASTNode {
@@ -172,8 +171,5 @@ inline constexpr ASTNode PLACEHOLDER_NODE{
     .position_in_file = 0,
     ._ = 0
 };
-
-NoInlineCold
-void print_ast(eden::vector<ASTNode> const& nodes, File const&) noexcept;
 
 }

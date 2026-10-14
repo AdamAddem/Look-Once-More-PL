@@ -13,7 +13,7 @@ namespace LOM::Parser {
 struct Function {
   GENERIC_FN_DEF
 
-  eden::vector<AST::ASTNode> body;
+  eden::vector<ASTNode> body;
   byte_t _pad[56]; // TODO: check whether this is being initialized
 
   InlineNodiscardCXPR std::string_view nameof() const noexcept { return {name_ptr, name_len}; }

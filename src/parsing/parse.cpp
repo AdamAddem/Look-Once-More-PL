@@ -17,10 +17,8 @@
 using namespace LOM;
 using namespace LOM::Lexer;
 using namespace LOM::Parser;
-using namespace LOM::AST;
 
 namespace {
-
 NoInlineCold [[noreturn]] void throw_notfound() Throws(0) { throw 0; }
 
 struct Expression {
@@ -98,11 +96,11 @@ class ParsingContext {
   InlineNodiscardCXPR ASTNode
   newNode(Token token, ASTNode::NodeType type = ASTNode::EMPTY) const noexcept {
     return ASTNode{
-            .type = type,
-            .file_idx = current_file_idx(),
-            .length_in_file = token.length, .position_in_file = token.position,
-            ._ = 0
-    };
+      .type = type,
+      .file_idx = current_file_idx(),
+      .length_in_file = token.length, .position_in_file = token.position,
+      ._ = 0
+};
   }
 
   NoInlineCold void
@@ -157,8 +155,8 @@ class ParsingContext {
     auto const token = tokens.take();
 
     switch (token.type) { using enum TokenType;
-    TOKENTYPE_PRIMITIVES_CASES return parsePrimitiveType(token);
-    TOKENTYPE_POINTERS_CASES   return parsePointerType(token);
+      TOKENTYPE_PRIMITIVES_CASES return parsePrimitiveType(token);
+      TOKENTYPE_POINTERS_CASES   return parsePointerType(token);
     case LBRACKET:             return parseArrayType();
 
     case IDENTIFIER: {
@@ -183,7 +181,7 @@ class ParsingContext {
   }
 
   // opening parenthesis must be popped, and the next token must not be closing parenthesis (?)
-//#define pre assert(tokens.previous().is(TokenType::LPAREN));
+  //#define pre assert(tokens.previous().is(TokenType::LPAREN));
   NodiscardCXPR u32_t generateParameters() { //pre
     auto const parameter = generateAssignmentExpression();
     if (tokens.pop_if(TokenType::RPAREN))
@@ -195,9 +193,9 @@ class ParsingContext {
     error(tokens.peek(), "Expected comma in call expression.");
     return expression_tree.create(PLACEHOLDER_NODE, parameter, generateParameters());
   }
-//#undef pre
+  //#undef pre
 
-#define pre Assume(tokens.peek().isLiteral());
+#define pre assert(tokens.peek().isLiteral());
   template <bool negate = false>
   NodiscardCXPR u32_t generateLiteral() { pre
     auto const token = tokens.take();
@@ -238,7 +236,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(module_name_token.isIdentifier() or module_name_token.is(TokenType::DUNDER_CEXTERN)); assert(tokens.peek_is(TokenType::DOT));
+#define pre assert(module_name_token.isIdentifier() or module_name_token.is(TokenType::DUNDER_CEXTERN)); assert(tokens.peek_is(TokenType::DOT));
   NodiscardCXPR u32_t generateModuleAccess(Token module_name_token) { pre
     auto const dot_token = tokens.take();
     auto const module_name = module_name_token.originalString(current_file);
@@ -264,7 +262,7 @@ class ParsingContext {
 
   NodiscardCXPR u32_t generatePrimaryExpression() {
     switch (tokens.peek().type) { using enum TokenType;
-    TOKENTYPE_LITERALS_CASES return generateLiteral();
+      TOKENTYPE_LITERALS_CASES return generateLiteral();
     case DUNDER_CEXTERN:     return generateModuleAccess(tokens.take());
     case LPAREN: {
       tokens.pop();
@@ -307,7 +305,7 @@ class ParsingContext {
         left = expression_tree.create(newNode(token, ASTNode::MEMBER_ACCESS), left, generatePrimaryExpression()); // identifier following arrow should only occur when accessing a member
         continue;
 
-        case TokenType::DOT:
+      case TokenType::DOT:
         tokens.pop();
         left = expression_tree.create(newNode(token, ASTNode::MEMBER_ACCESS), left, generatePostfixExpression());
         continue;
@@ -602,26 +600,26 @@ class ParsingContext {
       module.addLocal(typeID, qualifiers, decl_name);
 
     {
-      auto& node = nodes[decl_node_idx];
-      node.declaration_data.typeID = typeID;
-      node.file_idx = current_file_idx();
-      node.length_in_file = identifier_token.length;
-      node.position_in_file = identifier_token.position;
+    auto& node = nodes[decl_node_idx];
+    node.declaration_data.typeID = typeID;
+    node.file_idx = current_file_idx();
+    node.length_in_file = identifier_token.length;
+    node.position_in_file = identifier_token.position;
 
-      if (not tokens.pop_if(TokenType::ASSIGN)) {
-        auto const err = tokens.peek();
-        error(err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
-        sync_to_semicolon();
-        return err;
-      }
+    if (not tokens.pop_if(TokenType::ASSIGN)) {
+      auto const err = tokens.peek();
+      error(err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
+      sync_to_semicolon();
+      return err;
+    }
 
-      if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
-        node.type = qualifiers.writable ? ASTNode::DECLARATION_JUNK_RW : ASTNode::DECLARATION_JUNK_RO;
-      }
-      else {
-        node.type = qualifiers.writable ? ASTNode::DECLARATION_RW : ASTNode::DECLARATION_RO;
-        parseExpression();
-      }
+    if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
+      node.type = qualifiers.writable ? ASTNode::DECLARATION_JUNK_RW : ASTNode::DECLARATION_JUNK_RO;
+    }
+    else {
+      node.type = qualifiers.writable ? ASTNode::DECLARATION_RW : ASTNode::DECLARATION_RO;
+      parseExpression();
+    }
     }
 
     if (not tokens.peek_is(TokenType::SEMI_COLON)) {
@@ -884,8 +882,8 @@ class ParsingContext {
 
     // body
     {
-      parseStatementsBetweenBraces();
-      current_function.body = std::move(nodes);
+    parseStatementsBetweenBraces();
+    current_function.body = std::move(nodes);
     }
 
     tu.functions.emplace_back(std::move(current_function));
@@ -930,44 +928,8 @@ public:
     return parser.has_errors;
   }
 };
-
-NoInlineCold void
-printFunction(Function const& func, TU const& tu) noexcept {
-  std::print("{}{}: (",
-    func.is_public ? "pub " : "",
-    func.nameof());
-
-  auto const& module = tu.module;
-  auto const function = module.getFunction(func.nameof()); edenAssume(function);
-  auto const function_typeID = function->getTypeID();
-  auto const num_parameters = function->num_parameters();
-  auto const returnTypeID = function_typeID.getFunctionType().getReturnTypeID();
-
-  for (sz_t i{}; i<num_parameters; ++i) {
-    auto const& parameter = function->getLocal(i);
-    std::print("{}", parameter.typeID.toString());
-    std::print(" {}, ", parameter.nameof());
-  }
-
-  if (num_parameters not_eq 0) std::print("\b\b");
-
-  std::print(") ");
-  if (returnTypeID.derived not_eq Type::DEVOID)
-    std::print("{}", returnTypeID.toString());
-
-  std::print(" {{ ");
-  print_ast(func.body, tu.source_files.back());
-  std::print(" \n}} ");
 }
 
-}
-
-void Parser::printTU(TU const& tu) noexcept {
-  for (auto const& f : tu.functions) {
-    printFunction(f, tu);
-    std::println();
-  }
-}
 
 #include <chrono>
 static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] std::string_view name) noexcept {

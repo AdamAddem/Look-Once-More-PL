@@ -1,9 +1,9 @@
 ### Getting Started
 Run `lom init` to set up a project template within the current directory. <br>
-You should see src, and build folders. <br>
+You should see src, extern, and build folders. <br>
 The src folder holds all source files organized via module. <br>
 The extern folder holds all external c files you'd like to be compiled with LOM. <br>
-The build folder contains the outputs of all 'emit' commands. <br>
+The build folder contains the outputs of all 'emit' commands, alongside the object files output by the compiler. <br>
 
 To build your project, run `lom build` within the project directory. <br>
 Building requires an external compiler (only clang or gcc currently) available via the command line. <br>
@@ -14,7 +14,7 @@ If not using clang or gcc, you can output object files via --emit-obj and manual
 
 ### Modules
 LookOnceMore uses a folder-based module system. <br>
-A module contains one or more .lom files, which are all compiled together into one translation unit. <br>
+A module contains one or more .lom files, which are all compiled into one translation unit. <br>
 To create a module, simply create a directory within 'src'. The module's name is the directory's name. <br>
 All .lom files within that directory will be compiled as part of the module. <br>
 No individual module may exceed 256 files. <br>

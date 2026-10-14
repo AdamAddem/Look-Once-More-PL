@@ -5,34 +5,35 @@ It is written as a passion project, and successfully compiles with a limited fea
 ### Language Priorities
 My main goal is to create a language that mirrors the performance and freedom that C++ provides while ditching many of the legacy practices.
 I want to prioritize improvements to the language over all else without being held back by tradition or long term backwards compatability.
-Compilation speed is also a priority, speeds of >250k lines of code per second have been measured.
+Compilation speed is also a priority, speeds of >250k lines of code per second have been measured (i5 12400f)
 
 ### Features of Look Once More (Subject to Change)
-* Improved defaults, readonly/readwrite semantics
+* Great defaults, readonly/readwrite semantics
     ```
     ro_num: i32 = 5; # (const int equivalent)
     rw_num$ i32 = 4; # (int equivalent)
     
-    uninitialized$  f32 = junk;   # explicit junk initialization required
     not_allowed$    f32;          # error
+    uninitialized$  f32 = junk;   # explicit junk initialization required
     ro_not_allowed: f32 = junk;   # error, readonly variable may not be junk initialized
   
     # All struct members are public
-    # All members may be modified through Foo's methods if the instance is readwrite
     struct Foo {
-        a: i32,
-        b$ i32      # readwrite members may be modified outside the class through a readwrite instance of Foo.
+        a: i32;   # readonly members can be modified within Foo's methods, but may be read anywhere
+        b$ i32;   # readwrite members may be modified outside the class through a readwrite instance of Foo.
     }
 
 * Simple and explicit pointer / reference syntax
     ```
     # Raw keyword denotes a pointer to readwrite variable 
-    a$ raw i32 = ...;  # int* 
-    b: raw i32 = ...;  # int* const 
+    a$ raw i32 = ...;  # int*
+    b: raw i32 = ...;  # int* const
   
     # Ref keyword denotes a pointer to readonly variable  
-    c$ ref i32 = ...;  # const int* 
-    d: ref i32 = ...;  # const int* const 
+    c$ ref i32 = ...;  # const int*
+    d: ref i32 = ...;  # const int* const
+  
+    # No pointer may be null, such a property is expressed via a '?' or '??' qualifier instead
     
     # Uniform dereference syntax
     raw_rect: raw Rectangle = @my_rect;   # GenZ address-of operator produces a pointer to readwrite variable
@@ -41,29 +42,31 @@ Compilation speed is also a priority, speeds of >250k lines of code per second h
     raw_rect-> = getSquare();             # Dereference to access object (*raw_rect equivalent)
 * Native variant, tuple, and nullable types (planned)
     ```
-    name_or_id: <string, u32> = 5;
-    first_member: ?string = getFirstClubMember(); # '?' prefix to express nullability
+    name_or_id: |string, u32| = 5;
+    member_one?  string = getFirstMember(); # '?' to express readonly nullability (effectively, nullable at initialization)
+    member_two?? string = getLastMember();  # '?' to express readwrite nullability
+  
+    member_one = "Bob"; # error
+    member_two = "Bob"; # fine
     
-    person: {first: string, last: string} = {"Gabe", "Newell"}; # Tuple / anonymous struct
+    full_name: {first: string, last: string} = {"Hugh", "Mungus"}; # Tuple / anonymous struct
 * Strict and explicit global variables (planned)
     ```
-    #{ 
-       Global variables must be declared before functions and after imports.
-       Global variables may not be junk initialized.
-       Global variables must be initialized at compile time.
+    #{ Globals:
+        must be declared before functions and after imports,
+        may not be junk initialized,
+        must be initialized at compile time
     }#
 
-    global x$ i32 = junk;    # error
-    global y$ f32 = 4.0f;
-  
-    foo() {...}
-    
+    x$ i32 = junk;    # error
+    y$ f32 = 4.0f;
+    foo: () {...}
     global too_late: i32 = 5; # error
 * Strong typing and simple promotion rules
     ```
     #{
        No implicit conversions,
-       With the exception of unsigned conversions where the other type is of greater size.
+       with the exception of unsigned promotion to a type of greater size
     }#
   
     signed_8$ i8 = 0; unsigned_8$ u8 = 0; signed_32$ i32 = 0; unsigned_32$ u32 = 0;

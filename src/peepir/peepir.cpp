@@ -17,7 +17,9 @@
 
 using namespace LOM;
 using namespace LOM::PeepIR;
-using namespace LOM::AST;
+
+using ASTNode = Parser::ASTNode;
+using Operator = Parser::Operator;
 
 namespace {
 
@@ -53,8 +55,8 @@ castForType(TypeID typeID) noexcept {
 }
 
 struct TreeView {
-  eden::vector<ASTNode>::const_iterator begin;
-  eden::vector<ASTNode>::const_iterator end;
+  eden::vector<Parser::ASTNode>::const_iterator begin;
+  eden::vector<Parser::ASTNode>::const_iterator end;
 
   InlineNodiscardCXPR ASTNode peek() const noexcept { return *begin; }
   InlineNodiscardCXPR ASTNode previous() const noexcept { return *(begin-1); }
@@ -861,7 +863,7 @@ class PeepingContext {
 
   constexpr void peepStatement() noexcept {
     auto const node = nodes.take();
-    switch (node.type) { using enum ASTNode::NodeType;
+    switch (node.type) { using enum Parser::ASTNode::NodeType;
     case DECLARATION_JUNK_RO: case DECLARATION_JUNK_RW:
     case DECLARATION_RO:      case DECLARATION_RW:
       return peepVarDeclaration(node);
@@ -976,168 +978,6 @@ public:
 
 };
 
-}
-
-// printing helpers
-namespace {
-
-// returns number of sub expressions for indentation purposes
-sz_t printPeepInstruction(Instruction instruction, File file, std::string_view module_name) {
-  switch (instruction.type) { using enum Instruction::InstructionType;
-  case NOOP: std::println("NOOP"); break;
-  case GLOBAL: std::println("GLOBAL {}", instruction.original_string(file)); break;
-  case FUNCTION: std::println("FUNCTION {}", instruction.original_string(file)); break;
-
-  case MODULE_GLOBAL: std::println("GLOBAL {} FROM MODULE {}", instruction.module_variable_name(), instruction.module_name(file)); break;
-  case MODULE_FUNCTION: {
-    auto const& fn = getModule(instruction.module_member_data.module_id).getFunction(instruction.module_member_data.member_id);
-    std::println("FUNCTION {} FROM MODULE {}", fn.nameof(), module_name);
-    break;
-  }
-
-  // this doesn't have to be one line but its really funny
-  case TYPE_VARIABLE: std::println("TYPE_VARIABLE {}", getModule(instruction.type_member_data.custom_type_module_id).getCustomType( TypeID{ .derived = Type::CUSTOM, .module_id = instruction.type_member_data.custom_type_module_id, .id = instruction.type_member_data.custom_type_id } ).member_table().getVariable(instruction.type_member_data.member_id).nameof()); break;
-
-  case LOCAL: std::println("LOCAL {}", instruction.local_data.idx); break;
-
-  case I8_LITERAL: std::println("I8_LITERAL {}", instruction.signed_literal_data.value); break;
-  case I16_LITERAL: std::println("I16_LITERAL {}", instruction.signed_literal_data.value); break;
-  case I32_LITERAL: std::println("I32_LITERAL {}", instruction.signed_literal_data.value); break;
-  case I64_LITERAL: std::println("I64_LITERAL {}", instruction.signed_literal_data.value); break;
-  case U8_LITERAL: std::println("U8_LITERAL {}", instruction.unsigned_literal_data.value); break;
-  case U16_LITERAL: std::println("U16_LITERAL {}", instruction.unsigned_literal_data.value); break;
-  case U32_LITERAL: std::println("U32_LITERAL {}", instruction.unsigned_literal_data.value); break;
-  case U64_LITERAL: std::println("U64_LITERAL {}", instruction.unsigned_literal_data.value); break;
-  case FLOAT_LITERAL: std::println("FLOAT_LITERAL {}", instruction.float_literal_data.value); break;
-  case DOUBLE_LITERAL: std::println("DOUBLE_LITERAL {}", instruction.double_literal_data.value); break;
-  case BOOL_LITERAL: std::println("BOOL_LITERAL {}", instruction.bool_literal_data.value); break;
-  case CHAR_LITERAL: std::println("CHAR_LITERAL {}", instruction.char_literal_data.value); break;
-  case STRING_LITERAL: std::println("STRING_LITERAL {}", instruction.original_string(file)); break;
-  case ESCAPED_STRING_LITERAL: std::println("STRING_LITERAL W/ ESCAPE_SEQUENCE {}", instruction.original_string(file)); break;
-
-  case ADD: std::println("ADD"); return 2;
-  case FADD: std::println("FADD"); return 2;
-  case SUB:  std::println("SUB"); return 2;
-  case FSUB:  std::println("FSUB"); return 2;
-  case MULT:  std::println("MULT"); return 2;
-  case FMULT:  std::println("FMULT"); return 2;
-  case UDIV:  std::println("UDIV"); return 2;
-  case SDIV:  std::println("SDIV"); return 2;
-  case FDIV:  std::println("FDIV"); return 2;
-  case UMOD:  std::println("UMOD"); return 2;
-  case SMOD:  std::println("SMOD"); return 2;
-  case FMOD:  std::println("FMOD"); return 2;
-  case ASSIGN:  std::println("ASSIGN"); return 2;
-  case UCAST_ASSIGN:  std::println("UCAST_ASSIGN {}b", instruction.cast_assign_data.bitwidth); return 2;
-  case SCAST_ASSIGN:  std::println("SCAST_ASSIGN {}b", instruction.cast_assign_data.bitwidth); return 2;
-  case ULESS:  std::println("ULESS"); return 2;
-  case SLESS:  std::println("SLESS"); return 2;
-  case FLESS:  std::println("FLESS"); return 2;
-  case UGTR:  std::println("UGTR"); return 2;
-  case SGTR:  std::println("SGTR"); return 2;
-  case FGTR:  std::println("FGTR"); return 2;
-  case ULEQ:  std::println("ULEQ"); return 2;
-  case SLEQ:  std::println("SLEQ"); return 2;
-  case FLEQ:  std::println("FLEQ"); return 2;
-  case UGEQ:  std::println("UGEQ"); return 2;
-  case SGEQ:  std::println("SGEQ"); return 2;
-  case FGEQ:  std::println("FGEQ"); return 2;
-  case EQ:  std::println("EQ"); return 2;
-  case NEQ:  std::println("NEQ"); return 2;
-  case AND:  std::println("AND"); return 2;
-  case OR:  std::println("OR"); return 2;
-  case BITAND:  std::println("BITAND"); return 2;
-  case BITOR:  std::println("BITOR"); return 2;
-  case BITXOR:  std::println("BITXOR"); return 2;
-  case SUBSCRIPT:  std::println("SUBSCRIPT WITH ARRAY TYPE {}", instruction.subscript_data.array_typeID.toString()); return 2;
-
-  case PRE_INC: std::println("PRE_INC"); return 1;
-  case FPRE_INC: std::println("FPRE_INC"); return 1;
-  case PRE_DEC: std::println("PRE_DEC"); return 1;
-  case FPRE_DEC: std::println("FPRE_DEC"); return 1;
-  case ADDRESS_OF: std::println("ADDRESS_OF"); return 1;
-  case NEGATE: std::println("NEGATE"); return 1;
-  case FNEGATE: std::println("FNEGATE"); return 1;
-  case BITNOT: std::println("BITNOT"); return 1;
-  case POST_INC: std::println("POST_INC"); return 1;
-  case FPOST_INC: std::println("FPOST_INC"); return 1;
-  case POST_DEC: std::println("POST_DEC"); return 1;
-  case FPOST_DEC: std::println("FPOST_DEC"); return 1;
-  case DEREFERENCE: std::println("DEREFERENCE TO {}", instruction.dereference_data.dereference_typeID.toString());  return 1;
-
-  case UCAST: std::println("UCAST TO {}", instruction.cast_data.destination_typeID.toString()); return 1;
-  case SCAST: std::println("SCAST TO {}", instruction.cast_data.destination_typeID.toString()); return 1;
-  case FCAST: std::println("FCAST TO {}", instruction.cast_data.destination_typeID.toString()); return 1;
-  case PCAST: std::println("PCAST TO {}", instruction.cast_data.destination_typeID.toString()); return 1;
-
-  case CALL: std::println("CALL WITH {} PARAMETER(S)", instruction.call_data.num_parameters); return instruction.call_data.num_parameters + 1;
-  default:
-    Unreachable("Invalid peep instruction.");
-  }
-  return 0;
-}
-
-void printPeepBlocks(eden::vector<Block> const& blocks, eden::vector<Instruction> const& instructions, File file, std::string_view module_name) {
-  auto const num_blocks = blocks.size();
-  sz_t current_instruction{};
-
-  eden::vector<sz_t> indents{eden::flags::reserve_initial<4>};
-  auto const print_indents = [&indents] {
-    while (indents.back()-- == 0) indents.pop_back();
-    for (auto _ : indents) std::print("  ");
-  };
-
-  for (sz_t i{}; i<num_blocks; ++i) {
-    indents.clear(); indents.emplace_back_unchecked(sz_max);
-
-    auto const& block = blocks[i];
-    std::println("Block {} (Instruction Count {}): ", i, block.num_instructions);
-    for (sz_t j{}; j<block.num_instructions; ++j) {
-      print_indents();
-      auto const indent =
-        printPeepInstruction(instructions[current_instruction], file, module_name);
-      if (indent != 0) indents.push_back(indent);
-      ++current_instruction;
-    }
-
-    switch (block.terminator_type) { using enum Block::Terminator;
-    case BR:  std::println("  BR {}\n", block.br.next_block_offset + i); break;
-    case BRC: std::println("  BRC TRUE {}, FALSE {}\n", block.brc.true_block_offset + i, block.brc.false_block_offset + i); break;
-    case RET: std::println("  RET\n"); break;
-    default: edenUnreachable("Invalid block terminator type.");
-    }
-
-  }
-
-  // std::print("Return Block {}:\n\t", current_block);
-  // printPeepInstruction(instructions[current_instruction++], file, module_name);
-  // printPeepBlockTerminator(blocks[current_block]);
-}
-
-}
-
-void PeepIR::printPeep(TU const& tu) {
-  for (auto const& func : tu.functions) {
-    std::println("{}{}: {} {{",
-    func.is_public ? "pub " : "",
-    func.nameof(),
-    func.type->toString());
-
-    std::println("Block count: {}", func.blocks.size());
-
-    sz_t instruction_count{};
-    for (auto block : func.blocks) instruction_count += (sz_t) block.num_instructions;
-    std::println("Instruction Count: {}", instruction_count);
-
-    std::print("Locals: | ");
-    auto const num_locals = func.locals.size();
-    for (sz_t i{1}; i<num_locals; ++i)
-      std::print("{}: {} | ", i, func.locals[i].toString());
-    std::println();
-
-    printPeepBlocks(func.blocks, func.instructions, tu.source_files[func.file_idx], tu.name);
-    std::println("}}");
-  }
 }
 
 static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] std::string_view module_name) {

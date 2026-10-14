@@ -18,6 +18,8 @@ add_executable(lom
         src/error.cpp
         src/settings.hpp
         src/settings.cpp
+        src/print.hpp
+        src/print.cpp
         src/file.hpp
         src/generic_tu.hpp
 
@@ -28,7 +30,6 @@ add_executable(lom
         src/parsing/parse.hpp
         src/parsing/parse.cpp
         src/parsing/ast.hpp
-        src/parsing/ast.cpp
 
         src/module/types.hpp
         src/module/types.cpp

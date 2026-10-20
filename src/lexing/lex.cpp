@@ -171,13 +171,13 @@ struct LexingContext {
   InlineCXPR explicit LexingContext(eden::vector<Token>& token_list, File file)
   : token_list(token_list), file(file) {}
 
-  PureFN InlineNodiscardCXPR char peek() const noexcept { return file.get_text()[current_position]; }
-  PureFN InlineNodiscardCXPR std::pair<u8_t, u8_t> peek_two() const noexcept { return { file.get_text()[current_position], file.get_text()[current_position + 1] }; }
-  PureFN InlineNodiscardCXPR u16_t peek_two_as_u16() const noexcept { return *(u16_t*) (file.get_text().data() + current_position); }
-  PureFN InlineNodiscardCXPR char peek_ahead(i64_t i = 1) const noexcept { return file.get_text()[current_position + i]; }
-  PureFN InlineNodiscardCXPR char previous() const noexcept { return file.get_text()[current_position - 1]; }
+  PureFN InlineNodiscardCXPR char peek() const noexcept { return file.getText()[current_position]; }
+  PureFN InlineNodiscardCXPR std::pair<u8_t, u8_t> peek_two() const noexcept { return { file.getText()[current_position], file.getText()[current_position + 1] }; }
+  PureFN InlineNodiscardCXPR u16_t peek_two_as_u16() const noexcept { return *(u16_t*) (file.getText().data() + current_position); }
+  PureFN InlineNodiscardCXPR char peek_ahead(i64_t i = 1) const noexcept { return file.getText()[current_position + i]; }
+  PureFN InlineNodiscardCXPR char previous() const noexcept { return file.getText()[current_position - 1]; }
 
-  InlineNodiscardCXPR char take() noexcept { return file.get_text()[current_position++]; }
+  InlineNodiscardCXPR char take() noexcept { return file.getText()[current_position++]; }
   InlineCXPR          void pop() noexcept { ++current_position; }
   InlineCXPR          void undo() noexcept { --current_position; }
 
@@ -321,7 +321,7 @@ struct LexingContext {
     default: [[likely]] return;
 
     case DOT:  {
-      auto const is_previous_invalid = not is<Category::IDENT_CONTINUE>(file.get_text()[pos - 1]);
+      auto const is_previous_invalid = not is<Category::IDENT_CONTINUE>(file.getText()[pos - 1]);
       auto const is_next_invalid =     not is<Category::IDENT_START>(pair.second);
       if ( is_previous_invalid | is_next_invalid )
         error_at_currentpos("Dot operator requires adjacent identifiers.");
@@ -365,7 +365,7 @@ struct LexingContext {
     do { pop(); } while( is<Category::IDENT_CONTINUE>(peek()) );
 
     auto const length = current_position - pos;
-    auto const word = file.get_text().substr(pos, length);
+    auto const word = file.getText().substr(pos, length);
     auto const type = classifyWord(word);
 
     token_list.emplace_back(type, length, pos);
@@ -447,8 +447,22 @@ constexpr bool impl(eden::vector<Token>& out_tokens, File file) noexcept {
 
 }
 
+static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] std::string_view name) noexcept {
+#ifdef STAGE_BENCHMARKS
+  auto end_time = std::chrono::high_resolution_clock::now();
+  std::println("{:>10}, {:>10} | Lexing {}",
+    end_time - begin_time,
+    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
+    name
+  );
+#endif
+}
+
 [[nodiscard]] bool tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
-  return impl(out_tokens, file);
+  auto const begin_time = std::chrono::high_resolution_clock::now();
+  auto const has_error = impl(out_tokens, file);
+  output_benchmark(begin_time, file.getText());
+  return has_error;
 }
 
 }

@@ -289,7 +289,7 @@ class PeepingContext {
   NodiscardCXPR QualifiedTypeID
   peepIdentifier(ASTNode identifier_node) noexcept { pre
     Instruction identifier_instructon = makeInstruction(identifier_node);
-    auto const identifier = current_file.view_at(identifier_node.length_in_file, identifier_node.position_in_file);
+    auto const identifier = current_file.viewAt(identifier_node.length_in_file, identifier_node.position_in_file);
     QualifiedTypeID res;
 
     if (auto const variable = current_function->getLocal(identifier)) {

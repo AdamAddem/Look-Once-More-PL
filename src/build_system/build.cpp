@@ -6,6 +6,7 @@
 #include "peepir/peepir.hpp"
 #include "print.hpp"
 
+#include "edenlib/owned.hpp"
 #include "edenlib/multi_iter.hpp"
 #include <chrono>
 #include <cstdio>
@@ -254,7 +255,7 @@ parseModules() {
   {
     auto& tu = Globals::getTU(MAIN_TU_IDX);
     static auto const path = fs::path{"src/main.lom"};
-    if (not fs::exists(path)) throw std::runtime_error("LookOnceMore: main.lom not found.");
+    if (not fs::exists(path)) throw std::runtime_error("main.lom not found.");
 
     eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<32>};
     has_error = parseFile(tokens, tu.parser_tu, path);
@@ -320,7 +321,9 @@ void LOM::build() {
   if (Settings::do_output_obj) compile_extern = std::jthread(compileExtern);
 
   if (not fs::exists(src_path))
-    throw std::runtime_error("LookOnceMore: src directory not found!");
+    throw std::runtime_error("src directory not found!");
+
+
   Globals::init();
 
   Globals::progressStageTo<BuildStage::PARSING>();

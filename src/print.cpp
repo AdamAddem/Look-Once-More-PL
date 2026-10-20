@@ -9,13 +9,13 @@ class IndentationManager {
   eden::vector<sz_t> indents{eden::flags::reserve_initial<4>};
 public:
 
-  edenNoInlineCold void
+  NoInlineCold void
   print() noexcept {
     while (indents.back()-- == 0) indents.pop_back();
     for ([[maybe_unused]] auto _ : indents) std::print("  ");
   }
 
-  edenNoInlineCold void add(sz_t num_subexpressions) noexcept { indents.push_back(num_subexpressions); }
+  NoInlineCold void add(sz_t num_subexpressions) noexcept { indents.push_back(num_subexpressions); }
 };
 }
 
@@ -106,7 +106,6 @@ LOM::printParsed() noexcept {
     std::println("\n--- Parser Output ---");
   }
 }
-
 
 
 namespace LOM::PeepIR { namespace {

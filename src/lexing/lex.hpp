@@ -34,7 +34,7 @@ struct Token {
   NodiscardCXPR u64_t
   getInteger(File const& file) const noexcept {
     assert(type == TokenType::INTEGER_LITERAL);
-    auto const begin = file.get_text().data() + position;
+    auto const begin = file.getText().data() + position;
     u64_t res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -45,7 +45,7 @@ struct Token {
   NodiscardCXPR float
   getFloat(File const& file) const noexcept {
     assert(type == TokenType::FLOAT_LITERAL);
-    auto const begin = file.get_text().data() + position;
+    auto const begin = file.getText().data() + position;
     float res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -56,7 +56,7 @@ struct Token {
   NodiscardCXPR double
   getDouble(File const& file) const noexcept {
     assert(type == TokenType::DOUBLE_LITERAL);
-    auto const begin = file.get_text().data() + position;
+    auto const begin = file.getText().data() + position;
     double res;
     [[maybe_unused]] auto const from_chars_res = std::from_chars(begin, begin + length, res);
     assert(from_chars_res.ec == std::errc());
@@ -66,21 +66,21 @@ struct Token {
   NodiscardCXPR bool
   getBool(File const& file) const noexcept {
     assert(type == TokenType::BOOL_LITERAL);
-    return file.get_text()[position] == 't';
+    return file.getText()[position] == 't';
   }
 
   NodiscardCXPR char
   getChar(File const& file) const noexcept {
     assert(type == TokenType::CHAR_LITERAL);
-    return file.get_text()[position];
+    return file.getText()[position];
   }
 
   NodiscardCXPR char
   getEscapedChar(File const& file) const noexcept {
     assert(type == TokenType::ESCAPED_CHAR_LITERAL);
-    assert(file.get_text()[position] == '\\');
+    assert(file.getText()[position] == '\\');
 
-    auto const c = file.get_text()[position + 1];
+    auto const c = file.getText()[position + 1];
     switch (c) {
     case '\'': return '\'';
     case '"':  return '\"';
@@ -102,12 +102,12 @@ struct Token {
   NodiscardCXPR std::string_view
   getString(File const& file) const noexcept {
     assert(type == TokenType::STRING_LITERAL);
-    return file.view_at(length, position);
+    return file.viewAt(length, position);
   }
 
   NodiscardCXPR std::string_view
   originalString(File const& file) const noexcept
-  { return file.view_at(length, position); }
+  { return file.viewAt(length, position); }
 
   InlineNodiscardCXPR bool is(TokenType token_type) const noexcept { return type == token_type; }
   InlineNodiscardCXPR bool isIdentifier()           const noexcept { return type == TokenType::IDENTIFIER; }

@@ -22,7 +22,6 @@ Compilation speed is also a priority, speeds of >250k lines of code per second h
         a: i32;   # readonly members can be modified within Foo's methods, but may be read anywhere
         b$ i32;   # readwrite members may be modified outside the class through a readwrite instance of Foo.
     }
-
 * Simple and explicit pointer / reference syntax
     ```
     # Raw keyword denotes a pointer to readwrite variable 
@@ -61,7 +60,7 @@ Compilation speed is also a priority, speeds of >250k lines of code per second h
     x$ i32 = junk;    # error
     y$ f32 = 4.0f;
     foo: () {...}
-    global too_late: i32 = 5; # error
+    too_late: i32 = 5; # error
 * Strong typing and simple promotion rules
     ```
     #{
@@ -108,7 +107,7 @@ The executable can be ran with the following arguments:
     --emit-llvm        Produces the LLVM IR representation of the source code.
     --emit-asm         Produces the assembly representation of the source code.
     
-    --extern_flags:    Will pass all remaining flags to the compiler used for linking and compiling files within the 'extern' folder.
+    --extern_flags:    Will pass all remaining flags to the compiler used for linking / compiling files within the 'extern' folder.
 ```
 Visit [GettingStarted](GettingStarted.md) for more information on setting up a project.
 

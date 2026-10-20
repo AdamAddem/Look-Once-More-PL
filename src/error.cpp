@@ -9,7 +9,7 @@
 namespace {
 struct Error {
   std::string message;
-  byte_t _pad[2]{};
+// byte_t _pad[2]{};
   u16_t length;
   u32_t position;
 
@@ -21,7 +21,8 @@ struct Error {
 
 // file_text -> errors
 // Maps file_text pointer assuming that all file text is unique
-std::unordered_map< const char*, std::vector<Error> > file_to_errors_map;
+// making this string view would be really dumb
+std::unordered_map< char const*, std::vector<Error> > file_to_errors_map;
 
 }
 
@@ -29,10 +30,10 @@ std::unordered_map< const char*, std::vector<Error> > file_to_errors_map;
 static_assert(LOM::Settings::MULTITHREADING_SUPPORT == false);
 namespace LOM {
 
-edenNoInlineCold
-std::string get_file_errors(File file) {
+NoInlineCold std::string
+get_file_errors(File file) {
   std::string error_messages;
-  auto const file_text = file.get_text();
+  auto const file_text = file.getText();
   auto const file_path = file.path();
   auto const error_iter = file_to_errors_map.find(file_text.data());
   if (error_iter == file_to_errors_map.end()) return error_messages;
@@ -61,26 +62,26 @@ std::string get_file_errors(File file) {
   return error_messages;
 }
 
-edenNoInlineCold
-void report_error(File file, u16_t length, u32_t position, std::string error_message) {
-  file_to_errors_map[file.get_text().data()].emplace_back(
+NoInlineCold void
+report_error(File file, u16_t length, u32_t position, std::string error_message) {
+  file_to_errors_map[file.getText().data()].emplace_back(
       std::move(error_message),
       length, position
     );
 }
 
-edenNoInlineCold
-void report_error(File file, Lexer::Token token, std::string error_message) {
-  file_to_errors_map[file.get_text().data()].emplace_back(
+NoInlineCold void
+report_error(File file, Lexer::Token token, std::string error_message) {
+  file_to_errors_map[file.getText().data()].emplace_back(
       std::move(error_message),
       token.length, token.position
     );
 }
 
-edenNoInlineCold
-void report_error(File file, std::string_view file_substr, std::string error_message) {
-  auto const [len, pos] = file.len_and_pos_from_view(file_substr);
-  file_to_errors_map[file.get_text().data()].emplace_back(
+NoInlineCold void
+report_error(File file, std::string_view file_substr, std::string error_message) {
+  auto const [len, pos] = file.lenPosFromView(file_substr);
+  file_to_errors_map[file.getText().data()].emplace_back(
       std::move(error_message),
       len, pos
     );

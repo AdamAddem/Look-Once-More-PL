@@ -154,18 +154,18 @@ struct Instruction {
   }
 #undef pre
 
-  InlineNodiscardCXPR std::string_view original_string(File file) const noexcept { return file.view_at(length_in_file, position_in_file); }
+  InlineNodiscardCXPR std::string_view original_string(File file) const noexcept { return file.viewAt(length_in_file, position_in_file); }
 
 #define pre Assume(type == MODULE_GLOBAL);
   InlineNodiscardCXPR std::string_view module_variable_name() const noexcept { pre return getModule(module_member_data.module_id).getVariable(module_member_data.member_id).nameof(); }
 #undef pre
 
 #define pre Assume(type == MODULE_FUNCTION);
-  InlineNodiscardCXPR std::string_view module_function_name(File file) const noexcept { pre return file.view_at(module_member_data.member_length, position_in_file + 1); }
+  InlineNodiscardCXPR std::string_view module_function_name(File file) const noexcept { pre return file.viewAt(module_member_data.member_length, position_in_file + 1); }
 #undef pre
 
 #define pre Assume(type == MODULE_GLOBAL or type == MODULE_FUNCTION);
-  InlineNodiscardCXPR std::string_view module_name(File file) const noexcept { pre return file.view_at(module_member_data.module_length, position_in_file - module_member_data.module_length); }
+  InlineNodiscardCXPR std::string_view module_name(File file) const noexcept { pre return file.viewAt(module_member_data.module_length, position_in_file - module_member_data.module_length); }
 #undef pre
 
 #define pre Assume(type == TYPE_VARIABLE);

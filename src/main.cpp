@@ -1,7 +1,6 @@
 #include "build_system/build.hpp"
 #include "settings.hpp"
 
-#include <chrono>
 #include <filesystem>
 #include <print>
 int main(int argc, char const* argv[]) {
@@ -11,7 +10,6 @@ int main(int argc, char const* argv[]) {
   }
 
   try {
-
     LOM::Settings::setArgs(argc, argv);
     if (LOM::Settings::do_output_obj)
       std::filesystem::create_directories("build/obj");
@@ -29,7 +27,7 @@ int main(int argc, char const* argv[]) {
     LOM::build();
   }
   catch (std::exception const& e) {
-    std::println(stderr, "{}", e.what());
+    std::println(stderr, "LookOnceMore: {}", e.what());
     return 1;
   }
 #endif

@@ -11,14 +11,12 @@ class Backend {
 protected:
   Backend() = default;
 public:
-  virtual void createASMFile   (std::filesystem::path const& file) = 0;
-  virtual void createIRFile    (std::filesystem::path const& file) = 0;
+  virtual void createASMFile() = 0;
+  virtual void createIRFile() = 0;
+  virtual void createObjectFile() = 0;
 
-  // returns the
-  virtual std::filesystem::path createObjectFile(std::filesystem::path const& file) = 0;
-
-  static std::unique_ptr<Backend> codegen(PeepIR::TU&, std::filesystem::path const& file);
-  static void linkObjects(std::span<std::filesystem::path> obj_paths);
+  static std::unique_ptr<Backend> codegen(PeepIR::TU&);
+  static void linkObjects();
 
   virtual ~Backend() = default;
 };

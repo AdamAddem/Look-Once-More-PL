@@ -9,9 +9,7 @@
 #include "module/table_and_module.hpp"
 #include "module/types.hpp"
 
-#include <chrono>
 #include <numeric>
-#include <print>
 #include <utility>
 
 using namespace LOM;
@@ -105,7 +103,7 @@ class ParsingContext {
 
   NoInlineCold void
   error(Token err, std::string_view msg) noexcept {
-    report_error(current_file, err, std::string(msg)); has_errors = true;
+    reportError(current_file, err, std::string(msg)); has_errors = true;
   }
 
 #define pre Assume(tokens.previous().is(TokenType::LBRACKET));
@@ -756,6 +754,46 @@ class ParsingContext {
   }
 #undef pre
 
+#define pre Assume(tokens.previous().is(TokenType::KEYWORD_IMPORT));
+  constexpr void parseImport() noexcept { pre
+    auto const& current_file = tu.source_files.back();
+    auto const name_token = tokens.take();
+    if (not name_token.isIdentifier()) {
+      error(name_token, "Expected module name.");
+      return;
+    }
+
+    auto name = name_token.originalString(current_file);
+    if (tu.name == name)
+      error(name_token, "Cannot import from current module.");
+    else
+      imports.emplace_back(name);
+
+    if (not tokens.pop_if(TokenType::SEMI_COLON)) {
+      error(tokens.peek(), "Expected semicolon.");
+    }
+
+  }
+#undef pre
+
+#define pre Assume(tokens.previous().is(TokenType::LBRACE));
+  constexpr void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
+    if (tokens.pop_if(TokenType::RBRACE))
+      return (void)module.addCustomType(name, {});
+
+    eden::swap_vector<Symbol::Variable> members{eden::flags::reserve_initial<2>};
+    do { // makes it so structs must have a member, which is lowk dumb but whatever. TODO: Change
+      auto const [member_name, member_qualifiers, member_type] = parseHalfDeclaration();
+      members.emplace_back(member_type, member_qualifiers, member_name.originalString(current_file), true, members.size());
+    } while (tokens.pop_if(TokenType::SEMI_COLON) and not tokens.peek_is(TokenType::RBRACE));
+
+    if (not tokens.pop_if(TokenType::RBRACE))
+      error(tokens.peek(), "Expected closing curly brace after struct definition.");
+
+    (void)module.addCustomType(name, std::move(members));
+  }
+#undef pre
+
 #define pre Assume(tokens.previous().is(TokenType::DUNDER_CEXTERN));
   constexpr void parseCExtern() noexcept { pre
     auto const name = parseIdentifier();
@@ -801,55 +839,11 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(tokens.previous().is(TokenType::KEYWORD_IMPORT));
-  constexpr void parseImport() noexcept { pre
-    auto const& current_file = tu.source_files.back();
-    auto const name_token = tokens.take();
-    if (not name_token.isIdentifier()) {
-      error(name_token, "Expected module name.");
-      return;
-    }
-
-    auto name = name_token.originalString(current_file);
-    if (tu.name == name)
-      error(name_token, "Cannot import from current module.");
-    else
-      imports.emplace_back(name);
-
-    if (not tokens.pop_if(TokenType::SEMI_COLON)) {
-      error(tokens.peek(), "Expected semicolon.");
-    }
-
-  }
-#undef pre
-
-#define pre Assume(tokens.previous().is(TokenType::LBRACE));
-  constexpr void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
-    if (tokens.pop_if(TokenType::RBRACE))
-      return (void)module.addCustomType(name, {});
-
-    eden::swap_vector<Symbol::Variable> members; members.reserve(2);
-    do { // makes it so structs must have a member, which is lowk dumb but whatever. TODO: Change
-      auto const [member_name, member_qualifiers, member_type] = parseHalfDeclaration();
-      members.emplace_back(member_type, member_qualifiers, member_name.originalString(current_file), true, members.size());
-    } while (tokens.pop_if(TokenType::SEMI_COLON) and not tokens.peek_is(TokenType::RBRACE));
-
-    if (not tokens.pop_if(TokenType::RBRACE))
-      error(tokens.peek(), "Expected closing curly brace after struct definition.");
-
-    (void)module.addCustomType(name, std::move(members));
-  }
-#undef pre
-
 #define pre Assume(tokens.previous().is(TokenType::LPAREN));
   constexpr void parseFunctionDecl(std::string_view name, bool is_public) noexcept { pre
     Function current_function;
-    current_function.file_idx = u8_t(tu.source_files.size() - 1);
-    current_function.is_public = is_public;
-    current_function.name_len = name.length();
-    current_function.name_ptr = name.data();
-
     eden::swap_vector16<Symbol::Variable> parameters;
+
     // parameters
     if (not tokens.pop_if(TokenType::RPAREN)) {
       while (true) {
@@ -865,14 +859,12 @@ class ParsingContext {
       if(not tokens.pop_if(TokenType::RPAREN)) error(tokens.peek(), "Expected closing parenthesis in parameter list.");
     }
 
-    auto returnTypeID = devoidID;
+    auto return_typeID = devoidID;
     if (not tokens.peek_is(TokenType::LBRACE))
-      returnTypeID = parseType();
+      return_typeID = parseType();
 
-    auto const functionTypeID = module.addFunctionType(parameters.to_span(), returnTypeID, false);
-    auto const function_id = module.addFunction( current_function.nameof(), std::move(parameters), functionTypeID, current_function.is_public );
+    auto const function_id = module.addFunction( name, std::move(parameters), return_typeID, is_public );
     module.enterFunctionScope(function_id);
-    current_function.id_in_module = function_id;
 
     if (not tokens.pop_if(TokenType::LBRACE)) {
       error(tokens.peek(), "Expected function definition.");
@@ -882,8 +874,8 @@ class ParsingContext {
 
     // body
     {
-    parseStatementsBetweenBraces();
-    current_function.body = std::move(nodes);
+      parseStatementsBetweenBraces();
+      current_function.body = std::move(nodes);
     }
 
     tu.functions.emplace_back(std::move(current_function));
@@ -930,24 +922,7 @@ public:
 };
 }
 
-
-#include <chrono>
-static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] std::string_view name) noexcept {
-#ifdef STAGE_BENCHMARKS
-  auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("{:>10}, {:>10} | Parsing {}",
-    end_time - begin_time,
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    name
-  );
-#endif
-}
-
 bool Parser::parseTokens(TU& out_tu, std::span<Token> tokens) noexcept {
-  auto const begin_time = std::chrono::high_resolution_clock::now();
-  auto const has_errors = ParsingContext::parse(out_tu, tokens);
-
-  output_benchmark(begin_time, out_tu.name);
-  return has_errors;
+  return ParsingContext::parse(out_tu, tokens);
 }
 

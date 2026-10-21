@@ -84,7 +84,7 @@ void setArgs(int _argc, const char** argv) {
     auto const arg_view = std::string_view(argv[i]);
     auto const arg_iter = stringToArgs.find(arg_view);
     if (arg_iter == stringToArgs.end()) {
-      if (arg_view != "--extern_flags:") std::println("LookOnceMore: Unrecognized argument {}.", arg_view), std::quick_exit(1);
+      if (arg_view != "--extern_flags:") throw std::runtime_error(std::format("Unrecognized argument {}.", arg_view));
 
       while (++i < argc) { extern_flags += argv[i]; extern_flags.push_back(' '); }
       break;
@@ -99,8 +99,8 @@ void setArgs(int _argc, const char** argv) {
     case Args::OUTPUT_ASM:        output_asm_flag = true;         break;
     case Args::OUTPUT_OBJ:        output_obj_flag = true;         break;
     case Args::EXECUTABLE_NAME:
-      if (++i == argc)              throw std::runtime_error("LookOnceMore: Expected executable name after -o.");
-      if (not output_name.empty())  throw std::runtime_error("LookOnceMore: Multiple output names specified, maybe don't do that :).");
+      if (++i == argc)              throw std::runtime_error("Expected executable name after -o.");
+      if (not output_name.empty())  throw std::runtime_error("Multiple output names specified, maybe don't do that :).");
       output_name = argv[i];
       break;
 
@@ -122,8 +122,8 @@ void setArgs(int _argc, const char** argv) {
     output_name = "lom.out";
 #endif
 
-  do_linking_flag = not output_obj_flag and not output_asm_flag and not output_llvmir_flag and not output_parser_flag and not output_peep_flag;
-  output_obj_flag = output_obj_flag or do_linking_flag;
+  do_linking_flag = not output_obj_flag bitand not output_asm_flag bitand not output_llvmir_flag bitand not output_parser_flag bitand not output_peep_flag;
+  output_obj_flag = output_obj_flag bitor do_linking_flag;
 }
 
 }

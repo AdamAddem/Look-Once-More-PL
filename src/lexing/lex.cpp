@@ -2,7 +2,6 @@
 #include "edenlib/shortened_macros.hpp"
 #include "tokentype.hpp"
 #include <cctype>
-#include <chrono>
 #include <cstdlib>
 #include <string_view>
 #include "error.hpp"
@@ -183,7 +182,7 @@ struct LexingContext {
 
   NoInlineCold void
   error_at_currentpos(std::string_view msg) {
-    report_error(file, 1, current_position, std::string(msg)); has_errors = true;
+    reportError(file, 1, current_position, std::string(msg)); has_errors = true;
   }
 
 #define pre assert(previous() == '"'); assert(not token_list.at_capacity());
@@ -447,22 +446,8 @@ constexpr bool impl(eden::vector<Token>& out_tokens, File file) noexcept {
 
 }
 
-static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] std::string_view name) noexcept {
-#ifdef STAGE_BENCHMARKS
-  auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("{:>10}, {:>10} | Lexing {}",
-    end_time - begin_time,
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    name
-  );
-#endif
-}
-
 [[nodiscard]] bool tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
-  auto const begin_time = std::chrono::high_resolution_clock::now();
-  auto const has_error = impl(out_tokens, file);
-  output_benchmark(begin_time, file.getText());
-  return has_error;
+  return impl(out_tokens, file);
 }
 
 }

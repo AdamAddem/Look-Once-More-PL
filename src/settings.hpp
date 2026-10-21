@@ -36,13 +36,7 @@ inline constexpr std::string_view external_compiler{"gcc"};
 inline constexpr std::string_view external_compiler;
 #endif
 
-// #define PROFILE
-// #define STAGE_BENCHMARKS
+static constexpr bool do_profile = false;
 
-#ifndef PROFILE
-#ifndef STAGE_BENCHMARKS
-#define NO_MEASUREMENT
-#endif
-#endif
 
 }

@@ -64,52 +64,49 @@ struct TU final : Backend {
   llvm::LLVMContext context;
   llvm::Module module;
 
-  explicit TU(std::string_view file_path)
-  : module(file_path, context) {}
+  explicit TU(std::string_view module_name) : module(module_name, context) {
+    module.setTargetTriple(Target.triple);
+    module.setDataLayout(Target.data_layout);
+  }
 
   void printModule(llvm::raw_ostream& out = llvm::outs()) const
   { module.print(out, nullptr); }
 
-  void createASMFile(std::filesystem::path const& output_path) override {
+  void createASMFile() override {
     std::filesystem::path asm_path = asm_folder;
-    asm_path.append(output_path.native());
+    asm_path.append( std::string_view(module.getName()) );
     std::filesystem::create_directories(asm_path.parent_path());
     asm_path.replace_extension(asm_extension);
 
     createFile(asm_path, llvm::CodeGenFileType::AssemblyFile);
   }
 
-  void createIRFile(std::filesystem::path const& output_path) override {
-    std::filesystem::path file_path = ToLLVM::ir_path;
-    file_path.append(output_path.native());
-    std::filesystem::create_directories(file_path.parent_path());
-    file_path.replace_extension(".ll");
+  void createIRFile() override {
+    std::filesystem::path ir_path = ToLLVM::ir_path;
+    ir_path.append( std::string_view(module.getName()) );
+    std::filesystem::create_directories(ir_path.parent_path());
+    ir_path.replace_extension(".ll");
 
     std::error_code EC;
-    llvm::raw_fd_ostream dest(file_path.string(), EC, llvm::sys::fs::OF_None);
+    llvm::raw_fd_ostream dest(ir_path.string(), EC, llvm::sys::fs::OF_None);
     if (EC) {
-      llvm::errs() << "Could not open file: " << file_path.string() << " | " << EC.message() << '\n';
+      llvm::errs() << "Could not open file: " << ir_path.string() << " | " << EC.message() << '\n';
       std::quick_exit(1);
     }
 
     printModule(dest);
   }
 
-  [[nodiscard]] std::filesystem::path
-  createObjectFile(std::filesystem::path const& output_path) override {
+  void createObjectFile() override {
     std::filesystem::path obj_path = object_folder;
-    obj_path.append(output_path.string());
+    obj_path.append(std::string_view(module.getName()));
     std::filesystem::create_directories(obj_path.parent_path());
     obj_path.replace_extension(obj_extension);
 
     createFile(obj_path, llvm::CodeGenFileType::ObjectFile);
-    return obj_path;
   }
 
   void createFile(std::filesystem::path const& output_path, llvm::CodeGenFileType filetype) {
-    module.setTargetTriple(Target.triple);
-    module.setDataLayout(Target.data_layout);
-
     std::error_code EC;
     llvm::raw_fd_ostream dest(output_path.string(), EC, llvm::sys::fs::OF_None);
     if (EC) {
@@ -129,8 +126,8 @@ struct TU final : Backend {
 };
 
 class Lowerer final {
-  friend struct Function;
   TU* tu;
+  PeepIR::TU& peeped_tu;
 
   llvm::IntegerType* i1; llvm::IntegerType* i8;
   llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
@@ -142,20 +139,14 @@ class Lowerer final {
   struct alignas(8) TypeMapKey { u16_t module_id; u16_t _pad{}; u32_t type_id; bool operator==(TypeMapKey const&) const noexcept = default; };
   eden::swap_map<TypeMapKey, llvm::Type*> custom_type_map;
 
-  eden::swap_map<FunctionType const*, llvm::Type*> function_type_map;
-
-  struct alignas(4) FunctionMapKey { u16_t module_id; u16_t fn_id; bool operator==(FunctionMapKey const&) const noexcept = default; };
-  eden::swap_map<FunctionMapKey, llvm::Value*> function_imports;
-
   /* Variables used when lowering a function */
-  File current_file;
   llvm::Type* return_type{};
-  llvm::Function* llvmfunc{};
+  llvm::Function* llvm_fn{};
   llvm::IRBuilder<> builder;
   eden::vector<llvm::AllocaInst*> locals;
 
-  eden::vector<PeepIR::Instruction> instructions; sz_t instruction_idx{};
-  eden::vector<PeepIR::Block> peepir_blocks;
+  eden::vector16<PeepIR::Instruction> instructions; sz_t instruction_idx{};
+  eden::vector16<PeepIR::Block> peepir_blocks;
   eden::vector<llvm::BasicBlock*> llvm_blocks;
   /* Variables used when lowering a function */
 
@@ -163,57 +154,41 @@ class Lowerer final {
   getFunctionImport(PeepIR::Instruction module_fn) {
     auto const module_id = module_fn.module_member_data.module_id;
     auto const member_id = module_fn.module_member_data.member_id;
-    auto const key = FunctionMapKey{ .module_id = module_id, .fn_id = member_id  };
-
-    // search for existing
-    {
-      auto const element = function_imports[key];
-      if (element) return element->value;
-    }
 
     auto const& imported_tu = getPeepTU(module_id);
-    auto const& imported_fn = imported_tu.functions[member_id];
+    auto const& imported_fn_symbol = imported_tu.module.getFunction(member_id);
     auto const& imported_module_name = imported_tu.name;
+    auto const  imported_fn_name = imported_fn_symbol.nameof();
 
     // TODO: this is atrocious please fix this IMMEDIATELY
     std::string_view full_function_name;
     std::string tmp;
     if (imported_module_name == "__C")
-      full_function_name = imported_fn.nameof();
+      full_function_name = imported_fn_name;
     else {
       tmp.append(imported_module_name);
       tmp.push_back('.');
-      tmp.append(imported_fn.nameof());
+      tmp.append(imported_fn_name);
       full_function_name = tmp;
     }
 
-    auto const function_type = translateFunctionType(imported_fn.type);
+    auto const function_type = translateFunctionType(imported_fn_symbol);
     auto const res = tu->module.getOrInsertFunction(full_function_name, function_type).getCallee();
-    function_imports.emplace_back(key, res);
     return res;
   }
 
   [[nodiscard]] llvm::FunctionType*
-  translateFunctionType(FunctionType const* fn_type) noexcept {
-    // search for existing
-    {
-      auto const element = function_type_map[fn_type];
-      if (element) return llvm::cast<llvm::FunctionType>(element->value);
-    }
-
-    auto const parameter_typeIDs = fn_type->getParameterTypeIDs();
-    auto const num_params = parameter_typeIDs.size();
-
+  translateFunctionType(Symbol::Function const& fn) noexcept {
+    auto const num_params = fn.num_parameters;
     llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
     for (sz_t i{}; i<num_params; ++i)
-      arg_types[i] = translateType( parameter_typeIDs[i] );
+      arg_types[i] = translateType( fn.getLocal(i).typeID );
 
     // hack
-    auto const return_typeID = fn_type->getReturnTypeID();
+    auto const return_typeID = fn.return_typeID;
     auto const llvm_return_type = return_typeID.isBool() ? i1 : translateType(return_typeID);
 
-    auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, fn_type->isVariadic());
-    function_type_map.emplace_back(fn_type, res);
+    auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, fn.is_variadic);
     return res;
   }
 
@@ -247,7 +222,6 @@ class Lowerer final {
       }
 
       case CUSTOM: break;
-      case FUNCTION: Unreachable("Functions should be translated via translateFunctionType.");
       default: Unreachable("Invalid type being translated.");
       }
     }
@@ -473,7 +447,7 @@ class Lowerer final {
     case NOOP: return nullptr;
 
     case FUNCTION: {
-      auto const function = tu->module.getFunction(instruction.original_string(current_file)); assert(function);
+      auto const function = tu->module.getFunction(instruction.original_string(peeped_tu.source_files[instruction.file_idx])); assert(function);
       return function;
     }
     case LOCAL: {
@@ -507,8 +481,8 @@ class Lowerer final {
     case DOUBLE_LITERAL:          return llvm::ConstantFP::get(f64, instruction.double_literal_data.value);
     case BOOL_LITERAL:            return instruction.bool_literal_data.value ? bool_true : bool_false;
     case CHAR_LITERAL:            return llvm::ConstantInt::get(i8, instruction.char_literal_data.value);
-    case STRING_LITERAL:          return builder.CreateGlobalString(instruction.original_string(current_file));
-    case ESCAPED_STRING_LITERAL:  return builder.CreateGlobalString(instruction.escaped_string_value(current_file));
+    case STRING_LITERAL:          return builder.CreateGlobalString(instruction.original_string(peeped_tu.source_files[instruction.file_idx]));
+    case ESCAPED_STRING_LITERAL:  return builder.CreateGlobalString(instruction.escaped_string_value(peeped_tu.source_files[instruction.file_idx]));
 
     case ADD: case FADD:
     case SUB: case FSUB:
@@ -610,7 +584,7 @@ class Lowerer final {
     switch (instruction.type) {
     using enum PeepIR::Instruction::InstructionType;
     case FUNCTION: {
-      auto const function = tu->module.getFunction(instruction.original_string(current_file)); assert(function);
+      auto const function = tu->module.getFunction(instruction.original_string(peeped_tu.source_files[instruction.file_idx])); assert(function);
       return function;
     }
     case MODULE_FUNCTION:
@@ -698,7 +672,8 @@ class Lowerer final {
     }
   }
 
-  llvm::Function* compileFunction(PeepIR::Function& fn, File func_file) {
+  llvm::Function* compileFunction(u16_t fn_id) {
+
     // reset state
     {
       instruction_idx = 0;
@@ -708,29 +683,30 @@ class Lowerer final {
 
     // initialize state for new function
     {
+      auto& fn = peeped_tu.functions[fn_id];
       instructions = std::move(fn.instructions);
       peepir_blocks = std::move(fn.blocks);
-      current_file = func_file;
 
-      auto const func_type = translateFunctionType(fn.type);
-      return_type = func_type->getReturnType();
+      auto const& fn_symbol = peeped_tu.module.getFunction(fn_id);
+      auto const llvm_fn_type = translateFunctionType(fn_symbol);
+      return_type = llvm_fn_type->getReturnType();
 
-      auto const linkage = fn.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
-      llvmfunc = llvm::Function::Create(
-        func_type, linkage, 0,
-        fn.nameof(),
+      auto const linkage = fn_symbol.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
+      llvm_fn = llvm::Function::Create(
+        llvm_fn_type, linkage, 0,
+        fn_symbol.nameof(),
         &tu->module);
 
       llvm_blocks.reserve(peepir_blocks.size());
       for (sz_t i{}; i<peepir_blocks.size(); ++i)
-        llvm_blocks.emplace_back_unchecked(llvm::BasicBlock::Create(tu->context, "", llvmfunc));
+        llvm_blocks.emplace_back_unchecked(llvm::BasicBlock::Create(tu->context, "", llvm_fn));
       builder.SetInsertPoint(llvm_blocks.front());
 
-      locals.reserve(fn.locals.size());
+      locals.reserve(fn_symbol.locals.size());
 
-      auto const param_types = func_type->param_begin();
-      auto const num_params = func_type->getNumParams();
-      auto arg = llvmfunc->arg_begin();
+      auto const param_types = llvm_fn_type->param_begin();
+      auto const num_params = llvm_fn_type->getNumParams();
+      auto arg = llvm_fn->arg_begin();
 
       sz_t i{};
       for (; i<num_params; ++i) {
@@ -740,10 +716,10 @@ class Lowerer final {
         ++arg;
       }
 
-      auto const num_locals = fn.locals.size();
-      for (; i<num_locals; ++i) {
-        locals.emplace_back_unchecked( builder.CreateAlloca(translateType(fn.locals[i])) );
-      }
+      // we don't reset i here because locals includes parameters
+      auto const num_locals = fn_symbol.locals.size();
+      for (; i<num_locals; ++i)
+        locals.emplace_back_unchecked( builder.CreateAlloca(translateType(fn_symbol.getLocal(i).typeID)) );
 
     }
 
@@ -760,12 +736,12 @@ class Lowerer final {
     ? builder.CreateRetVoid()
     : builder.CreateRet( builder.CreateLoad(locals[0]->getAllocatedType(), locals[0]) ); */
 
-    if (verifyFunction(*llvmfunc, &llvm::errs())) {
+    if (verifyFunction(*llvm_fn, &llvm::errs())) {
       tu->module.print(llvm::outs(), nullptr);
       std::quick_exit(1);
     }
 
-    return llvmfunc;
+    return llvm_fn;
   }
 
 public:
@@ -777,33 +753,33 @@ public:
     auto const module_name = tu.name;
     sz_t fn_name_start{};
     if (not module_name.empty()) {
-      for (auto const c : module_name) {
-        buff[fn_name_start] = c;
-        ++fn_name_start;
-      }
-      buff[fn_name_start++] = '.';
-      buff[fn_name_start] = '\0';
+      auto const module_name_len = module_name.size();
+      std::memcpy(buff, module_name.data(), module_name_len);
+      fn_name_start = module_name_len;
+
+      buff[fn_name_start] = '.';
+      ++fn_name_start;
     }
 
-    for (auto& fn : tu.functions) {
-      auto const llvm_fn = compileFunction(fn, tu.source_files[fn.file_idx]);
-      if (not fn.is_public) continue;
+    for (sz_t i{}; i<tu.functions.size(); ++i) {
+      auto const fn_id = eden::narrow<u16_t>(i);
+      auto const llvm_fn = compileFunction(fn_id);
+      auto const& fn_symbol = tu.module.getFunction(fn_id);
+      if (not fn_symbol.is_public) continue;
 
-      auto const fn_name = fn.nameof();
-      if (fn_name == "main") continue;
+      auto const fn_name = fn_symbol.nameof();
+      if (fn_name == "main") [[unlikely]] continue;
 
+      auto const fn_name_len = fn_name.size();
       // set public functions name in the binary to module_name + '.' + func_name
-      auto fn_name_end{fn_name_start};
-      for (auto c : fn_name)
-        buff[fn_name_end] = c, ++fn_name_end;
+      std::memcpy(buff + fn_name_start, fn_name.data(), fn_name_len);
 
-      buff[fn_name_end] = '\0';
-      llvm_fn->setName( std::string_view{buff, fn_name_end} );
+      llvm_fn->setName( std::string_view{buff, fn_name_start + fn_name_len} );
     }
   }
 
-  explicit Lowerer(TU* tu, PeepIR::TU const& peeped_tu)
-  : tu(tu), current_file(peeped_tu.source_files[0]), builder(tu->context) {
+  explicit Lowerer(TU* tu, PeepIR::TU& peeped_tu)
+  : tu(tu), peeped_tu(peeped_tu), builder(tu->context) {
     auto& context = tu->context;
     i1 = llvm::Type::getInt1Ty(context);
     i8 = llvm::Type::getInt8Ty(context);
@@ -818,21 +794,19 @@ public:
     ptr = llvm::PointerType::get(context, 0);
 
     auto const num_custom_types = peeped_tu.module.numCustomTypes();
-    auto const num_function_types = peeped_tu.module.numFunctionTypes();
     custom_type_map.reserve(num_custom_types);
-    function_type_map.reserve(num_function_types);
   }
 
 };
 
 }
 
-std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU& peeped_tu, std::filesystem::path const& file) {
+std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU& peeped_tu) {
 #ifdef STAGE_BENCHMARKS
   auto const begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
-  auto backend = std::make_unique<TU>(file.native());
+  auto backend = std::make_unique<TU>(peeped_tu.name);
   Lowerer codegen(backend.get(), peeped_tu);
   codegen.lowerToLLVM(peeped_tu);
 

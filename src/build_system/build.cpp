@@ -17,11 +17,20 @@
 
 using namespace LOM;
 namespace fs = std::filesystem;
+using nanoseconds = std::chrono::nanoseconds;
+using microseconds = std::chrono::microseconds;
+using milliseconds = std::chrono::milliseconds;
+using seconds = std::chrono::seconds;
 
 namespace {
+InlineNodiscard auto chrono_now() noexcept { return std::chrono::high_resolution_clock::now(); }
+InlineNodiscard microseconds to_us(auto time) noexcept { return std::chrono::duration_cast<microseconds>(time); }
+InlineNodiscard milliseconds to_ms(auto time) noexcept { return std::chrono::duration_cast<milliseconds>(time); }
+InlineNodiscard seconds to_seconds(auto time) noexcept { return std::chrono::duration_cast<seconds>(time); }
 
 fs::path const src_path{"src"};
 fs::path const extern_path{"extern"};
+fs::path const main_path{"src/main.lom"};
 
 union TUnion {
   GenericTU  m;
@@ -45,25 +54,39 @@ enum Enum : sz_t {
 };
 }
 
+struct alignas(64) Benchmark {
+  nanoseconds file_open_time{};
+  nanoseconds parsing_time{};
+  nanoseconds peeping_time{};
+  nanoseconds backend_time{};
+
+  InlineNodiscardCXPR nanoseconds sum() const noexcept { return file_open_time + parsing_time + peeping_time + backend_time; }
+};
+
 class Globals {
-  inline static constinit eden::vector<fs::path> extern_objects_paths{};
   inline static constinit eden::vector<fs::path> module_paths{};
   inline static std::unordered_map<std::string_view, u16_t> module_map{};
   inline static constinit eden::owned_span<TUnion> tu_list{};
-  inline static constinit std::atomic build_stage{ std::to_underlying(BuildStage::START) };
+  inline static constinit std::atomic build_stage{ std::to_underlying(BuildStage::START) }; // build stages only used for assertions
+
+  inline static constinit eden::vector<Benchmark> benchmark_times;
+  static constexpr auto init_time_bm_ptr = &Benchmark::parsing_time;
+  static constexpr auto file_output_bm_ptr = &Benchmark::peeping_time;
 
   static void init() {
+    auto const begin = chrono_now();
+
     module_paths.reserve(4);
     module_paths.emplace_back_unchecked(extern_path);
     module_paths.emplace_back_unchecked(src_path);
     for (auto const& entry : fs::directory_iterator{src_path}) {
       if (not entry.is_directory()) continue;
       if (is_empty(entry)) continue;
-
       module_paths.emplace_back( entry.path() );
     }
 
     auto const num_tus = module_paths.size();
+    benchmark_times.resize(num_tus);
     module_map.reserve(num_tus);
     module_map.emplace("__C", C_TU_IDX);
 
@@ -74,81 +97,124 @@ class Globals {
 
     std::construct_at<TUnion>(tu_array, C_TU_IDX)->m.name = "__C";
     for (sz_t i{MAIN_TU_IDX}; i<num_tus; ++i) {
-      auto const id = (u16_t) i;
+      auto const id = eden::narrow<u16_t>(i);
       auto* tu = std::construct_at<TUnion>(tu_array + i, id);
 
       auto const& path = module_paths[i];
-      auto const n = path.stem().native().size() + 1; // this is so stupid i hate this language
-      auto const module_name_cstr = new char[n]; // TODO: fix purposeful memory leak
-      std::strcpy(module_name_cstr, path.filename().c_str());
-      auto const module_name = std::string_view{module_name_cstr, n-1};
+      {
+        auto const full_path_size = path.native().size();
+        auto const dir_name_size = path.stem().native().size();
+        auto const dir_name_start = full_path_size - dir_name_size;
+        auto const module_name = std::string_view(path.native().data(), full_path_size).substr(dir_name_start, dir_name_size);
+        module_map.emplace(module_name, id);
+        tu->m.name = module_name;
+      }
 
-      module_map.emplace(module_name, id);
-      tu->m.name = module_name;
+      if (i == MAIN_TU_IDX) {
+        assert(fs::exists(main_path));
+        tu->m.source_files.emplace_back(main_path);
+        continue; // only main.lom considered
+      }
+
+      for (auto const& entry : fs::directory_iterator{path}) {
+        auto const& entry_path = entry.path();
+        if (entry.is_directory()) throw std::runtime_error(std::format("Sorry! Submodules not supported yet. Module Path: {}", path.string()));
+        if (entry_path.extension() != ".lom") continue;
+        tu->m.source_files.emplace_back(entry_path);
+      }
     }
+    auto const end = chrono_now();
+
+    // storing here cuz its empty so why not, kinda stupid but whatever
+    benchmark_times[C_TU_IDX].*init_time_bm_ptr = end - begin;
   }
 
   static void resetAllState() {
-    build_stage.store(BuildStage::START);
-    for (auto& kv : module_map) {
-      if (kv.first not_eq std::string_view("__C")) delete[] kv.first.data();
-    }
+    module_paths.~vector(); std::construct_at(&module_paths);
+    module_map.~unordered_map(); std::construct_at(&module_map);
 
     for (auto& tu : tu_list) tu.~TUnion();
     ::operator delete(tu_list.data(), tu_list.size() * sizeof(TUnion), align_t{64});
+
+    build_stage.store(BuildStage::START);
+    benchmark_times.~vector(); std::construct_at(&benchmark_times);
   }
 
 public:
-  inline static constinit auto const& module_to_index_map = module_map;
+  static constexpr auto const& module_to_index_map = module_map;
 
-  InlineNodiscardCXPR static BuildStage::Enum getCurrentBuildStage() noexcept { return (BuildStage::Enum) build_stage.load(); }
-  InlineNodiscardCXPR static bool isParsingCompleted() noexcept { return build_stage.load() > BuildStage::PARSING; }
-  InlineNodiscardCXPR static bool isPeepingCompleted() noexcept { return build_stage.load() > BuildStage::PEEPING; }
+  InlineNodiscardCXPR static BuildStage::Enum getCurrentBuildStage() noexcept {
+#ifndef NDEBUG
+    return (BuildStage::Enum) build_stage.load(std::memory_order_relaxed);
+#else
+    return {};
+#endif
+  }
+  InlineNodiscardCXPR static bool isParsingCompleted() noexcept {
+#ifndef NDEBUG
+    return build_stage.load(std::memory_order_relaxed) > BuildStage::PARSING;
+#else
+    return true;
+#endif
+  }
+  InlineNodiscardCXPR static bool isPeepingCompleted() noexcept {
+#ifndef NDEBUG
+    return build_stage.load(std::memory_order_relaxed) > BuildStage::PEEPING;
+#else
+    return true;
+#endif
+  }
 
   template <BuildStage::Enum NextStage> requires (NextStage != BuildStage::ERROR)
   constexpr static void progressStageTo() noexcept {
+#ifndef NDEBUG
     assert(build_stage.load() != BuildStage::DONE);
     assert(NextStage != BuildStage::START);
     assert(build_stage.load() + 1 == NextStage);
-    build_stage.fetch_add(1);
+    build_stage.fetch_add(1, std::memory_order_relaxed);
+#endif
   }
 
   constexpr static void setErrorStage() noexcept {
+#ifndef NDEBUG
     assert(build_stage.load() != BuildStage::DONE);
-    build_stage.store(BuildStage::ERROR);
+    build_stage.store(BuildStage::ERROR, std::memory_order_relaxed);
+#endif
   }
 
   InlineNodiscardCXPR static sz_t numTUs() noexcept { return tu_list.size(); }
   InlineNodiscardCXPR static TUnion& getTU(u16_t tu_id) noexcept { assert(tu_id < numTUs()); return tu_list[tu_id]; }
-  InlineNodiscardCXPR static fs::path const& getTUPath(u16_t tu_id) noexcept { return module_paths[tu_id]; }
-
   InlineNodiscardCXPR static std::span<TUnion> getUserTUs() noexcept { return tu_list.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule TU
-  InlineNodiscardCXPR static std::span<fs::path> getUserTUPaths() noexcept { return module_paths.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule path
+
+  InlineCXPR static void addParsingBenchmark(nanoseconds t, u16_t module_id) noexcept { benchmark_times[module_id].parsing_time += t; }
+  InlineCXPR static void addPeepingBenchmark(nanoseconds t, u16_t module_id) noexcept { benchmark_times[module_id].peeping_time += t; }
+  InlineCXPR static void addBackendBenchmark(nanoseconds t, u16_t module_id) noexcept { benchmark_times[module_id].backend_time += t; }
+  InlineCXPR static void addFileOutputBenchmark(nanoseconds t) noexcept { benchmark_times[C_TU_IDX].*file_output_bm_ptr += t; }
+
+  InlineNodiscardCXPR static Benchmark getBenchmark(u16_t module_id) noexcept { return benchmark_times[module_id]; }
+  InlineNodiscardCXPR static nanoseconds getInitTime() noexcept { return benchmark_times[C_TU_IDX].*init_time_bm_ptr; }
+  InlineNodiscardCXPR static nanoseconds getFileOutputTime() noexcept { return benchmark_times[C_TU_IDX].*file_output_bm_ptr; }
 
   friend void LOM::build();
   friend void compileExtern();
 };
 
 void compileExtern() {
+  if (not Settings::do_output_obj) return;
   if (not fs::exists(extern_path) or is_empty(fs::directory_entry(extern_path))) return;
 
-  std::string command = std::format("(cd build/obj && {} ", Settings::external_compiler);
-  switch (Settings::getOptimizationLevel()) {
-  case 0: break;
-  case 1: command.append(" -O1 "); break;
-  case 2: command.append(" -O2 "); break;
-  case 3: command.append(" -O3 "); break;
-  default: Unreachable("Invalid optimization level.");
-  }
+
+  std::string command = "(cd build/obj && ";
+  command += Settings::external_compiler;
+  command += " -O";
+  command.push_back(Settings::getOptimizationLevel() + '0');
+  command.push_back(' ');
 
   command.append("-c ");
-  for (auto const& path : fs::directory_iterator{extern_path}) {
-    if (path.path().extension() != ".c") continue;
-    Globals::extern_objects_paths.emplace_back(
-      path.path().filename()).replace_extension(obj_extension);
-    command.append(
-      std::format("../../{} ", path.path().native())
-      );
+  for (auto const& entry : fs::directory_iterator{extern_path}) {
+    auto const& path = entry.path();
+    if (path.extension() != ".c") continue;
+    command.append( std::format("../../{} ", path.native()) );
   }
 
   command.push_back(')');
@@ -198,48 +264,19 @@ void LOM::addExternDeclaration(
 
   auto& cTU = Globals::getTU(C_TU_IDX).peepir_tu;
   auto& cModule = cTU.module;
-  auto const fn_typeID = cModule.addFunctionType(arguments.to_span(), return_typeID, is_variadic);
-  auto const fn_id = cModule.addFunction(name, std::move(arguments), fn_typeID, true);
-
-  auto& fn = cTU.functions.emplace_back();
-  fn.is_public = true;
-  fn.file_idx = 0;
-  fn.id_in_module = fn_id;
-  fn.name_len = name.length();
-  fn.name_ptr = name.data();
-
-  // this is rlly dumb, but PeepIR Function holds a type*
-  // but this function is run during parsing so we can't materialize fn_typeID just yet
-  // ordinarily we'd make cTU a parseTU and later transmute to a peepTU
-  // but we'd also have to transmute the functions too, and thats so much work
-  // this lets us just store the typeID where the pointer is for now
-  // the thread handling compileExtern will undo this later
-  fn.type = std::bit_cast<FunctionType const*>(fn_typeID); // TODO: theres gotta be a better way
+  cModule.addFunction(name, std::move(arguments), return_typeID, true, is_variadic);
 }
 
 namespace {
 
-[[nodiscard]] bool
-parseFile(eden::vector<Lexer::Token>& tokens, Parser::TU& tu, fs::path const& path) {
-  auto const file = tu.source_files.emplace_back(path);
-  if (Lexer::tokenizeFile(tokens, file)) { printFileErrors(file); return true; }
-  if (Parser::parseTokens(tu, tokens.to_span())) { printFileErrors(file); return true; }
-  return false;
-}
-
 // populates tu and returns whether an error was encountered
 [[nodiscard]] bool
-parseModule(Parser::TU& tu, u16_t tu_id) {
+parseTU(Parser::TU& tu) {
   eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<32>};
-  auto const& directory = Globals::getTUPath(tu_id);
-
   bool has_error = false;
-  for (auto const& entry : fs::directory_iterator{directory}) {
-    auto const& path = entry.path();
-    if (entry.is_directory()) throw std::runtime_error(std::format("Sorry! Submodules not supported yet. Module Path: {}", path.string()));
-    if (path.extension() != ".lom") continue;
-
-    has_error |= parseFile(tokens, tu, path);
+  for (auto const file : tu.source_files) {
+    if (Lexer::tokenizeFile(tokens, file)) { printFileErrors(file); has_error = true; }
+    else if (Parser::parseTokens(tu, tokens.to_span())) { printFileErrors(file); has_error = true; }
     tokens.clear();
   }
 
@@ -248,23 +285,15 @@ parseModule(Parser::TU& tu, u16_t tu_id) {
 
 // returns true if compilation should stop (due to error or outputing parser)
 [[nodiscard]] bool
-parseModules() {
+parseTUs() {
   bool has_error = false;
 
-  // handle main first
-  {
-    auto& tu = Globals::getTU(MAIN_TU_IDX);
-    static auto const path = fs::path{"src/main.lom"};
-    if (not fs::exists(path)) throw std::runtime_error("main.lom not found.");
-
-    eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<32>};
-    has_error = parseFile(tokens, tu.parser_tu, path);
-  }
-
-  auto const num_tus = Globals::numTUs();
-  for (auto i{MAIN_TU_IDX + 1}; i<num_tus; ++i) {
-    auto& ptu = Globals::getTU((u16_t) i).parser_tu;
-    has_error |= parseModule(ptu, i);
+  for (sz_t i{MAIN_TU_IDX}; i<Globals::numTUs(); ++i) {
+    auto const begin_time = chrono_now();
+    auto& parser_tu = Globals::getTU(eden::narrow<u16_t>(i)).parser_tu;
+    has_error |= parseTU(parser_tu);
+    auto const end_time = chrono_now();
+    Globals::addParsingBenchmark(end_time - begin_time, parser_tu.module.getID());
   }
 
   return has_error;
@@ -272,95 +301,115 @@ parseModules() {
 
 // returns true if compilation should stop (due to error or outputing peep)
 [[nodiscard]] bool
-peepModules() {
+peepTUs() {
   bool has_error = false;
   for (auto& tu : Globals::getUserTUs()) {
-    if (not PeepIR::lowerToPeep(tu.parser_tu)) continue;
-
-    has_error = true;
-    for (auto const file : tu.m.source_files) printFileErrors(file);
+    auto const begin_time = chrono_now();
+    if (PeepIR::lowerToPeep(tu.parser_tu)) { has_error = true; for (auto const file : tu.m.source_files) printFileErrors(file); }
+    auto const end_time = chrono_now();
+    Globals::addPeepingBenchmark(end_time - begin_time, tu.m.module.getID());
   }
 
   return has_error;
 }
 
-void lowerModules() {
+void lowerTUs() {
+  for (auto& tu : Globals::getUserTUs()) {
+    auto const begin = chrono_now();
+    auto const compiled = Backend::codegen(tu.peepir_tu);
+    auto const end = chrono_now();
+    Globals::addBackendBenchmark(end - begin, tu.m.module.getID());
 
-  auto const tus = Globals::getUserTUs();
-  auto const tu_paths = Globals::getUserTUPaths();
-
-  for (auto [tu, path] : eden::iter_over(tus, tu_paths)) {
-    auto& peeped = tu.peepir_tu;
-    [[maybe_unused]]
-    auto const compiled = Backend::codegen( peeped, path );
-
-#ifdef NO_MEASUREMENT
-    if (Settings::do_output_asm)    compiled->createASMFile(path);
-    if (Settings::do_output_llvmir) compiled->createIRFile(path);
-    if (Settings::do_output_obj)    path = compiled->createObjectFile(path);
-#endif
+    if constexpr(not Settings::do_profile) {
+      auto const file_output_begin = chrono_now();
+      if (Settings::do_output_asm)    compiled->createASMFile();
+      if (Settings::do_output_llvmir) compiled->createIRFile();
+      if (Settings::do_output_obj)    compiled->createObjectFile();
+      auto const file_output_end = chrono_now();
+      Globals::addFileOutputBenchmark(file_output_end - file_output_begin);
+    }
   }
 }
 
-void output_benchmark([[maybe_unused]] auto begin_time) {
-#ifdef STAGE_BENCHMARKS
-  auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("{:>10}, {:>10} | FULL",
-    end_time - begin_time,
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time)
-  );
-#endif
+void outputBenchmarks(nanoseconds linking_time) noexcept {
+  if constexpr (Settings::do_profile) return;
+
+  Benchmark totals{};
+  auto print_and_sum = [] (auto time_ptr) {
+    nanoseconds total{};
+    for (auto i{MAIN_TU_IDX}; i<Globals::numTUs(); ++i) {
+      auto const ns = Globals::getBenchmark(eden::narrow<u16_t>(i)).*time_ptr;
+      auto const us = to_us(ns);
+      std::println("  {}\ttook\t{}, {}", getNameOfModule(i), us, ns);
+      total += ns;
+    }
+    return total;
+  };
+
+  std::println("Parser:");  totals.parsing_time = print_and_sum(&Benchmark::parsing_time); std::println();
+  std::println("Peeper:");  totals.peeping_time = print_and_sum(&Benchmark::peeping_time); std::println();
+  std::println("Backend:"); totals.backend_time = print_and_sum(&Benchmark::backend_time); std::println();
+
+  auto const init_time = Globals::getInitTime();
+  auto const file_output_time = Globals::getFileOutputTime();
+  auto const compile_total = totals.sum() + init_time;
+
+  std::println("Initialization: {}, {} +", to_ms(init_time), to_us(init_time));
+  std::println("Parsing total:  {}, {} +", to_ms(totals.parsing_time), to_us(totals.parsing_time));
+  std::println("Peeping total:  {}, {} +", to_ms(totals.peeping_time), to_us(totals.peeping_time));
+  std::println("Backend total:  {}, {} =", to_ms(totals.backend_time), to_us(totals.backend_time));
+  std::println("                {}, {}\n", to_ms(compile_total), to_us(compile_total));
+
+  std::println("Object File Output: {}, {}", to_ms(file_output_time), to_us(file_output_time));
+  std::println("Linking: {}, {}", to_ms(linking_time), to_us(linking_time));
+
+  auto const total = init_time + file_output_time + compile_total + linking_time;
+  std::println("Total: {}, {}, {}", to_seconds(total), to_ms(total), to_us(total));
 }
 
 }
 
 void LOM::build() {
-  auto const begin_time = std::chrono::high_resolution_clock::now();
+  std::jthread compile_extern(compileExtern);
 
-  std::jthread compile_extern;
-  if (Settings::do_output_obj) compile_extern = std::jthread(compileExtern);
-
-  if (not fs::exists(src_path))
-    throw std::runtime_error("src directory not found!");
-
-
+  if (not fs::exists(src_path))  throw std::runtime_error("src directory not found!");
+  if (not fs::exists(main_path)) throw std::runtime_error("main.lom not found.");
+  fs::remove_all("build/obj/");
   Globals::init();
 
   Globals::progressStageTo<BuildStage::PARSING>();
-  if (parseModules()) [[unlikely]] return;
-  if (Settings::do_output_parser) [[unlikely]] { Globals::setErrorStage(); return printParsed(); }
-
-  // adjust the c module stuff mentioned in addExternDeclaration
   {
-    auto& cTU = Globals::getTU(C_TU_IDX).peepir_tu;
-    auto const& cModule = Globals::getTU(C_TU_IDX).peepir_tu.module;
-    for (auto& f : cTU.functions)
-      f.type = &cModule.getFunctionType( std::bit_cast<TypeID>(f.type) );
+    if (parseTUs()) [[unlikely]] return;
+    if (Settings::do_output_parser) [[unlikely]] { Globals::setErrorStage(); return printParsed(); }
   }
 
   Globals::progressStageTo<BuildStage::PEEPING>();
-  if (peepModules()) [[unlikely]] return;
-  if (Settings::do_output_peep) [[unlikely]] { Globals::setErrorStage(); return printPeeped(); }
-
-  if (compile_extern.joinable()) {
-    compile_extern.join();
-    Globals::module_paths.move_append_range( Globals::extern_objects_paths.to_span() );
+  {
+    if (peepTUs()) [[unlikely]] return;
+    if (Settings::do_output_peep) [[unlikely]] { Globals::setErrorStage(); return printPeeped(); }
   }
 
   Globals::progressStageTo<BuildStage::LOWERING>();
-  lowerModules();
-  output_benchmark(begin_time);
+  lowerTUs();
 
   Globals::progressStageTo<BuildStage::LINKING>();
-#ifdef NO_MEASUREMENT
-  if (Settings::do_linking) {
-    auto const objs = Globals::module_paths.to_span().subspan(MAIN_TU_IDX); // skip the extern object
-    Backend::linkObjects(objs);
+  if constexpr(not Settings::do_profile) {
+    if (Settings::do_linking) {
+      auto const begin = chrono_now();
+
+      auto const& main_tu = Globals::getTU(MAIN_TU_IDX);
+      auto const main_fn = main_tu.m.module.getFunction("main");
+      if (main_fn == nullptr) { reportError(main_tu.m.source_files[0], 0, 0, "Main function not defined."); return; }
+      if (not main_fn->is_public) { reportError(main_tu.m.source_files[0], 0, 0, "Main function not public."); return; }
+
+      if (compile_extern.joinable()) compile_extern.join();
+      Backend::linkObjects();
+      outputBenchmarks(chrono_now() - begin);
+    }
   }
-#endif
+
   Globals::progressStageTo<BuildStage::DONE>();
 
-#ifdef PROFILE
-  Globals::resetAllState();
-#endif
+  if constexpr(Settings::do_profile)
+    Globals::resetAllState();
 }

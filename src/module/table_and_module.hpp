@@ -3,11 +3,13 @@
 #include "edenlib/typedefs.hpp"
 #include "edenlib/vectors/swap_vector.hpp"
 
+#include "edenlib/casts.hpp"
 #include "types.hpp"
 
 namespace LOM {
 
 namespace Symbol {
+
 static constexpr u16_t INVALID_ID = u16_max;
 static constexpr auto name_search = [] (auto const& e, std::string_view key) static { return e.nameof() == key; };
 static constexpr auto id_search = [] (auto const& e, u16_t id) static { return e.id == id; };
@@ -15,41 +17,32 @@ static constexpr auto get_id_of = [] (auto const& e) static { return e.id; };
 
 struct Variable {
   TypeID typeID;
+  char const* name;
+  u32_t name_len;
+  u16_t id;
   Type::Qualifiers qualifiers;
   bool is_public;
-  u16_t id;
-  u32_t name_len;
-  char const* name;
 
-  Variable(TypeID typeID, Type::Qualifiers qualifiers, std::string_view name, bool is_public, sz_t variable_insert_order) noexcept
-  : typeID(typeID), qualifiers(qualifiers), is_public(is_public), id(variable_insert_order), name_len(name.length()), name(name.data())
+  constexpr Variable(TypeID typeID, Type::Qualifiers qualifiers, std::string_view name, bool is_public, sz_t variable_insert_order) noexcept
+  : typeID(typeID), name(name.data()), name_len(name.length()), id(variable_insert_order), qualifiers(qualifiers), is_public(is_public)
   { assert(variable_insert_order <= u16_max); }
+
   InlineNodiscardCXPR std::string_view nameof() const noexcept { return std::string_view(name, name_len); }
 };
 
 struct Function {
   friend class LOM::SymbolTable; friend class LOM::Module;
 
+  TypeID return_typeID;
   mutable eden::swap_vector16<Variable> locals;
-  char const* name; u32_t name_len;
-  u32_t type_id;
-  u16_t type_module_id;
+  char const* name;
+  u32_t name_len;
   u16_t id{INVALID_ID};
-  bool is_public;
-  byte_t _pad[3]{};
+  bool is_public : 1;
+  bool is_variadic : 1;
+  u8_t num_parameters : 6;
 
-  constexpr explicit Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, TypeID function_typeID, bool is_public) noexcept
-  : locals(std::move(parameters)), name(name.data()), name_len(name.length()), type_id(function_typeID.id), type_module_id(function_typeID.module_id), is_public(is_public) {
-    assert(locals.is_ordered(get_id_of));
-#ifndef NDEBUG
-    for (auto const& param : locals)
-      assert(param.id not_eq INVALID_ID);
-#endif
-  }
-
-  InlineNodiscardCXPR TypeID getTypeID() const noexcept { return { .derived = Type::FUNCTION, .module_id = type_module_id, .id = type_id }; }
   InlineNodiscardCXPR std::string_view nameof() const noexcept { return {name, name_len}; }
-  InlineNodiscardCXPR sz_t num_parameters() const noexcept { return locals.size(); }
 
 #define pre Assume(locals.search_noswap(name_search, var_name) == nullptr);
   InlineCXPR void addLocal(TypeID var_typeID, Type::Qualifiers var_qualifiers, std::string_view var_name) noexcept { pre locals.emplace_back(var_typeID, var_qualifiers, var_name, false, locals.size()); }
@@ -59,22 +52,28 @@ struct Function {
   NodiscardCXPR Variable const* getLocal(std::string_view variable_name) const noexcept { return locals.search(name_search, variable_name); }
 
   // reference is not stable and may be invalidated if another local is added or searched.
-#define pre Assume(locals.search_noswap(id_search, local_id));
+#define pre assert(locals.search_noswap(id_search, local_id));
   NodiscardCXPR Variable const& getLocal(u16_t local_id) const noexcept { pre return locals.gradual_sort_search(get_id_of, local_id); }
 #undef pre
 
+  InlineNodiscardCXPR sz_t getNumParameters() const noexcept { return num_parameters; }
+
 private:
-  constexpr Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, TypeID function_typeID, bool is_public, sz_t functon_insert_order)
-  : Function(name, std::move(parameters), function_typeID, is_public) {
-    id = (u16_t) functon_insert_order;
+  constexpr Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, TypeID return_typeID, bool is_public, bool is_variadic, sz_t functon_insert_order)
+  : return_typeID(return_typeID), locals(std::move(parameters)),
+    name(name.data()), name_len(name.length()),
+    id(functon_insert_order), is_public(is_public), is_variadic(is_variadic) {
+    num_parameters = eden::narrow<u8_t>(locals.size());
     Assume(functon_insert_order not_eq INVALID_ID);
     assert(locals.is_ordered(get_id_of));
 
 #ifndef NDEBUG
+    (void) eden::narrow<u16_t>(functon_insert_order);
     for (auto const& param : locals) assert(param.id not_eq INVALID_ID);
 #endif
   }
 };
+
 }
 
 class SymbolTable {
@@ -86,7 +85,7 @@ class SymbolTable {
   static constexpr auto id_search = Symbol::id_search;
   static constexpr auto get_id_of = Symbol::get_id_of;
 
-  // function vector preserves backmost element, which is the function currently being parsed
+  // function vector preserves backmost element, whi  alignas(SYMBOL_TABLE_ALIGNMENT)
   mutable eden::swap_vector<Function, eden::swap_vector_settings<4, true>{}> functions;
   mutable eden::swap_vector<Variable> variables;
 
@@ -134,11 +133,11 @@ public:
   }
 
   // returns the function id
-#define pre assert(not functions.search_noswap(name_search, function_name)); assert(function_typeID.derived == Type::FUNCTION);
+#define pre assert(not functions.search_noswap(name_search, function_name));
   InlineCXPR u16_t
-  addFunction(std::string_view function_name, eden::swap_vector16<Variable>&& parameters, TypeID function_typeID, bool is_public) noexcept { pre
+  addFunction(std::string_view function_name, eden::swap_vector16<Variable>&& parameters, TypeID return_typeID, bool is_public, bool is_variadic = false) noexcept { pre
     auto const function_id = (u16_t) functions.size();
-    functions.emplace_back( Function{ function_name, std::move(parameters), function_typeID, is_public, function_id } );
+    functions.emplace_back( Function{ function_name, std::move(parameters), return_typeID, is_public, is_variadic, function_id } );
     return function_id;
   }
 #undef pre
@@ -160,7 +159,6 @@ class Module final : public SymbolTable {
   static constexpr auto named_search_pred = [] (auto const& type, std::string_view name) { return type.nameof() == name; };
 
   eden::swap_vector<ArrayType> array_types; // using a swap vector here is bad, we should only ever use search_noswap. TODO: Change
-  eden::swap_vector<FunctionType> function_types;
   eden::swap_vector<CustomType> custom_types;
   u16_t id;
   byte_t _pad[6]{};
@@ -195,25 +193,14 @@ public:
   totalNumberOfTypes() const noexcept {
     return PrimitiveType::num_types +
            array_types.size() +
-           function_types.size() +
            custom_types.size();
   }
 
   InlineNodiscardCXPR u16_t getID()           const noexcept { return id; }
   InlineNodiscardCXPR sz_t numArrayTypes()    const noexcept { return array_types.size(); }
-  InlineNodiscardCXPR sz_t numFunctionTypes() const noexcept { return function_types.size(); }
   InlineNodiscardCXPR sz_t numCustomTypes()   const noexcept { return custom_types.size(); }
 
   InlineNodiscardCXPR TypeID addArrayType(TypeID subtypeID, u64_t array_size) noexcept { return returnExistingOrNew(array_types, id, subtypeID, array_size); }
-  InlineNodiscardCXPR TypeID addFunctionType(std::span<TypeID const> parameter_typeIDs, TypeID returnTypeID, bool is_variadic = false) noexcept { return returnExistingOrNew(function_types, id, parameter_typeIDs, returnTypeID, is_variadic); }
-  InlineNodiscardCXPR TypeID addFunctionType(std::span<Variable const> parameters, TypeID returnTypeID, bool is_variadic) noexcept {
-    auto const num_parameters = parameters.size(); assert(num_parameters <= Settings::MAX_FUNCTION_PARAMETERS);
-
-    TypeID parameter_typeIDs[Settings::MAX_FUNCTION_PARAMETERS];
-    for (sz_t i{}; i<num_parameters; ++i) parameter_typeIDs[i] = parameters[i].typeID;
-
-    return addFunctionType({parameter_typeIDs, num_parameters}, returnTypeID, is_variadic);
-  }
 
 #define pre assert(getCustomTypeID(type_name) == devoidID);
   InlineNodiscardCXPR TypeID
@@ -227,10 +214,6 @@ public:
 
 #define pre assert(arrayTypeID.module_id == id); assert(arrayTypeID.derived == Type::ARRAY); assert(not arrayTypeID.isPointer());
   InlineNodiscardCXPR ArrayType const& getArrayType(TypeID arrayTypeID) const noexcept { pre return array_types[arrayTypeID.id]; }
-#undef pre
-
-#define pre assert(functionTypeID.module_id == id); assert(functionTypeID.derived == Type::FUNCTION); assert(not functionTypeID.isPointer());
-  InlineNodiscardCXPR FunctionType const& getFunctionType(TypeID functionTypeID) const noexcept { pre return function_types[functionTypeID.id]; }
 #undef pre
 
 #define pre assert(customTypeID.module_id == id); assert(customTypeID.derived == Type::CUSTOM); assert(not customTypeID.isPointer());

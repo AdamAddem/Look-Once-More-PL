@@ -4,9 +4,9 @@ project(LookOnceMore)
 set(CMAKE_CXX_STANDARD 23)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -Wnrvo -Wno-maybe-uninitialized")
+    set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -Wno-maybe-uninitialized")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -Wnrvo -Wno-uninitialized")
+    set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -Wpedantic -Wno-uninitialized")
 endif()
 
 find_package(LLVM 22.1.4 REQUIRED CONFIG)

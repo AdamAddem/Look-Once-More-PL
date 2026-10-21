@@ -11,13 +11,9 @@ namespace LOM::Lexer { struct Token; }
 namespace LOM::Parser {
 
 struct Function {
-  GENERIC_FN_DEF
-
   eden::vector<ASTNode> body;
-  byte_t _pad[56]; // TODO: check whether this is being initialized
-
-  InlineNodiscardCXPR std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
-}; static_assert(sizeof(Function) == FUNCTION_SIZE);
+  byte_t _pad[ FUNCTION_SIZE - sizeof(body) ]; // TODO: check whether this is being initialized
+}; static_assert(sizeof(Function) == FUNCTION_SIZE); static_assert(alignof(Function) == FUNCTION_ALIGN);
 
 struct TU {
   GENERIC_TU_DEF

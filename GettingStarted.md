@@ -37,10 +37,10 @@ Any errors occuring during parsing will prevent all other modules from entering 
 ### C Interop
 Calling C functions can be done using the '__C' keyword. <br>
 You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration. <br>
-Ex: `__C puts(str: raw byte) i32;` <br>
+Ex: `__C puts(str: ref byte) i32;` <br>
 This will place the function as part of the internal '__C' module, and as such only one declaration can be present throughout the entire program. <br>
 If variadic arguments are needed, use the '__va' keyword as the last parameter. <br>
-Ex: `__C printf(fmt: raw byte, __va) i32;` <br>
+Ex: `__C printf(fmt: ref byte, __va) i32;` <br>
 Calling these functions can be done as if through the '__C' module, which is imported by default. <br>
 C Interop using structs or arrays passed by value is incorrect won't function as expected. Pass by pointer instead. <br>
 
@@ -48,7 +48,7 @@ C Interop using structs or arrays passed by value is incorrect won't function as
 - Globals are unsupported until a constant evaluator is made to enforce constant initialization.
 - Private functions (and public functions within main.lom) with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
 - _= operators do not exist yet (+=, -=, etc).
-- Strings are accessable only through ref u8.
+- Strings are accessable only through ref byte.
 - No support for creating or importing precompiled libraries directly.
 - Import names currently shadow local variabels when accessing members. (local variable named foo cannot access any members if a module named foo has been imported).
 - Errors have some minor display problems;
@@ -59,10 +59,11 @@ C Interop using structs or arrays passed by value is incorrect won't function as
 
 ### Code Limitations
 - Functions may not have greater than 8 parameters.
-- Structs may not have greater than 256 members;
 - Modules may not have greater than 256 files.
+- Modules / Structs may not have greater than u16_max globals/member variables
+- Modules may not have greater than u16_max functions
 - Files may not exceed u32_max in size.
 - Tokens may not exceed the u16_max in length.
-- Expressions have a reasonablly large size limit, do not nest too hard.
+- Expressions have a reasonably large size limit, do not nest too hard.
 - Violating any of these rules may or may not cause a crash, assertion failure, or logical error rather than a standard error message.
 - These limits exist to increase compilation speed and reduce memory usage.

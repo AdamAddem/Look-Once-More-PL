@@ -9,11 +9,8 @@
 #include "edenlib/casts.hpp"
 #include "edenlib/typedefs.hpp"
 #include <cassert>
-#include <chrono>
 #include <format>
-#include <iostream>
 #include <numeric>
-#include <print>
 
 using namespace LOM;
 using namespace LOM::PeepIR;
@@ -58,53 +55,43 @@ struct TreeView {
   eden::vector<Parser::ASTNode>::const_iterator begin;
   eden::vector<Parser::ASTNode>::const_iterator end;
 
-  InlineNodiscardCXPR ASTNode peek() const noexcept { return *begin; }
   InlineNodiscardCXPR ASTNode previous() const noexcept { return *(begin-1); }
-  InlineNodiscardCXPR bool peek_is_empty() const noexcept { return begin->type == ASTNode::EMPTY; }
   InlineNodiscardCXPR ASTNode take() noexcept { return *(begin++); }
-  InlineCXPR void pop() noexcept { ++begin; }
   InlineCXPR void undo() noexcept { --begin; }
 
-  NodiscardCXPR bool pop_if_empty() noexcept {
-    if (peek_is_empty()) return pop(), true;
-    return false;
-  }
   InlineNodiscardCXPR bool empty() const noexcept { return begin == end; }
 };
 
 struct QualifiedTypeID : TypeID {
   Type::Qualifiers qualifiers{};
+  bool is_function{false}; // if is function, id and module_id should be interpreted as the function id and the module_id for the containing module
 
-  // i hate this language so much sometimes
-  // QualifiedTypeID() noexcept = default;
-  // QualifiedTypeID(QualifiedTypeID const&) noexcept = default;
   edenInlineCXPR QualifiedTypeID& operator=(TypeID other) noexcept { TypeID::operator=(other); return *this; }
-  // edenInlineCXPR QualifiedTypeID& operator=(QualifiedTypeID const&) noexcept = default;
 };
 
 // i gently unfold the class...
 class PeepingContext {
-  Module& module;
+  Parser::TU& parsed_tu;
   Symbol::Function const* current_function{};
-  File current_file;
   TreeView nodes;
-  FunctionType const* current_function_type{};
 
-  eden::vector<TypeID> locals;
-  eden::vector<Instruction> instructions;
-  eden::vector<Block> blocks;
+  // eden::vector<TypeID> locals;
+  eden::vector16<Instruction> instructions;
+  eden::vector16<Block> blocks;
 
   Block current_block{};
   bool has_error{};
   u32_t previous_blocks_total_instructions{};
+  sz_t current_local_idx{};
 
-  constexpr explicit PeepingContext(Module& module) : module(module) {}
+  constexpr explicit PeepingContext(Parser::TU& parsed_tu) : parsed_tu(parsed_tu) {
+
+  }
 
   InlineNodiscardCXPR ssz_t current_block_index() const noexcept { return blocks.size(); }
   InlineNodiscardCXPR bool is_current_block_empty() const noexcept { return previous_blocks_total_instructions == instructions.size(); }
 
   constexpr void forceNewBlock() noexcept {
-    [[maybe_unused]] auto const a = instructions.size();
     current_block.num_instructions = eden::narrow<u16_t>(instructions.size() - previous_blocks_total_instructions);
     blocks.emplace_back(current_block);
     current_block = {};
@@ -139,7 +126,10 @@ class PeepingContext {
   }
 
   NoInlineCold void
-  error(auto err, std::string msg) noexcept { report_error(current_file, err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
+  error(auto err, std::string msg) noexcept { reportError(parsed_tu.source_files[err.file_idx], err.length_in_file, err.position_in_file, std::move(msg)); has_error = true; }
+
+  edenNodiscardCXPR File
+  fileOf(ASTNode node) const noexcept { return parsed_tu.source_files[node.file_idx]; }
 
   InlineNodiscardCXPR static Instruction
   makeInstruction(ASTNode node, Instruction::InstructionType type = Instruction::NOOP) noexcept {
@@ -189,7 +179,8 @@ class PeepingContext {
   peepModuleAccess(ASTNode module_access_node) noexcept { pre
     Instruction module_symbol = makeInstruction(module_access_node);
 
-    module_symbol.module_member_data.module_id     = module_access_node.module_access_data.module_id;
+    auto const import_id = module_access_node.module_access_data.module_id;
+    module_symbol.module_member_data.module_id     = import_id;
     module_symbol.module_member_data.member_id     = module_access_node.module_access_data._pad; // added to make this a single 8byte write
     module_symbol.module_member_data.module_length = module_access_node.module_access_data.module_length;
     module_symbol.module_member_data.member_length = module_access_node.module_access_data.member_length;
@@ -201,14 +192,16 @@ class PeepingContext {
     auto const& imported_module = module_access_node.accessed_module();
     module_symbol.module_member_data.module_id = imported_module.getID();
 
-    auto const member_name = module_access_node.module_member_name(current_file);
+    auto const member_name = module_access_node.module_member_name( fileOf(module_access_node) );
     assert(module_access_node.length_in_file == 1);
 
     if (auto const member_function = imported_module.getPublicFunction(member_name)) {
       assert(member_function->id not_eq Symbol::INVALID_ID);
       module_symbol.type = Instruction::MODULE_FUNCTION;
       module_symbol.module_member_data.member_id = member_function->id;
-      res = member_function->getTypeID();
+      res.module_id = import_id;
+      res.id = member_function->id;
+      res.is_function = true;
     }
     else if (auto const member_variable = imported_module.getPublicVariable(member_name)) {
       edenUnreachable("Globals unimplemented.");
@@ -260,7 +253,7 @@ class PeepingContext {
     auto const& custom_type = member_expression.getCustomType();
     auto const& member_table = custom_type.member_table();
     auto const identifier_node = nodes.take();
-    auto const identifier = std::string_view(identifier_node.identifier_val(current_file));
+    auto const identifier = identifier_node.identifier_val( fileOf(identifier_node) );
 
     if (auto const member_variable = member_table.getPublicVariable(identifier)) {
       assert(member_variable->id not_eq Symbol::INVALID_ID);
@@ -271,9 +264,7 @@ class PeepingContext {
     }
     else if (auto const member_function = member_table.getPublicFunction(identifier)) {
       Unreachable("Member functions unimplemented."); assert(member_function->id not_eq Symbol::INVALID_ID);
-      type_member.type_member_data.member_id = member_function->id;
-      auto const fn_typeID = TypeID{.derived = Type::FUNCTION, .module_id = member_function->type_module_id, .id = member_function->type_id};
-      res = fn_typeID;
+      (void)member_function;
     }
     else {
       error(identifier_node, "Identifier is not a public member of type.");
@@ -289,7 +280,7 @@ class PeepingContext {
   NodiscardCXPR QualifiedTypeID
   peepIdentifier(ASTNode identifier_node) noexcept { pre
     Instruction identifier_instructon = makeInstruction(identifier_node);
-    auto const identifier = current_file.viewAt(identifier_node.length_in_file, identifier_node.position_in_file);
+    auto const identifier = identifier_node.identifier_val( fileOf(identifier_node) );
     QualifiedTypeID res;
 
     if (auto const variable = current_function->getLocal(identifier)) {
@@ -297,11 +288,13 @@ class PeepingContext {
       res = variable->typeID;
       identifier_instructon.local_data.idx = variable->id;
     }
-    else if (auto const function = module.getFunction(identifier)) {
+    else if (auto const function = parsed_tu.module.getFunction(identifier)) {
       identifier_instructon.type = Instruction::FUNCTION;
-      res = function->getTypeID();
+      res.module_id = parsed_tu.module.getID();
+      res.id = function->id;
+      res.is_function = true;
     }
-    else if (auto const global = module.getVariable(identifier)) {
+    else if (auto const global = parsed_tu.module.getVariable(identifier)) {
       identifier_instructon.type = Instruction::GLOBAL;
       res = global->typeID;
     }
@@ -392,19 +385,16 @@ class PeepingContext {
 
     QualifiedTypeID res;
     auto const called = peepExpression();
-    if (not called.isCallable()) {
+    if (not called.is_function) {
       if (not called.isError()) error(calling_node, "Call operator used on non-callable.");
       for (sz_t i{}; i<args_passed_count; ++i) (void)peepExpression();
       res = errorID;
       return res;
     }
 
-    assert(called.isFunction());
-
-    auto const& fn_type = called.getFunctionType();
-    auto const parameters = fn_type.getParameterTypeIDs();
-    auto const parameter_count = parameters.size();
-    bool const variadic = fn_type.isVariadic();
+    auto const& fn = getModule(called.module_id).getFunction(called.id);
+    auto const parameter_count = (sz_t) fn.num_parameters;
+    auto const is_variadic = fn.is_variadic;
 
     if (args_passed_count < parameter_count) {
       error(calling_node, "Too few parameters for function call.");
@@ -412,16 +402,18 @@ class PeepingContext {
       return res;
     }
 
-    if (args_passed_count > parameter_count and not variadic) {
+    if (args_passed_count > parameter_count and not is_variadic) {
       error(calling_node, "Too many parameters for function call.");
       res = errorID;
       return res;
     }
 
-    for (auto const& parameter_typeID : parameters) {
-      auto const given_parameter_idx = instructions.size();
+    for (sz_t i{}; i<parameter_count; ++i) {
+      auto const& parameter_typeID = fn.getLocal(eden::narrow<i16_t>(i)).typeID;
+
+      auto const argument_instr_index = instructions.size();
       auto const argument_typeID = peepExpression();
-      auto& argument_instr = instructions[given_parameter_idx];
+      auto& argument_instr = instructions[argument_instr_index];
 
       if (argument_typeID.coercibleTo(parameter_typeID))
         coerceIfIntegerLiteral(argument_instr, parameter_typeID);
@@ -431,10 +423,10 @@ class PeepingContext {
       }
     }
 
-    if (variadic)
+    if (is_variadic)
       for (sz_t i{parameter_count}; i<args_passed_count; ++i) (void)peepExpression();
 
-    res = fn_type.getReturnTypeID();
+    res = fn.return_typeID;
     return res;
   }
 #undef pre
@@ -745,7 +737,7 @@ class PeepingContext {
 
 #define pre Assume(return_node.type == ASTNode::RETURN);
   constexpr void peepReturnStatement(ASTNode return_node) noexcept { pre
-    auto const return_typeID = current_function_type->getReturnTypeID();
+    auto const return_typeID = current_function->return_typeID;
     if (not return_node.return_data.has_value) {
       if (not return_typeID.isDevoid())
         return error(nodes.take(),"Non-devoid function expects return value.");
@@ -838,14 +830,14 @@ class PeepingContext {
     QualifiedTypeID qualified_typeID;
     qualified_typeID = decl_node.declaration_type();
     qualified_typeID.qualifiers.writable = decl_node.isRWDeclaration();
-    locals.emplace_back( (TypeID) qualified_typeID);
 
     if (decl_node.isJunkDeclaration()) return;
     auto const assign_idx = instructions.size();
     addInstruction(makeInstruction(decl_node, Instruction::ASSIGN));
+
     {
       Instruction local_instruction = makeInstruction(decl_node, Instruction::LOCAL);
-      local_instruction.local_data.idx = locals.size() - 1;
+      local_instruction.local_data.idx = current_local_idx; ++current_local_idx;
       addInstruction(local_instruction);
     }
 
@@ -932,44 +924,25 @@ public:
   // returns whether an error occured
   NodiscardCXPR static bool
   peepTU(Parser::TU& parsed_tu) {
-    auto& module = parsed_tu.module;
-    PeepingContext peeper(module);
+    PeepingContext peeper(parsed_tu);
 
-    for (auto& parsed_fn : parsed_tu.functions) {
+    for (sz_t i{}; i<parsed_tu.functions.size(); ++i){
+      auto& parsed_fn = parsed_tu.functions[i];
 
-      peeper.current_file = parsed_tu.source_files[parsed_fn.file_idx];
       peeper.nodes.begin = parsed_fn.body.cbegin();
       peeper.nodes.end = parsed_fn.body.cend();
 
-      {
-        auto const& table_fn = module.getFunction(parsed_fn.id_in_module);
-        peeper.current_function = &table_fn;
-        peeper.current_function_type = &table_fn.getTypeID().getFunctionType();
-      }
-
-      auto const fn_parameterIDs = peeper.current_function_type->getParameterTypeIDs();
-      peeper.locals.copy_append_range( fn_parameterIDs );
+      peeper.current_function = &parsed_tu.module.getFunction(i);
+      peeper.current_function->locals.sort_by_unique_idx(Symbol::get_id_of); // this is dumb
       peeper.peepUntilEmpty();
 
       // transmutate the Parser::Function into a PeepIR::Function inplace
-      // hopefully all this copying is optimized away. TODO: Verify it is
-      auto const is_public = parsed_fn.is_public;
-      auto const file_idx = parsed_fn.file_idx;
-      auto const id_in_module = parsed_fn.id_in_module;
-      auto const name_len = parsed_fn.name_len;
-      auto const name_ptr = parsed_fn.name_ptr;
       parsed_fn.~Function();
-
       auto& peeped_fn = *new (&parsed_fn) Function;
-      peeped_fn.is_public = is_public;
-      peeped_fn.file_idx = file_idx;
-      peeped_fn.id_in_module = id_in_module;
-      peeped_fn.name_len = name_len;
-      peeped_fn.name_ptr = name_ptr;
-      peeped_fn.type = peeper.current_function_type;
-      peeped_fn.locals = std::move(peeper.locals);
+
       peeped_fn.instructions = std::move(peeper.instructions);
       peeped_fn.blocks = std::move(peeper.blocks);
+      peeper.current_local_idx = 0;
     }
 
     transmutate_tu(parsed_tu);
@@ -980,21 +953,6 @@ public:
 
 }
 
-static void output_benchmark([[maybe_unused]] auto begin_time, [[maybe_unused]] std::string_view module_name) {
-#ifdef STAGE_BENCHMARKS
-  auto end_time = std::chrono::high_resolution_clock::now();
-  std::println("{:>10}, {:>10} | Peeping {}",
-    end_time - begin_time,
-    std::chrono::duration_cast<std::chrono::microseconds>(end_time - begin_time),
-    module_name
-  );
-#endif
-}
-
 bool PeepIR::lowerToPeep(Parser::TU& parsed_tu) {
-  auto const begin_time = std::chrono::high_resolution_clock::now();
-  bool const has_error = PeepingContext::peepTU(parsed_tu);
-
-  output_benchmark(begin_time, parsed_tu.name);
-  return has_error;
+  return PeepingContext::peepTU(parsed_tu);
 }

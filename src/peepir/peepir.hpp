@@ -214,14 +214,9 @@ public:
 static_assert(sizeof(Block) == 8);
 
 struct Function {
-  GENERIC_FN_DEF
+  eden::vector16<Instruction> instructions;
+  eden::vector16<Block> blocks;
 
-  FunctionType const* type;
-  eden::vector<TypeID> locals;
-  eden::vector<Instruction> instructions;
-  eden::vector<Block> blocks;
-
-  InlineNodiscardCXPR std::string_view nameof() const noexcept { return {name_ptr, name_len}; }
 }; static_assert(sizeof(Function) == FUNCTION_SIZE); static_assert(alignof(Function) == FUNCTION_ALIGN);
 
 struct TU {

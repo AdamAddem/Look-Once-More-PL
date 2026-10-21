@@ -11,24 +11,6 @@
 
 using namespace LOM;
 
-/*
-[[nodiscard]] Type const&
-TypeID::getType() const noexcept {
-  if (isPointer())
-    return PointerType{*this};
-
-  switch (derived) { using enum Type::DerivedType;
-  case DEVOID:      return Type::devoid();
-  case ERROR:       return Type::error();
-  case PRIMITIVE:   return PrimitiveType::getTypeFromID(*this);
-  case ARRAY:       return getModule(module_id).getArrayType(*this);
-  case FUNCTION:    return getModule(module_id).getFunctionType(*this);
-  case CUSTOM:      return getModule(module_id).getCustomType(*this);
-
-  default: edenUnreachable("Invalid derived type.");
-  }
-} */
-
 NoInlineCold [[nodiscard]] std::string
 TypeID::toString() const noexcept {
   if (isPointer()) {
@@ -45,7 +27,6 @@ TypeID::toString() const noexcept {
 
   case PRIMITIVE:   return getPrimitiveType().toString();
   case ARRAY:       return getArrayType().toString();
-  case FUNCTION:    return getFunctionType().toString();
   case CUSTOM:      return getCustomType().toString();
   default:
     edenUnreachable("Invalid derived type.");
@@ -54,10 +35,6 @@ TypeID::toString() const noexcept {
 
 #define pre Assume(isArray());
 [[nodiscard]] ArrayType const& TypeID::getArrayType() const noexcept { pre return getModule(module_id).getArrayType(*this); }
-#undef pre
-
-#define pre Assume(isFunction());
-[[nodiscard]] FunctionType const& TypeID::getFunctionType() const noexcept { pre return getModule(module_id).getFunctionType(*this); }
 #undef pre
 
 #define pre Assume(isCustom());
@@ -147,7 +124,6 @@ TypeID::coercibleTo(TypeID other) const noexcept {
   switch (derived) { using enum Type::DerivedType;
   case DEVOID:
   case ERROR:      edenUnreachable("This should've returned earlier.");
-  case FUNCTION:   edenUnreachable("I'd be very confused if this code ran");
 
   // can only coerce to same type which has been checked
   case ARRAY:      return false;
@@ -184,7 +160,6 @@ TypeID::castableTo(TypeID other) const noexcept {
 
   case DEVOID:
   case ERROR:      Unreachable("Only one devoid/error instance allowed, this should've returned earlier.");
-  case FUNCTION:   Unreachable("Why in the world would this run?");
   default:         Unreachable("Invalid derived type.");
   }
 }
@@ -205,7 +180,6 @@ TypeID::sameAs(TypeID other) const noexcept {
   case PRIMITIVE: return *this == other;
 
   case ARRAY:    return getArrayType().sameAs(other.getArrayType());
-  case FUNCTION: return getFunctionType().sameAs(other.getFunctionType());
 
   default: Unreachable("Invalid derived type.");
   }
@@ -246,6 +220,7 @@ ArrayType::toString() const noexcept {
   return std::format("[{}]{}", getSize(), getSubtypeID().toString());
 }
 
+/*
 NoInlineCold [[nodiscard]] std::string
 FunctionType::toString() const noexcept {
   auto const parameter_typeIDs = getParameterTypeIDs();
@@ -270,6 +245,7 @@ FunctionType::toString() const noexcept {
 
   return string_rep;
 }
+*/
 
 NoInlineCold [[nodiscard]] std::string
 CustomType::definitionToString() const noexcept {

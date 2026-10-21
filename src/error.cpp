@@ -1,9 +1,8 @@
 #include "error.hpp"
 #include "lexing/lex.hpp"
-#include <unordered_map>
 #include "settings.hpp"
 
-#include <print>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -30,8 +29,13 @@ std::unordered_map< char const*, std::vector<Error> > file_to_errors_map;
 static_assert(LOM::Settings::MULTITHREADING_SUPPORT == false);
 namespace LOM {
 
+edenNoInlineCold [[nodiscard]] bool doesFileHaveErrors(File file) {
+  auto const error_iter = file_to_errors_map.find(file.getText().data());
+  return error_iter != file_to_errors_map.end();
+}
+
 NoInlineCold std::string
-get_file_errors(File file) {
+getFileErrors(File file) {
   std::string error_messages;
   auto const file_text = file.getText();
   auto const file_path = file.path();
@@ -63,7 +67,7 @@ get_file_errors(File file) {
 }
 
 NoInlineCold void
-report_error(File file, u16_t length, u32_t position, std::string error_message) {
+reportError(File file, u16_t length, u32_t position, std::string error_message) {
   file_to_errors_map[file.getText().data()].emplace_back(
       std::move(error_message),
       length, position
@@ -71,7 +75,7 @@ report_error(File file, u16_t length, u32_t position, std::string error_message)
 }
 
 NoInlineCold void
-report_error(File file, Lexer::Token token, std::string error_message) {
+reportError(File file, Lexer::Token token, std::string error_message) {
   file_to_errors_map[file.getText().data()].emplace_back(
       std::move(error_message),
       token.length, token.position
@@ -79,7 +83,7 @@ report_error(File file, Lexer::Token token, std::string error_message) {
 }
 
 NoInlineCold void
-report_error(File file, std::string_view file_substr, std::string error_message) {
+reportError(File file, std::string_view file_substr, std::string error_message) {
   auto const [len, pos] = file.lenPosFromView(file_substr);
   file_to_errors_map[file.getText().data()].emplace_back(
       std::move(error_message),

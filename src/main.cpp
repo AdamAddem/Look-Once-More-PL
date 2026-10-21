@@ -3,6 +3,8 @@
 
 #include <filesystem>
 #include <print>
+#include <chrono>
+
 int main(int argc, char const* argv[]) {
   if (argc < 2) {
     std::println("LookOnceMore: Arguments required.");
@@ -11,26 +13,13 @@ int main(int argc, char const* argv[]) {
 
   try {
     LOM::Settings::setArgs(argc, argv);
-    if (LOM::Settings::do_output_obj)
-      std::filesystem::create_directories("build/obj");
-#ifdef PROFILE
-    namespace chno = std::chrono;
-    auto const begin_time = chno::high_resolution_clock::now();
-    for (sz_t i{}; i<100'000; ++i) LOM::build();
-    auto const end_time = chno::high_resolution_clock::now();
-    std::println("Full: {} | {} ",
-      end_time - begin_time,
-      chno::duration_cast<chno::microseconds>(end_time - begin_time),
-      chno::duration_cast<chno::milliseconds>(end_time - begin_time)
-    );
-#else
-    LOM::build();
+    static constexpr auto iterations = LOM::Settings::do_profile ? 100'000 : 1;
+    for (sz_t i{}; i<iterations; ++i) LOM::build();
   }
   catch (std::exception const& e) {
     std::println(stderr, "LookOnceMore: {}", e.what());
     return 1;
   }
-#endif
 
   return 0;
 }

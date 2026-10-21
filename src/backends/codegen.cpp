@@ -8,29 +8,24 @@
 
 namespace LOM {
 
-std::unique_ptr<Backend> Backend::codegen(PeepIR::TU& vtu, std::filesystem::path const& file) {
-  return ToLLVM::codegen(vtu, file);
+std::unique_ptr<Backend> Backend::codegen(PeepIR::TU& ptu) {
+  return ToLLVM::codegen(ptu);
 }
 
 //.... it works?
-void Backend::linkObjects(std::span<std::filesystem::path> obj_paths) {
+void Backend::linkObjects() {
   if constexpr (Settings::external_compiler.empty())
     throw std::runtime_error("Linking objects is currently unsupported without clang or gcc.");
 
-  std::string compiler(Settings::external_compiler);
+  std::string command(Settings::external_compiler);
+  command += " build/obj/*";
+  command += " -o ";
+  command += std::string_view("build/");
+  command += Settings::getExecutableName();
+  command += Settings::getExternFlags();
 
-  for (auto const& file : obj_paths) {
-    compiler.push_back(' ');
-    compiler.append(file.string());
-  }
-
-  compiler += " -o ";
-  compiler += std::string_view("build/");
-  compiler += Settings::getExecutableName();
-  compiler += Settings::getExternFlags();
-
-  if (system(compiler.c_str())) {
-    std::cerr << "Error calling compiler with command: " << compiler;
+  if (system(command.c_str())) {
+    std::cerr << "Error calling compiler with command: " << command;
     std::quick_exit(1);
   }
 }

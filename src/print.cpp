@@ -17,6 +17,32 @@ public:
 
   NoInlineCold void add(sz_t num_subexpressions) noexcept { indents.push_back(num_subexpressions); }
 };
+
+NoInlineCold [[nodiscard]]
+std::string functionToString(Symbol::Function const& fn) noexcept {
+  std::string res;
+  if (fn.is_public) res.append("pub ");
+  res.append(fn.nameof());
+  res.append(": (");
+
+  for (u16_t i{}; i<fn.num_parameters; ++i) {
+    auto const& parameter = fn.getLocal(i);
+    res.append( std::format("{}: {}, " , parameter.nameof(), parameter.typeID.toString()) );
+  }
+
+  if (fn.is_variadic)
+    res.append("...");
+  else if (fn.num_parameters not_eq 0)
+    res.pop_back(), res.pop_back();
+
+  auto const return_typeID = fn.return_typeID;
+  res.append(") ");
+  if (return_typeID.derived not_eq Type::DEVOID)
+    res.append( std::format("{} ", return_typeID.toString()) );
+
+  res.append("{\n");
+  return res;
+}
 }
 
 namespace LOM::Parser { namespace {
@@ -73,18 +99,12 @@ printNode(ASTNode node, File const& file) noexcept {
 }
 
 NoInlineCold void
-printFunction(Function const& func, TU const& tu) noexcept {
-  std::print("{}{}: ",
-    func.is_public ? "pub " : "",
-    func.nameof());
+printFunction(TU const& tu, u16_t fn_id) noexcept {
+  std::print("{}", functionToString( tu.module.getFunction(fn_id)) );
 
-  auto const& module = tu.module;
-  auto const function = module.getFunction(func.nameof()); edenAssume(function);
-
-  std::println("{} {{", function->getTypeID().toString());
-
+  auto const& fn = tu.functions[fn_id];
   IndentationManager indents; indents.add(sz_max);
-  for (auto const& node : func.body) {
+  for (auto const& node : fn.body) {
     indents.print();
     indents.add(printNode(node, tu.source_files[node.file_idx]));
   }
@@ -99,8 +119,8 @@ LOM::printParsed() noexcept {
   for (sz_t i{C_TU_IDX + 1}; i<getNumTUs(); ++i) {
     auto const& tu = getParserTU(i);
     std::println("\n--- Parser Output --- {}", tu.name);
-    for (auto const& f : tu.functions) {
-      Parser::printFunction(f, tu);
+    for (sz_t j{}; j<tu.functions.size(); ++j) {
+      Parser::printFunction(tu, eden::narrow<u16_t>(j));
       std::println();
     }
     std::println("\n--- Parser Output ---");
@@ -204,18 +224,19 @@ sz_t printInstruction(Instruction instruction, File file, std::string_view modul
   }
 }
 
-void printBlocks(eden::vector<Block> const& blocks, eden::vector<Instruction> const& instructions, File file, std::string_view module_name) {
+void printBlocks(std::span<Block const> blocks, std::span<Instruction const> instructions, std::span<File const> files, std::string_view module_name) {
   auto const num_blocks = blocks.size();
-  sz_t current_instruction{};
+  sz_t current_instruction_idx{};
 
   IndentationManager indents; indents.add(sz_max);
   for (sz_t i{}; i<num_blocks; ++i) {
     auto const& block = blocks[i];
-    std::println("Block {} (Instruction Count {}): ", i, block.num_instructions);
+    std::println("Block {}, {} instruction(s): ", i, block.num_instructions);
     for (sz_t j{}; j<block.num_instructions; ++j) {
       indents.print();
-      indents.add(printInstruction(instructions[current_instruction], file, module_name));
-      ++current_instruction;
+      auto const instruction = instructions[current_instruction_idx];
+      indents.add(printInstruction(instruction, files[instruction.file_idx], module_name));
+      ++current_instruction_idx;
     }
 
     switch (block.terminator_type) { using enum Block::Terminator;
@@ -230,25 +251,27 @@ void printBlocks(eden::vector<Block> const& blocks, eden::vector<Instruction> co
 }
 
 NoInlineCold void
-printFunction(Function const& fn, TU const& tu) noexcept {
-  std::println("{}{}: {} {{",
-  fn.is_public ? "pub " : "",
-  fn.nameof(),
-  fn.type->toString());
+printFunction(TU const& tu, u16_t fn_id) noexcept {
+  std::print("{}", functionToString( tu.module.getFunction(fn_id)) );
 
+  auto const& fn = tu.functions[fn_id];
   std::println("Block count: {}", fn.blocks.size());
 
   sz_t instruction_count{};
   for (auto block : fn.blocks) instruction_count += (sz_t) block.num_instructions;
   std::println("Instruction Count: {}", instruction_count);
 
-  std::print("Locals: | ");
-  auto const num_locals = fn.locals.size();
-  for (sz_t i{}; i<num_locals; ++i)
-    std::print("{}: {} | ", i, fn.locals[i].toString());
+  std::print("Locals: ");
+
+  auto const& fn_symbol = tu.module.getFunction(fn_id);
+  auto const num_locals = fn_symbol.locals.size();
+  for (sz_t i{}; i<num_locals; ++i) {
+    std::print("{}: {} | ", i, fn_symbol.locals[i].typeID.toString());
+  }
+
   std::println();
 
-  printBlocks(fn.blocks, fn.instructions, tu.source_files[fn.file_idx], tu.name);
+  printBlocks(fn.blocks.to_span(), fn.instructions.to_span(), tu.source_files.to_span(), tu.name);
   std::println("}}");
 }
 
@@ -259,15 +282,17 @@ LOM::printPeeped() noexcept {
   for (sz_t i{C_TU_IDX + 1}; i<getNumTUs(); ++i) {
     auto const& tu = getPeepTU(i);
     std::println("\n--- PeepIR --- {}", tu.name);
-    for (auto const& fn : tu.functions)
-      PeepIR::printFunction(fn, tu);
+    for (sz_t j{}; j<tu.functions.size(); ++j)
+      PeepIR::printFunction(tu, j);
     std::println("\n--- PeepIR ---");
   }
 }
 
 NoInlineCold void
 LOM::printFileErrors(File file) noexcept {
+  if (not doesFileHaveErrors(file)) return;
+
   std::println("\n--- Errors --- {}", file.path());
-  std::println("{}", get_file_errors(file));
+  std::println("{}", getFileErrors(file));
   std::println("\n--- Errors ---");
 }

@@ -136,7 +136,11 @@ sz_t printInstruction(Instruction instruction, File file, std::string_view modul
   case GLOBAL: std::println("Global {}", instruction.original_string(file)); return 0;
   case FUNCTION: std::println("Function {}", instruction.original_string(file)); return 0;
 
-  case MODULE_GLOBAL: std::println("Global {} from module {}", instruction.module_variable_name(), instruction.module_name(file)); return 0;
+  case MODULE_GLOBAL: {
+    auto const& global = getModule(instruction.module_member_data.module_id).getVariable(instruction.module_member_data.member_id);
+    std::println("Global {} from module {}", global.nameof(), module_name);
+    return 0;
+  }
   case MODULE_FUNCTION: {
     auto const& fn = getModule(instruction.module_member_data.module_id).getFunction(instruction.module_member_data.member_id);
     std::println("Function {} from module {}", fn.nameof(), module_name);

@@ -225,13 +225,13 @@ void compileExtern() {
 
 // returns nullptr if not found
 PureFN [[nodiscard]] Module* LOM::getModule(std::string_view module_name) noexcept {
-  assert(Globals::getCurrentBuildStage() == BuildStage::PARSING);
+  assert(Globals::getCurrentBuildStage() >= BuildStage::PARSING);
   auto const iter = Globals::module_to_index_map.find(module_name);
   if (iter == Globals::module_to_index_map.end()) return nullptr;
   return &Globals::getTU(iter->second).m.module;
 }
 PureFN [[nodiscard]] std::optional<u16_t> LOM::getModuleID(std::string_view module_name) noexcept {
-  assert(Globals::getCurrentBuildStage() == BuildStage::PARSING);
+  assert(Globals::getCurrentBuildStage() >= BuildStage::PARSING);
   auto const iter = Globals::module_to_index_map.find(module_name);
   if (iter == Globals::module_to_index_map.end()) return std::nullopt;
   return iter->second;

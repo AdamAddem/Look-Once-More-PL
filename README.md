@@ -18,8 +18,8 @@ Compilation speed is also a priority, speeds of >250k lines of code per second h
     ro_not_allowed: f32 = junk;   # error, readonly variable may not be junk initialized
   
     # All struct members are public
-    struct Foo {
-        a: i32;   # readonly members can be modified within Foo's methods, but may be read anywhere
+    Foo: {
+        a: i32;   # readonly members can be modified within Foo's methods, but may only be read elsewhere
         b$ i32;   # readwrite members may be modified outside the class through a readwrite instance of Foo.
     }
 * Simple and explicit pointer / reference syntax
@@ -79,11 +79,10 @@ Compilation speed is also a priority, speeds of >250k lines of code per second h
     res: f32 = cast<f32> (signed_8 + 3);
 * An actual module system (100% adoption rate)
     ```
-    import whatever;
     pub bar: () { ... }
 
     foo: () i32 { # visible only within current module
-      return whatever.getNum() + 2;
+      return Other::getNum() + 2;
     }
 ---
 ### How to Build

@@ -82,22 +82,22 @@ struct Instruction {
   };
   using enum InstructionType;
 
-  struct ModuleAccessData    { u16_t module_id; u16_t member_id; u16_t module_length; u16_t member_length; };
-  struct TypeAccessData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; };
-  struct LocalData           { u32_t idx; byte_t _pad[4]{}; };
+  struct ModuleAccessData    { u16_t module_id; u16_t member_id; /* byte_t _pad[4]; */ };
+  struct TypeAccessData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; /* byte_t _pad[2]; */ };
+  struct LocalData           { u32_t idx; /* byte_t _pad[4]; */ };
   struct SignedLiteralData   { i64_t value; };
   struct UnsignedLiteralData { u64_t value; };
-  struct FloatLiteralData    { f32_t value; byte_t _pad[4]{}; };
+  struct FloatLiteralData    { f32_t value; /* byte_t _pad[4]; */ };
   struct DoubleLiteralData   { f64_t value; };
-  struct BoolLiteralData     { bool  value; byte_t _pad[7]{}; };
-  struct CharLiteralData     { char  value; byte_t _pad[7]{}; };
-  struct CastAssignData      { u32_t bitwidth; byte_t _pad[4]{}; };
+  struct BoolLiteralData     { bool  value; /* byte_t _pad[7]; */ };
+  struct CharLiteralData     { char  value; /* byte_t _pad[7]; */ };
+  struct CastAssignData      { u32_t bitwidth; /* byte_t _pad[4]; */ };
   struct CastData            { TypeID destination_typeID; };
   struct SubscriptData       { TypeID array_typeID;  };
   struct DereferenceData     { TypeID dereference_typeID; };
-  struct CallData            { u32_t num_parameters; byte_t _pad[4]{}; };
+  struct CallData            { u32_t num_parameters; /* byte_t _pad[4]; */ };
 
-  InstructionType type; u8_t file_idx; u16_t length_in_file; u32_t position_in_file;
+  InstructionType type; u8_t file_idx; u16_t length; u32_t position;
   union {
     u64_t _{};
     ModuleAccessData    module_member_data;
@@ -117,8 +117,8 @@ struct Instruction {
   };
 
   InlineCXPR Instruction() noexcept {}
-  InlineCXPR Instruction(InstructionType type, u8_t file_idx, u16_t length_in_file, u32_t position_in_file) noexcept
-  : type(type), file_idx(file_idx), length_in_file(length_in_file), position_in_file(position_in_file) {}
+  InlineCXPR Instruction(InstructionType type, u8_t file_idx, u16_t length, u32_t position) noexcept
+  : type(type), file_idx(file_idx), length(length), position(position) {}
 
   InlineCXPR explicit Instruction(InstructionType type) noexcept : type(type) {}
   InlineNodiscardCXPR bool is_literal() const noexcept { return eden::enumBetween(type, I8_LITERAL, ESCAPED_STRING_LITERAL); }
@@ -136,7 +136,7 @@ struct Instruction {
   }
 #undef pre
 
-  // expensive and poopy
+// expensive and poopy
 #define pre Assume(type == ESCAPED_STRING_LITERAL);
   NodiscardCXPR std::string escaped_string_value(File file) const noexcept { pre
     std::string res;
@@ -154,18 +154,8 @@ struct Instruction {
   }
 #undef pre
 
-  InlineNodiscardCXPR std::string_view original_string(File file) const noexcept { return file.viewAt(length_in_file, position_in_file); }
-
-#define pre Assume(type == MODULE_GLOBAL);
-  InlineNodiscardCXPR std::string_view module_variable_name() const noexcept { pre return getModule(module_member_data.module_id).getVariable(module_member_data.member_id).nameof(); }
-#undef pre
-
-#define pre Assume(type == MODULE_FUNCTION);
-  InlineNodiscardCXPR std::string_view module_function_name(File file) const noexcept { pre return file.viewAt(module_member_data.member_length, position_in_file + 1); }
-#undef pre
-
-#define pre Assume(type == MODULE_GLOBAL or type == MODULE_FUNCTION);
-  InlineNodiscardCXPR std::string_view module_name(File file) const noexcept { pre return file.viewAt(module_member_data.module_length, position_in_file - module_member_data.module_length); }
+#define pre Assume(type != MODULE_FUNCTION and type != MODULE_GLOBAL); // stupid, but they both only store the length and pos of the
+  InlineNodiscardCXPR std::string_view original_string(File file) const noexcept { pre return file.viewAt(length, position); }
 #undef pre
 
 #define pre Assume(type == TYPE_VARIABLE);

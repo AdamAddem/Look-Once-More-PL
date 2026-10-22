@@ -248,7 +248,7 @@ class LexingContext {
 #undef pre
 
   constexpr void grabSymbol() noexcept {
-    // all this overengineering shaves like, 1% of the lexing time? #worthit
+    // all this overengineering shaves like, 1% of the lexing time?
     struct SymbolMapping {
       bool is_double : 1 = false;
       TokenType type : 7 = TokenType::INVALID_TOKEN;
@@ -299,6 +299,7 @@ class LexingContext {
       twotokens_to_type[ combine('>', '=') ] = {GTREQ, true};
       twotokens_to_type[ combine('!', '=') ] = {KEYWORD_NOT_EQUAL, true};
       twotokens_to_type[ combine('=', '=') ] = {KEYWORD_EQUALS, true};
+      twotokens_to_type[ combine(':', ':') ] = {DOUBLE_COLON, true};
 
       return twotokens_to_type;
     }();
@@ -432,6 +433,18 @@ public:
 namespace LOM::LexerTest {
 namespace {
 using namespace std::string_view_literals;
+
+consteval Lexer::Token request(std::string_view single_token_str) {
+  std::string file_str{single_token_str};
+  file_str += "\0..."sv;
+  auto const file = File{ std::string_view(file_str) };
+
+  eden::vector<Lexer::Token> tokens;
+  Lexer::LexingContext::tokenize(tokens, file);
+  if (tokens.size() != 1 + Lexer::INVALID_TOKEN_PADDING) throw "Expected one token in request.";
+  return tokens[0];
+}
+static_assert(request("::").is(Lexer::TokenType::DOUBLE_COLON));
 
 consteval bool CharLiterals() {
   constexpr auto file = File{

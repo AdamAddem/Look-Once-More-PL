@@ -39,8 +39,7 @@ R"(
 __C puts(str: ref u8) i32;
 
 main: () i32 {
-  __C.puts("Hello, World!");
-
+  __C::puts("Hello, World!");
   return 0;
 }
 )"

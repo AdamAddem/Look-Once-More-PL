@@ -6,23 +6,22 @@ __C ClearBackground(color: u32);
 __C DrawText(text: ref u8, x: i32, y: i32, font_size: i32, color: u32);
 __C TextFormat(fmt: ref u8, __va) ref u8;
 
-import Math;
 pub main: () i32 {
-    __C.InitWindow(1280, 720, "Cube");
+    __C::InitWindow(1280, 720, "Cube");
     bg_color: u32 = 0;
     text_color: u32 = cast<u32>(0) - 1; # set to all 1's, aka black
 
-    res: i32 = Math.fib(8);
-    while not __C.WindowShouldClose() {
-        __C.BeginDrawing(); __C.ClearBackground(bg_color);
+    res: i32 = Math::fib(8);
+    while not __C::WindowShouldClose() {
+        __C::BeginDrawing(); __C::ClearBackground(bg_color);
 
-        __C.DrawText(
-            __C.TextFormat("Fibonacci(8) = %i", res),
+        __C::DrawText(
+            __C::TextFormat("Fibonacci(8) = %i", res),
             195, 300, 100, text_color);
 
-        __C.EndDrawing();
+        __C::EndDrawing();
     }
 
-    __C.CloseWindow();
+    __C::CloseWindow();
     return 0;
 }

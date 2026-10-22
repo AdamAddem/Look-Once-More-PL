@@ -25,33 +25,30 @@ This is a temporary requirement while I establish a more formal build system. <b
 
 Within a module, all non-public functions are available only to other source files within the module. <br>
 To publish a function, place the keyword 'pub' before its declaration. <br>
-To import a module, just type 'import <module_name>;' somewhere in global scope. <br>
-Access the members of a module by appending the module name with a dot. <br>
-Imports are parsed in-order, meaning an import will not be recognized until after the point where it is declared.
-For this reason, I recommend declaring all imports upfront. <br>
+All modules are 'imported' by default. <br>
+Access the members of a module by appending the module name with a '::'. <br>
 
 ### Error messages
-Error messages are currently stage-based. An error occuring in the lexing stage of a module will display the relevant error and prevent parsing from occuring. <br>
-Any errors occuring during parsing will prevent all other modules from entering the validation stage. <br>
+Error messages are currently stage-based. <br>
+Any errors during parsing will prevent all other modules from entering the validation stage. <br>
+Likewise, any errors during validation will prevent all other modules from being lowered. <br>
 
 ### C Interop
 Calling C functions can be done using the '__C' keyword. <br>
 You must first declare the function before usage. Place '__C' before the function name, then provide a forward declaration. <br>
-Ex: `__C puts(str: ref byte) i32;` <br>
+Ex: `__C puts(str: ref u8) i32;` <br>
 This will place the function as part of the internal '__C' module, and as such only one declaration can be present throughout the entire program. <br>
 If variadic arguments are needed, use the '__va' keyword as the last parameter. <br>
-Ex: `__C printf(fmt: ref byte, __va) i32;` <br>
-Calling these functions can be done as if through the '__C' module, which is imported by default. <br>
+Ex: `__C printf(fmt: ref u8, __va) i32;` <br>
 C Interop using structs or arrays passed by value is incorrect won't function as expected. Pass by pointer instead. <br>
 
 ### Missing Features and Known Bugs
 - Globals are unsupported until a constant evaluator is made to enforce constant initialization.
 - Private functions (and public functions within main.lom) with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
 - _= operators do not exist yet (+=, -=, etc).
-- Strings are accessable only through ref byte.
+- Strings are accessable only through ref u8.
 - No support for creating or importing precompiled libraries directly.
-- Import names currently shadow local variabels when accessing members. (local variable named foo cannot access any members if a module named foo has been imported).
-- Errors have some minor display problems;
+- Errors have some synchronization problems;
 - No pointer arithmetic.
 - No working variants or tuples.
 - No standard library.
@@ -60,8 +57,8 @@ C Interop using structs or arrays passed by value is incorrect won't function as
 ### Code Limitations
 - Functions may not have greater than 8 parameters.
 - Modules may not have greater than 256 files.
-- Modules / Structs may not have greater than u16_max globals/member variables
-- Modules may not have greater than u16_max functions
+- Modules / Structs may not have greater than u16_max globals/member variables.
+- Modules may not have greater than u16_max functions.
 - Files may not exceed u32_max in size.
 - Tokens may not exceed the u16_max in length.
 - Expressions have a reasonably large size limit, do not nest too hard.

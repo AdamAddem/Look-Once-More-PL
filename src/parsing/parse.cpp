@@ -32,7 +32,7 @@ struct Expression {
 struct ExpressionTree {
   static constexpr u64_t max_expressiontree_size{256};
   Expression data[max_expressiontree_size];
-  u64_t begin{};
+  sz_t begin{};
 
   constexpr ExpressionTree() noexcept {}
 
@@ -52,8 +52,7 @@ struct ExpressionTree {
 };
 
 class ParsingContext {
-  static constexpr auto name_search = [] (std::string_view e, std::string_view key) static { return e == key; };
-  eden::swap_vector<std::string_view> imports;
+  // static constexpr auto name_search = [] (std::string_view e, std::string_view key) static { return e == key; };
   eden::vector<ASTNode> nodes;
   TokenView tokens;
   File current_file;
@@ -62,11 +61,7 @@ class ParsingContext {
   bool has_errors{};
   ExpressionTree expression_tree; // the stack can have 6kb as a treat :)
 
-  constexpr ParsingContext(std::span<Token> tokens, TU& tu) noexcept
-  : tokens(tokens), current_file(tu.source_files.back()), tu(tu), module(tu.module) {
-    imports.reserve(2);
-    imports.emplace_back_unchecked("__C");
-  }
+  constexpr ParsingContext(std::span<Token> tokens, TU& tu) noexcept : tokens(tokens), current_file(tu.source_files.back()), tu(tu), module(tu.module) {}
 
   NodiscardCXPR u8_t
   current_file_idx() const noexcept {
@@ -83,8 +78,8 @@ class ParsingContext {
       ASTNode {
       .type = node_type,
       .file_idx = current_file_idx(),
-      .length_in_file = 0,
-      .position_in_file = 0,
+      .length = 0,
+      .position = 0,
       ._ = 0
       }
       );
@@ -96,9 +91,9 @@ class ParsingContext {
     return ASTNode{
       .type = type,
       .file_idx = current_file_idx(),
-      .length_in_file = token.length, .position_in_file = token.position,
+      .length = token.length, .position = token.position,
       ._ = 0
-};
+    };
   }
 
   NoInlineCold void
@@ -178,7 +173,7 @@ class ParsingContext {
     return tokens.take().originalString(tu.source_files.back());
   }
 
-  // opening parenthesis must be popped, and the next token must not be closing parenthesis (?)
+  // opening parenthesis must be popped, and the next token must not be closing parenthesis (?) commented out cause idk if this is true TODO: check
   //#define pre assert(tokens.previous().is(TokenType::LPAREN));
   NodiscardCXPR u32_t generateParameters() { //pre
     auto const parameter = generateAssignmentExpression();
@@ -234,48 +229,60 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre assert(module_name_token.isIdentifier() or module_name_token.is(TokenType::DUNDER_CEXTERN)); assert(tokens.peek_is(TokenType::DOT));
+#define pre assert(module_name_token.isIdentifier() or module_name_token.is(TokenType::DUNDER_CEXTERN));
   NodiscardCXPR u32_t generateModuleAccess(Token module_name_token) { pre
-    auto const dot_token = tokens.take();
     auto const module_name = module_name_token.originalString(current_file);
-    auto module_access_node = newNode(dot_token, ASTNode::MODULE_ACCESS);
-    module_access_node.module_access_data.module_length = module_name_token.length;
+    auto access_node = newNode(module_name_token, ASTNode::MODULE_ACCESS);
 
     {
       auto const module_id_opt = getModuleID(module_name);
-      if (not module_id_opt.has_value()) error(module_name_token, "Module not found.");
-      module_access_node.module_access_data.module_id = module_id_opt.value();
+      if (module_id_opt.has_value()) access_node.module_access_data.module_id = module_id_opt.value();
+      else error(module_name_token, "Module not found.");
     }
 
     if (not tokens.peek_is(TokenType::IDENTIFIER))
       error(tokens.peek(), "Expected identifier.");
 
-    auto const member_token = tokens.take(); assert(member_token.position == dot_token.position + 1);
-    module_access_node.module_access_data.member_length = member_token.length;
+    {
+      auto const member_token = tokens.take();
+      access_node.length = member_token.position + member_token.length - access_node.position;
+      access_node.module_access_data.member_offset = eden::narrow<u16_t>(member_token.position - access_node.position);
+    }
 
     static_assert(not Settings::SUBMODULE_SUPPORT);
-    return expression_tree.create(module_access_node);
+    return expression_tree.create(access_node);
   }
 #undef pre
 
   NodiscardCXPR u32_t generatePrimaryExpression() {
     switch (tokens.peek().type) { using enum TokenType;
-      TOKENTYPE_LITERALS_CASES return generateLiteral();
-    case DUNDER_CEXTERN:     return generateModuleAccess(tokens.take());
+    TOKENTYPE_LITERALS_CASES return generateLiteral();
+    case DUNDER_CEXTERN: {
+      auto const cmodule_token = tokens.take();
+      if (not tokens.pop_if(DOUBLE_COLON)) {
+        error(tokens.peek(), "Expected '::' when accessing __C module.");
+        syncToSemicolon();
+        return 0;
+      }
+
+      return generateModuleAccess(cmodule_token);
+    }
+
     case LPAREN: {
       tokens.pop();
       auto const res = generateAssignmentExpression();
-      if (not tokens.pop_if(RPAREN)) error(tokens.take_if_valid(), "Expected closing ).");
+      if (not tokens.pop_if(RPAREN)) error(tokens.take_if_valid(), "Expected closing ')'");
       return res;
     }
 
     case IDENTIFIER: {
       auto const identifier_node = tokens.take();
+
+      if (tokens.pop_if(DOUBLE_COLON))
+        return generateModuleAccess(identifier_node);
+
       if (not tokens.peek_is(DOT))
         return expression_tree.create( newNode(identifier_node, ASTNode::IDENTIFIER) );
-
-      if (imports.search(name_search, identifier_node.originalString(current_file)))
-        return generateModuleAccess(identifier_node);
 
       auto const dot_token = tokens.take();
       auto const identifier_idx = expression_tree.create( newNode(identifier_node, ASTNode::IDENTIFIER) );
@@ -327,7 +334,7 @@ class ParsingContext {
 
         if (not tokens.pop_if(TokenType::RBRACKET)) {
           error(tokens.take_if_valid(), "Expected closing ].");
-          sync_to_semicolon();
+          syncToSemicolon();
         }
 
         continue;
@@ -482,15 +489,16 @@ class ParsingContext {
     return left;
   }
 
-#define pre assert(idx != 0);
+#define pre assert(idx != 0 || expression_tree.data[idx].node.type == ASTNode::EMPTY);
   constexpr void translateExpression(u32_t idx) noexcept { pre
     auto expression = expression_tree.data[idx];
     switch (expression.node.type) { using enum ASTNode::NodeType;
-    case EMPTY:
+    case EMPTY: assert(has_errors); nodes.emplace_back(PLACEHOLDER_NODE); return;
+
     case DECLARATION_JUNK_RO: case DECLARATION_JUNK_RW: case DECLARATION_RO: case DECLARATION_RW:
     case IF:
     case WHILE: case RETURN:
-      edenUnreachable("Statements should not be contained in an expression.");
+      Unreachable("Statements should not be contained in an expression.");
 
     case UNARY: case CAST:
       nodes.emplace_back(expression.node);
@@ -556,24 +564,22 @@ class ParsingContext {
     }
   }
 
-  InlineCXPR void sync_to_semicolon() noexcept {
+  InlineCXPR void syncToSemicolon() noexcept {
     while (not tokens.pop_if(TokenType::SEMI_COLON)) {
       if (tokens.peek_is(TokenType::INVALID_TOKEN)) return;
       tokens.pop();
     }
   }
 
-  // syncs either to the first semicolon, or if encounters a {, syncs to the matching }
-  InlineCXPR void sync_to_semicolon_or_rbrace() noexcept {
-    sz_t lbrace_level{0};
-    while (true) {
-      if (tokens.peek_is(TokenType::SEMI_COLON)) { if (lbrace_level == 0) { tokens.pop(); return; } }
-      if (tokens.pop_if(TokenType::RBRACE)) { if (lbrace_level == 0) return; --lbrace_level; }
-      if (tokens.pop_if(TokenType::LBRACE)) { ++lbrace_level; }
-      else if (tokens.peek_is(TokenType::INVALID_TOKEN)) return;
-      else tokens.pop();
+  InlineCXPR void syncToMatchingBraces() noexcept {
+    sz_t level{};
+    while (not tokens.peek_is(TokenType::INVALID_TOKEN)) {
+      if (tokens.pop_if(TokenType::LBRACE)) ++level;
+      else if (tokens.pop_if(TokenType::RBRACE)) { if (level <= 1) return; --level; }
+      tokens.pop();
     }
   }
+
 
   // parses  `name  : or $  type`
   // returns name token, qualifiers, and typeID
@@ -612,13 +618,13 @@ class ParsingContext {
     auto& node = nodes[decl_node_idx];
     node.declaration_data.typeID = typeID;
     node.file_idx = current_file_idx();
-    node.length_in_file = identifier_token.length;
-    node.position_in_file = identifier_token.position;
+    node.length = identifier_token.length;
+    node.position = identifier_token.position;
 
     if (not tokens.pop_if(TokenType::ASSIGN)) {
       auto const err = tokens.peek();
       error(err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
-      sync_to_semicolon();
+      syncToSemicolon();
       return err;
     }
 
@@ -633,8 +639,8 @@ class ParsingContext {
 
     if (not tokens.peek_is(TokenType::SEMI_COLON)) {
       auto const err = tokens.peek();
-      error(err, "Expected semicolon ending variable declaration.");
-      sync_to_semicolon();
+      error(err, "Expected semi-colon ending variable declaration.");
+      syncToSemicolon();
       return err;
     }
 
@@ -731,8 +737,8 @@ class ParsingContext {
 
     case IDENTIFIER:
       if (tokens.peek_ahead(1).isVarQualifier()) {
-        stmt_idx = insertTypedNode(ASTNode::DECLARATION_RO);
-        return parseVarDecl(stmt_idx); // kindof a bodge, but we avoid getting the combined token for the whole statement
+        stmt_idx = insertTypedNode(ASTNode::EMPTY); // type will be filled later
+        return parseVarDecl(stmt_idx); // avoid getting the combined token for the whole statement
       }
 
     [[fallthrough]];
@@ -745,15 +751,15 @@ class ParsingContext {
           error(tokens.peek(), "Expected declaration qualifier ':' or '$'.");
         else
           error(tokens.peek(), "Expected semi-colon.");
-        sync_to_semicolon();
+        syncToSemicolon();
       }
       else tokens.pop();
     }
 
     auto const combined = Token::combine(first, final);
     auto& stmt_node = nodes[stmt_idx];
-    stmt_node.length_in_file = combined.length;
-    stmt_node.position_in_file = combined.position;
+    stmt_node.length = combined.length;
+    stmt_node.position = combined.position;
     return combined;
   }
 
@@ -778,15 +784,11 @@ class ParsingContext {
       return;
     }
 
+    error(name_token, "Imports not functional.");
     auto name = name_token.originalString(current_file);
-    if (tu.name == name)
-      error(name_token, "Cannot import from current module.");
-    else
-      imports.emplace_back(name);
-
-    if (not tokens.pop_if(TokenType::SEMI_COLON)) {
+    if (tu.name == name) error(name_token, "Cannot import from current module.");
+    if (not tokens.pop_if(TokenType::SEMI_COLON))
       error(tokens.peek(), "Expected semicolon.");
-    }
 
   }
 #undef pre
@@ -814,7 +816,7 @@ class ParsingContext {
     auto const name = parseIdentifier();
     if (not tokens.pop_if(TokenType::LPAREN)) {
       error(tokens.peek(), "Expected opening ( for parameter list.");
-      return sync_to_semicolon();
+      return syncToSemicolon();
     }
 
     eden::swap_vector16<Symbol::Variable> arguments;
@@ -834,7 +836,7 @@ class ParsingContext {
       if (not tokens.pop_if(TokenType::COMMA)) break;
       if (parameter_idx + 1 == Settings::MAX_FUNCTION_PARAMETERS) {
         error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
-        sync_to_semicolon();
+        syncToSemicolon();
         return;
       }
     }
@@ -903,17 +905,16 @@ class ParsingContext {
     if (tokens.peek_is(TokenType::COLON))
       tokens.pop();
     else {
-      error(tokens.peek(), "Expected :");
-      if (tokens.peek_is(TokenType::DUNDER_CEXTERN)) sync_to_semicolon();
-      else sync_to_semicolon_or_rbrace();
+      error(tokens.peek(), "Expected ':'");
+      if (tokens.peek_is(TokenType::DUNDER_CEXTERN)) { syncToSemicolon(); return; }
     }
 
     switch (tokens.peek().type) {
     case TokenType::LPAREN: tokens.pop(); parseFunctionDecl(name, is_public); break;
     case TokenType::LBRACE: tokens.pop(); parseStructDecl(name, is_public); break;
     default:
-      error(tokens.peek(), "Expected { or (. Globals unsupported, sorry!");
-      sync_to_semicolon();
+      error(tokens.peek(), "Expected '{' or '(', globals unsupported, sorry!");
+      syncToSemicolon();
     }
   }
 #undef pre
@@ -935,7 +936,7 @@ public:
           parser.parseGlobalLevelDeclaration(true);
         else
           parser.error(parser.tokens.take(), "Expected identifier in public declaration."),
-          parser.sync_to_semicolon_or_rbrace();
+          parser.syncToMatchingBraces();
         break;
 
       case IDENTIFIER: parser.parseGlobalLevelDeclaration(false); break;

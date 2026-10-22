@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <string_view>
 #include "error.hpp"
+#include "edenlib/casts.hpp"
 
 namespace LOM::Lexer {
 namespace {
@@ -12,7 +13,7 @@ namespace {
 // code to make a perfect hash function was ai generated, need to verify / optimize
 struct WordToken { std::string_view word; TokenType type; };
 inline constexpr WordToken wordTokens[]{
-  {"$", TokenType::INVALID_TOKEN},
+  {"!", TokenType::INVALID_TOKEN},
   {"fn", TokenType::KEYWORD_FN},
   {"if", TokenType::KEYWORD_IF},
   {"else", TokenType::KEYWORD_ELSE},
@@ -119,13 +120,13 @@ END_STRING_LITERAL = 1 << 7,
 }
 
 constexpr u8_t LETTER_OR_UNDER = Category::IDENT_START | Category::IDENT_CONTINUE;
-constexpr u8_t NUMBER =          Category::DIGIT       | Category::IDENT_CONTINUE;
-constexpr u8_t NEWLINE =         Category::WHITE_SPACE | Category::END_LINE | Category::END_STRING_LITERAL | Category::END_CHAR_LITERAL;
-constexpr u8_t FILE_EOF =        Category::END_LINE    | Category::END_STRING_LITERAL | Category::END_CHAR_LITERAL;
-constexpr u8_t WHITE_SPACE =     Category::WHITE_SPACE;
-constexpr u8_t COMMENT =         Category::COMMENT;
-constexpr u8_t SINGLE_QUOTE =    Category::END_CHAR_LITERAL;
-constexpr u8_t DOUBLE_QUOTE =    Category::END_STRING_LITERAL;
+constexpr u8_t NUMBER          = Category::DIGIT       | Category::IDENT_CONTINUE;
+constexpr u8_t NEWLINE         = Category::WHITE_SPACE | Category::END_LINE | Category::END_STRING_LITERAL | Category::END_CHAR_LITERAL;
+constexpr u8_t FILE_EOF        = Category::END_LINE    | Category::END_STRING_LITERAL | Category::END_CHAR_LITERAL;
+constexpr u8_t WHITE_SPACE     = Category::WHITE_SPACE;
+constexpr u8_t COMMENT         = Category::COMMENT;
+constexpr u8_t SINGLE_QUOTE    = Category::END_CHAR_LITERAL;
+constexpr u8_t DOUBLE_QUOTE    = Category::END_STRING_LITERAL;
 
 constexpr auto charCategoryTable = [] {
   std::array<u8_t, 256> table{};
@@ -154,14 +155,14 @@ constexpr auto charCategoryTable = [] {
   return table;
 }();
 
-InlineNodiscardCXPR u8_t categorize(char c) noexcept { return charCategoryTable[(sz_t) c]; }
+InlineNodiscardCXPR u8_t categorize(char c) noexcept { return charCategoryTable[(sz_t)(unsigned char)c]; }
 
 template <Category::CategoryEnum category>
 InlineNodiscardCXPR bool is(char c) noexcept {
   return categorize(c) & category;
 }
 
-struct LexingContext {
+class LexingContext {
   eden::vector<Token>& token_list;
   File file;
   u32_t current_position{};
@@ -181,14 +182,15 @@ struct LexingContext {
   InlineCXPR          void undo() noexcept { --current_position; }
 
   NoInlineCold void
-  error_at_currentpos(std::string_view msg) {
-    reportError(file, 1, current_position, std::string(msg)); has_errors = true;
+  error_at_currentpos(std::string msg) {
+    reportError(file, 1, current_position, std::move(msg)); has_errors = true;
   }
 
-#define pre assert(previous() == '"'); assert(not token_list.at_capacity());
+#define pre assert(peek() == '"');
   constexpr void grabStringLiteral() noexcept { pre
-    Token new_token{ TokenType::STRING_LITERAL, 0, current_position };
+    pop(); // "
 
+    Token new_token{ TokenType::STRING_LITERAL, 0, current_position };
     auto c = peek();
     while (not is<Category::END_STRING_LITERAL>(c)) {
       if ( c == '\\') {
@@ -202,7 +204,7 @@ struct LexingContext {
 
     if (c == '\"') {
       new_token.length = current_position - new_token.position;
-      token_list.emplace_back_unchecked(new_token);
+      token_list.emplace_back(new_token);
       pop();
     }
     else {
@@ -212,8 +214,9 @@ struct LexingContext {
   }
 #undef pre
 
-#define pre assert(previous() == '\''); assert(not token_list.at_capacity());
-  constexpr void grabCharLiteral() noexcept {
+#define pre assert(peek() == '\'');
+  constexpr void grabCharLiteral() noexcept { pre
+    pop(); // '
     Token new_token{ TokenType::CHAR_LITERAL, 1, current_position };
 
     auto const c = take();
@@ -240,17 +243,12 @@ struct LexingContext {
       return;
     }
 
-    token_list.emplace_back_unchecked(new_token);
+    token_list.emplace_back(new_token);
   }
 #undef pre
 
   constexpr void grabSymbol() noexcept {
-    TokenType type;
-    auto const pos = current_position;
-    auto const pair = peek_two();
-
-    // all this overengineering shaves like, 1% of the lexing time?
-    // #worthit
+    // all this overengineering shaves like, 1% of the lexing time? #worthit
     struct SymbolMapping {
       bool is_double : 1 = false;
       TokenType type : 7 = TokenType::INVALID_TOKEN;
@@ -262,7 +260,6 @@ struct LexingContext {
     static constexpr auto combine = [] (u8_t first, u8_t second) {
       return sz_t( ( u16_t(first) << 7 ) | u16_t(second) );
     };
-
     static constexpr auto symbol_map = [] consteval {
       using enum TokenType;
       static constexpr auto sz = 0b00111111'11111111;
@@ -291,11 +288,7 @@ struct LexingContext {
         twotokens_to_type[ combine(':', i) ].type = COLON;
         twotokens_to_type[ combine('$', i) ].type = DOLLAR;
         twotokens_to_type[ combine(';', i) ].type = SEMI_COLON;
-
-        // these three require more complex logic to fully lex
-        twotokens_to_type[ combine('\"', i) ].type = STRING_LITERAL;
-        twotokens_to_type[ combine('\'', i) ].type = CHAR_LITERAL;
-        twotokens_to_type[ combine('.', i) ] .type = DOT;
+        twotokens_to_type[ combine('.', i) ].type = DOT;
       }
 
       // add two character symbols here
@@ -310,31 +303,15 @@ struct LexingContext {
       return twotokens_to_type;
     }();
 
-    auto const idx = combine(pair.first, pair.second);
-    auto const mapping = symbol_map[idx];
-    type = mapping.type;
-    current_position += 1 + u32_t(mapping.is_double);
-    token_list.emplace_back(type, u16_t(current_position - pos), pos);
+    auto const pos = current_position;
+    auto const [first, second] = peek_two();
+    auto const idx = combine(first, second);
+    auto const [is_double, type] = symbol_map[idx];
+    current_position += 1 + u32_t(is_double);
+    token_list.emplace_back(type, eden::narrow<u16_t>(current_position - pos), pos);
 
-    switch(type) { using enum TokenType;
-    default: [[likely]] return;
-
-    case DOT:  {
-      auto const is_previous_invalid = not is<Category::IDENT_CONTINUE>(file.getText()[pos - 1]);
-      auto const is_next_invalid =     not is<Category::IDENT_START>(pair.second);
-      if ( is_previous_invalid | is_next_invalid )
-        error_at_currentpos("Dot operator requires adjacent identifiers.");
-      break;
-    }
-
-    // we pop back here to let the fns add the full token
-    // both fns rely on this
-    case STRING_LITERAL: token_list.pop_back(); return grabStringLiteral();
-    case CHAR_LITERAL:   token_list.pop_back(); return grabCharLiteral();
-
-    case INVALID_TOKEN:  error_at_currentpos("Unrecognized symbol\n.");
-    }
-
+    if (type == TokenType::INVALID_TOKEN)
+      error_at_currentpos(std::format("Unrecognized symbol ( {} ).", (char) first));
   }
 
   constexpr void grabNumber() noexcept {
@@ -412,42 +389,41 @@ struct LexingContext {
       */
     }
   }
+public:
 
-};
+  constexpr static bool tokenize(eden::vector<Token>& out_tokens, File file) noexcept {
+    LexingContext tokenizer{out_tokens, file};
 
-constexpr bool impl(eden::vector<Token>& out_tokens, File file) noexcept {
-  LexingContext tokenizer{out_tokens, file};
-  if (tokenizer.peek() == '.') {
-    tokenizer.error_at_currentpos("File may not start with . for very esoteric reasons.");
-    ++tokenizer.current_position;
-  }
+    [&] {
+      while (true) {
+        tokenizer.skipWhiteSpace();
+        auto const c = tokenizer.peek();
+        switch(categorize(c)) {
+        case LETTER_OR_UNDER: [[likely]] tokenizer.grabIdentOrKeyword(); break;
+        case NUMBER: tokenizer.grabNumber(); break;
+        case COMMENT: tokenizer.skipComments(); break;
+        case SINGLE_QUOTE: tokenizer.grabCharLiteral(); break;
+        case DOUBLE_QUOTE: tokenizer.grabStringLiteral(); break;
 
-  [&] constexpr {
-    while (true) {
-      tokenizer.skipWhiteSpace();
-      auto const c = tokenizer.peek();
-      switch(categorize(c)) {
-      case FILE_EOF: return;
+        default: [[likely]] tokenizer.grabSymbol(); break;
 
-      case LETTER_OR_UNDER: tokenizer.grabIdentOrKeyword(); break;
-      case NUMBER: tokenizer.grabNumber(); break;
-      case COMMENT: tokenizer.skipComments(); break;
-      default: tokenizer.grabSymbol(); break;
+        case FILE_EOF: [[unlikely]] return;
+        }
       }
-    }
-  }();
+    }();
 
-  auto const invalid_token = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
-  for (sz_t i{}; i < INVALID_TOKEN_PADDING; ++i)
-    out_tokens.push_back(invalid_token);
+    auto const invalid_token = Token(TokenType::INVALID_TOKEN, 1, out_tokens.back().position);
+    for (sz_t i{}; i < INVALID_TOKEN_PADDING; ++i)
+      out_tokens.push_back(invalid_token);
 
-  return false;
+    return tokenizer.has_errors;
+  }
 };
 
 }
 
 [[nodiscard]] bool tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
-  return impl(out_tokens, file);
+  return LexingContext::tokenize(out_tokens, file);
 }
 
 }
@@ -464,7 +440,7 @@ consteval bool CharLiterals() {
   };
 
   eden::vector<Lexer::Token> tokens;
-  Lexer::impl(tokens, file);
+  Lexer::LexingContext::tokenize(tokens, file);
 
   if (tokens.size() != 3 + Lexer::INVALID_TOKEN_PADDING)    throw "Expected three tokens in char literal test.";
   for (sz_t i{}; i<3; ++i) {
@@ -483,7 +459,7 @@ consteval bool EscapedCharLiterals() {
   };
 
   eden::vector<Lexer::Token> tokens;
-  Lexer::impl(tokens, file);
+  Lexer::LexingContext::tokenize(tokens, file);
 
   if (tokens.size() != 3 + Lexer::INVALID_TOKEN_PADDING) throw "Expected three tokens in escaped char literal test.";
 
@@ -507,7 +483,7 @@ consteval bool StringLiterals() {
   };
 
   eden::vector<Lexer::Token> tokens;
-  Lexer::impl(tokens, file);
+  Lexer::LexingContext::tokenize(tokens, file);
 
   if (tokens.size() != 4 + Lexer::INVALID_TOKEN_PADDING)    throw "Expected four tokens in string literal test.";
 

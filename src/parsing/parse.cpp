@@ -65,7 +65,7 @@ class ParsingContext {
   constexpr ParsingContext(std::span<Token> tokens, TU& tu) noexcept
   : tokens(tokens), current_file(tu.source_files.back()), tu(tu), module(tu.module) {
     imports.reserve(2);
-    imports.emplace_back("__C");
+    imports.emplace_back_unchecked("__C");
   }
 
   NodiscardCXPR u8_t
@@ -106,7 +106,7 @@ class ParsingContext {
     reportError(current_file, err, std::string(msg)); has_errors = true;
   }
 
-#define pre Assume(tokens.previous().is(TokenType::LBRACKET));
+#define pre assert(tokens.previous().is(TokenType::LBRACKET));
   NodiscardCXPR TypeID parseArrayType() noexcept { pre
     auto const& current_file = tu.source_files.back();
     auto const token = tokens.take();
@@ -126,7 +126,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(pointer_token.isPointer());
+#define pre assert(pointer_token.isPointer());
   NodiscardCXPR TypeID parsePointerType(Token pointer_token) noexcept { pre
     auto x = parseType();
     x.addPointer(pointer_token.is(TokenType::KEYWORD_RAW));
@@ -134,8 +134,8 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(primitive_token.isPrimitive());
-  NodiscardCXPR TypeID parsePrimitiveType(Token primitive_token) const noexcept { pre
+#define pre assert(primitive_token.isPrimitive());
+  NodiscardCXPR static TypeID parsePrimitiveType(Token primitive_token) noexcept { pre
     static constexpr sz_t TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER = std::to_underlying(TokenType::KEYWORD_u8) - std::to_underlying(PrimitiveType::U8);
     return getPrimitiveLiteralID(
       static_cast<PrimitiveType::PrimitiveTypeEnum>(
@@ -482,7 +482,7 @@ class ParsingContext {
     return left;
   }
 
-#define pre Assume(idx != 0);
+#define pre assert(idx != 0);
   constexpr void translateExpression(u32_t idx) noexcept { pre
     auto expression = expression_tree.data[idx];
     switch (expression.node.type) { using enum ASTNode::NodeType;
@@ -556,13 +556,24 @@ class ParsingContext {
     }
   }
 
-  constexpr void sync_to(TokenType sync_type) noexcept {
-    while (not tokens.pop_if(sync_type)) {
+  InlineCXPR void sync_to_semicolon() noexcept {
+    while (not tokens.pop_if(TokenType::SEMI_COLON)) {
       if (tokens.peek_is(TokenType::INVALID_TOKEN)) return;
       tokens.pop();
     }
   }
-  InlineCXPR void sync_to_semicolon() noexcept { return sync_to(TokenType::SEMI_COLON); }
+
+  // syncs either to the first semicolon, or if encounters a {, syncs to the matching }
+  InlineCXPR void sync_to_semicolon_or_rbrace() noexcept {
+    sz_t lbrace_level{0};
+    while (true) {
+      if (tokens.peek_is(TokenType::SEMI_COLON)) { if (lbrace_level == 0) { tokens.pop(); return; } }
+      if (tokens.pop_if(TokenType::RBRACE)) { if (lbrace_level == 0) return; --lbrace_level; }
+      if (tokens.pop_if(TokenType::LBRACE)) { ++lbrace_level; }
+      else if (tokens.peek_is(TokenType::INVALID_TOKEN)) return;
+      else tokens.pop();
+    }
+  }
 
   // parses  `name  : or $  type`
   // returns name token, qualifiers, and typeID
@@ -588,7 +599,7 @@ class ParsingContext {
     return {identifier_token, qualifiers, typeID};
   }
 
-#define pre Assume(tokens.peek().isIdentifier());
+#define pre assert(tokens.peek().isIdentifier());
   constexpr Token parseVarDecl(sz_t decl_node_idx) noexcept { pre
     auto const [identifier_token, qualifiers, typeID] = parseHalfDeclaration();
     auto const decl_name = identifier_token.originalString(current_file);
@@ -631,7 +642,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(tokens.previous().is(TokenType::KEYWORD_IF));
+#define pre assert(tokens.previous().is(TokenType::KEYWORD_IF));
   constexpr Token parseIf(sz_t if_node_idx) noexcept { pre
     parseExpression();
     if (not tokens.pop_if(TokenType::LBRACE)) {
@@ -665,7 +676,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(tokens.previous().is(TokenType::KEYWORD_WHILE));
+#define pre assert(tokens.previous().is(TokenType::KEYWORD_WHILE));
   constexpr Token parseWhile(sz_t while_node_idx) noexcept { pre
     parseExpression();
     if (not tokens.pop_if(TokenType::LBRACE)) {
@@ -687,7 +698,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(tokens.previous().is(TokenType::KEYWORD_RETURN));
+#define pre assert(tokens.previous().is(TokenType::KEYWORD_RETURN));
   constexpr Token parseReturn(sz_t return_node_idx) noexcept { pre
     auto& return_data = nodes[return_node_idx].return_data;
     if (tokens.peek_is(TokenType::SEMI_COLON)) {
@@ -724,15 +735,19 @@ class ParsingContext {
         return parseVarDecl(stmt_idx); // kindof a bodge, but we avoid getting the combined token for the whole statement
       }
 
-      [[fallthrough]];
+    [[fallthrough]];
     default: // expression statement
       stmt_idx = nodes.size();
       parseExpression<true>();
+      final = tokens.previous();
       if (not tokens.peek_is(SEMI_COLON)) {
-        error(tokens.peek(), "Expected semi-colon.");
-        final = tokens.previous();
+        if (tokens.peek_ahead(1).is(ASSIGN))
+          error(tokens.peek(), "Expected declaration qualifier ':' or '$'.");
+        else
+          error(tokens.peek(), "Expected semi-colon.");
+        sync_to_semicolon();
       }
-      else { final = tokens.previous(); tokens.pop(); }
+      else tokens.pop();
     }
 
     auto const combined = Token::combine(first, final);
@@ -742,7 +757,7 @@ class ParsingContext {
     return combined;
   }
 
-#define pre Assume(tokens.previous().is(TokenType::LBRACE));
+#define pre assert(tokens.previous().is(TokenType::LBRACE));
   constexpr void parseStatementsBetweenBraces() noexcept { pre
     while (not tokens.pop_if(TokenType::RBRACE)) {
       parseStatement();
@@ -754,7 +769,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(tokens.previous().is(TokenType::KEYWORD_IMPORT));
+#define pre assert(tokens.previous().is(TokenType::KEYWORD_IMPORT));
   constexpr void parseImport() noexcept { pre
     auto const& current_file = tu.source_files.back();
     auto const name_token = tokens.take();
@@ -776,7 +791,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(tokens.previous().is(TokenType::LBRACE));
+#define pre assert(tokens.previous().is(TokenType::LBRACE));
   constexpr void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
     if (tokens.pop_if(TokenType::RBRACE))
       return (void)module.addCustomType(name, {});
@@ -794,7 +809,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(tokens.previous().is(TokenType::DUNDER_CEXTERN));
+#define pre assert(tokens.previous().is(TokenType::DUNDER_CEXTERN));
   constexpr void parseCExtern() noexcept { pre
     auto const name = parseIdentifier();
     if (not tokens.pop_if(TokenType::LPAREN)) {
@@ -839,7 +854,7 @@ class ParsingContext {
   }
 #undef pre
 
-#define pre Assume(tokens.previous().is(TokenType::LPAREN));
+#define pre assert(tokens.previous().is(TokenType::LPAREN));
   constexpr void parseFunctionDecl(std::string_view name, bool is_public) noexcept { pre
     Function current_function;
     eden::swap_vector16<Symbol::Variable> parameters;
@@ -882,42 +897,55 @@ class ParsingContext {
   }
 #undef pre
 
-  constexpr void parseGlobalLevelDeclaration(bool is_public) noexcept {
+#define pre assert(tokens.peek().isIdentifier());
+  constexpr void parseGlobalLevelDeclaration(bool is_public) noexcept { pre
     auto const name = parseIdentifier();
-    if (not tokens.peek().isVarQualifier())
-      error(tokens.peek(), "Expected declaration qualifier ( : or $ ).");
-    else if (tokens.peek_is(TokenType::DOLLAR))
-      error(tokens.take(), "$ qualifiers currently not supported on functions or structs, sorry!");
-    else
+    if (tokens.peek_is(TokenType::COLON))
       tokens.pop();
+    else {
+      error(tokens.peek(), "Expected :");
+      if (tokens.peek_is(TokenType::DUNDER_CEXTERN)) sync_to_semicolon();
+      else sync_to_semicolon_or_rbrace();
+    }
 
     switch (tokens.peek().type) {
-    case TokenType::LBRACE: tokens.pop(); parseStructDecl(name, is_public); break;
     case TokenType::LPAREN: tokens.pop(); parseFunctionDecl(name, is_public); break;
+    case TokenType::LBRACE: tokens.pop(); parseStructDecl(name, is_public); break;
     default:
       error(tokens.peek(), "Expected { or (. Globals unsupported, sorry!");
       sync_to_semicolon();
     }
   }
+#undef pre
 
 public:
   NodiscardCXPR static bool
   parse(TU& tu, std::span<Token> tokens) noexcept {
     ParsingContext parser(tokens, tu);
 
-    while (not parser.tokens.peek_is(TokenType::INVALID_TOKEN)) {
+    while (true) {
       switch (parser.tokens.peek().type) { using enum TokenType;
       case KEYWORD_IMPORT: parser.tokens.pop(); parser.parseImport(); break;
       case DUNDER_CEXTERN: parser.tokens.pop(); parser.parseCExtern(); break;
-      case KEYWORD_PUB:    parser.tokens.pop(); parser.parseGlobalLevelDeclaration(true); break;
-      case IDENTIFIER:     parser.parseGlobalLevelDeclaration(false); break;
-      default:
+
+      case KEYWORD_PUB:
+        parser.tokens.pop();
+
+        if (parser.tokens.peek().isIdentifier())
+          parser.parseGlobalLevelDeclaration(true);
+        else
+          parser.error(parser.tokens.take(), "Expected identifier in public declaration."),
+          parser.sync_to_semicolon_or_rbrace();
+        break;
+
+      case IDENTIFIER: parser.parseGlobalLevelDeclaration(false); break;
+
+      default: [[unlikely]]
+        if (parser.tokens.peek_is(INVALID_TOKEN)) return parser.has_errors;
         parser.error(parser.tokens.take(), "Expected struct or function declaration.");
         break;
       }
     }
-
-    return parser.has_errors;
   }
 };
 }

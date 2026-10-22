@@ -258,7 +258,7 @@ static_assert(not Settings::MULTITHREADING_SUPPORT);
 void LOM::addExternDeclaration(
   std::string_view name,
   eden::swap_vector16<Symbol::Variable>&& arguments,
-  TypeID const& return_typeID,
+  TypeID return_typeID,
   bool is_variadic) noexcept {
   assert(Globals::getCurrentBuildStage() == BuildStage::PARSING);
 
@@ -275,8 +275,9 @@ parseTU(Parser::TU& tu) {
   eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<32>};
   bool has_error = false;
   for (auto const file : tu.source_files) {
-    if (Lexer::tokenizeFile(tokens, file)) { printFileErrors(file); has_error = true; }
-    else if (Parser::parseTokens(tu, tokens.to_span())) { printFileErrors(file); has_error = true; }
+    if (Lexer::tokenizeFile(tokens, file) ||
+        Parser::parseTokens(tu, tokens.to_span()))
+          printFileErrors(file), has_error = true;
     tokens.clear();
   }
 
@@ -295,8 +296,22 @@ parseTUs() {
     auto const end_time = chrono_now();
     Globals::addParsingBenchmark(end_time - begin_time, parser_tu.module.getID());
   }
+  if (has_error) return true;
 
-  return has_error;
+  auto const& main_tu = Globals::getTU(MAIN_TU_IDX);
+  auto const main_fn = main_tu.m.module.getFunction("main");
+  auto const main_file = main_tu.m.source_files[0];
+  if (main_fn == nullptr) {
+    reportError(main_file, 0, 0, "Main function not defined.");
+    printFileErrors(main_file); return true;
+  }
+  if (not main_fn->is_public) {
+    auto [len, pos] = main_file.lenPosFromView(main_fn->nameof());
+    reportError(main_file, len, pos, "Main function not public.");
+    printFileErrors(main_file); return true;
+  }
+
+  return false;
 }
 
 // returns true if compilation should stop (due to error or outputing peep)
@@ -396,12 +411,6 @@ void LOM::build() {
   if constexpr(not Settings::do_profile) {
     if (Settings::do_linking) {
       auto const begin = chrono_now();
-
-      auto const& main_tu = Globals::getTU(MAIN_TU_IDX);
-      auto const main_fn = main_tu.m.module.getFunction("main");
-      if (main_fn == nullptr) { reportError(main_tu.m.source_files[0], 0, 0, "Main function not defined."); return; }
-      if (not main_fn->is_public) { reportError(main_tu.m.source_files[0], 0, 0, "Main function not public."); return; }
-
       if (compile_extern.joinable()) compile_extern.join();
       Backend::linkObjects();
       outputBenchmarks(chrono_now() - begin);

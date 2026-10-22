@@ -38,27 +38,31 @@ NoInlineCold std::string
 getFileErrors(File file) {
   std::string error_messages;
   auto const file_text = file.getText();
-  auto const file_path = file.path();
   auto const error_iter = file_to_errors_map.find(file_text.data());
   if (error_iter == file_to_errors_map.end()) return error_messages;
 
   auto const& error_vec = error_iter->second;
-  error_messages.append("Errors within file: "); error_messages.append(file_path); error_messages.append("\n\n");
+  error_messages += std::format("Errors within file: {}\n\n", file.path());
+
   for (auto& error : error_vec) {
-    error_messages.append(error.message);
+    error_messages += error.message; error_messages += '\n';
+
     auto const beginning_line_idx = file_text.substr(0, error.position).find_last_of('\n');
     auto ending_line_idx = file_text.substr(error.position).find_first_of('\n');
     if (ending_line_idx == std::string_view::npos) ending_line_idx = file_text.substr(error.position).find_first_of('\0');
-    auto const ln = std::count(file_text.begin(), file_text.begin() + error.position, '\n') + 1;
-    auto const entire_line = file_text.substr(beginning_line_idx + 1, (error.position + ending_line_idx - 1) - beginning_line_idx);
+
+    auto const line_number_msg = std::format("{}: ",
+        std::count(file_text.begin(), file_text.begin() + error.position, '\n') + 1);
+
+    auto const entire_line_msg = std::format("{}\n",
+      file_text.substr(beginning_line_idx + 1, (error.position + ending_line_idx - 1) - beginning_line_idx));
+
+    error_messages += line_number_msg;
+    error_messages += entire_line_msg;
 
     error_messages.append(
-      std::format("\n{}:{}\n", ln, entire_line)
-      );
-
-    error_messages.append(
-      std::format("{} {}\n",
-        std::string(error.position - beginning_line_idx, ' '),
+      std::format("{}{}\n",
+        std::string(error.position - beginning_line_idx - 1 + line_number_msg.size(), ' '),
         std::string(error.length, '^'))
       );
   }

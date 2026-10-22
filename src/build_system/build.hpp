@@ -39,7 +39,7 @@ PureFN [[nodiscard]] u16_t getNumTUs() noexcept;
 void addExternDeclaration(
   std::string_view name,
   eden::swap_vector16<Symbol::Variable>&& arguments,
-  TypeID const& return_typeID,
+  TypeID return_typeID,
   bool is_variadic) noexcept;
 
 }

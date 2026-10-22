@@ -12,7 +12,7 @@ namespace LOM::Lexer {
 
 struct Token {
   TokenType type;
-  byte_t _pad[1]{};
+//byte_t _pad[1];
   u16_t length;
   u32_t position;
 

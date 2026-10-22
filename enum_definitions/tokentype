@@ -37,6 +37,7 @@ tokentype.hpp TokenType LOM::Lexer u8_t
     LESSEQ <=
     GTREQ >=
     SEMI_COLON ;
+    DOUBLE_COLON ::
 
 !BEGIN VAR_QUALIFIERS
     COLON :
@@ -51,13 +52,16 @@ tokentype.hpp TokenType LOM::Lexer u8_t
 
 !BEGIN KEYWORDS
 
-!BEGIN BITWISE
+!BEGIN LOGICAL
     KEYWORD_AND and
     KEYWORD_OR or
     KEYWORD_XOR xor
     KEYWORD_NOT not
     KEYWORD_EQUALS eq
     KEYWORD_NOT_EQUAL not_eq
+!END LOGICAL
+
+!BEGIN BITWISE
     KEYWORD_BITAND bitand
     KEYWORD_BITOR bitor
     KEYWORD_BITXOR bitxor

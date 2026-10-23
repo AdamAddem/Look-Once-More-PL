@@ -31,7 +31,7 @@ charToEscapeSequenceEquivalent(char c) {
 }
 
 struct Instruction {
-  enum class InstructionType : u8_t {
+  enum class Enum : u8_t {
     NOOP,
 
     GLOBAL, FUNCTION,
@@ -80,7 +80,7 @@ struct Instruction {
 
     CALL
   };
-  using enum InstructionType;
+  using enum Enum;
 
   struct ModuleAccessData    { u16_t module_id; u16_t member_id; /* byte_t _pad[4]; */ };
   struct TypeAccessData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; /* byte_t _pad[2]; */ };
@@ -97,7 +97,7 @@ struct Instruction {
   struct DereferenceData     { TypeID dereference_typeID; };
   struct CallData            { u32_t num_parameters; /* byte_t _pad[4]; */ };
 
-  InstructionType type; u8_t file_idx; u16_t length; u32_t position;
+  Enum type; u8_t file_idx; u16_t length; u32_t position;
   union {
     u64_t _{};
     ModuleAccessData    module_member_data;
@@ -117,24 +117,11 @@ struct Instruction {
   };
 
   InlineCXPR Instruction() noexcept {}
-  InlineCXPR Instruction(InstructionType type, u8_t file_idx, u16_t length, u32_t position) noexcept
+  InlineCXPR Instruction(Enum type, u8_t file_idx, u16_t length, u32_t position) noexcept
   : type(type), file_idx(file_idx), length(length), position(position) {}
 
-  InlineCXPR explicit Instruction(InstructionType type) noexcept : type(type) {}
+  InlineCXPR explicit Instruction(Enum type) noexcept : type(type) {}
   InlineNodiscardCXPR bool is_literal() const noexcept { return eden::enumBetween(type, I8_LITERAL, ESCAPED_STRING_LITERAL); }
-
-#define pre assert(is_literal());
-  constexpr void adjust_literal(u64_t bitwidth, bool make_signed) noexcept { pre
-    switch (bitwidth) {
-    case 8:   type = make_signed ? I8_LITERAL : U8_LITERAL; return;
-    case 16:  type = make_signed ? I16_LITERAL : U16_LITERAL; return;
-    case 32:  type = make_signed ? I32_LITERAL : U32_LITERAL; return;
-    case 64:  type = make_signed ? I64_LITERAL : U64_LITERAL; return;
-    default:
-      std::unreachable();
-    }
-  }
-#undef pre
 
 // expensive and poopy
 #define pre Assume(type == ESCAPED_STRING_LITERAL);
@@ -154,7 +141,7 @@ struct Instruction {
   }
 #undef pre
 
-#define pre Assume(type != MODULE_FUNCTION and type != MODULE_GLOBAL); // stupid, but they both only store the length and pos of the
+#define pre Assume(type != MODULE_FUNCTION and type != MODULE_GLOBAL); // stupid, but they both only store the length and pos of the module
   InlineNodiscardCXPR std::string_view original_string(File file) const noexcept { pre return file.viewAt(length, position); }
 #undef pre
 

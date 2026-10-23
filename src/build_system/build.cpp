@@ -88,15 +88,15 @@ class Globals {
     auto const num_tus = module_paths.size();
     benchmark_times.resize(num_tus);
     module_map.reserve(num_tus);
-    module_map.emplace("__C", C_TU_IDX);
+    module_map.emplace("__C", C_TU_ID);
 
     // we do this malarky instead of using a vector because TUnion's move/copy constructor cannot be implemented in any satisfactory way
     // and vector requires a movable object even if we reserve upfront
     auto const tu_array = std::start_lifetime_as_array<TUnion>(::operator new(num_tus * sizeof(TUnion), align_t{64}), num_tus);
     tu_list.reset(tu_array, num_tus);
 
-    std::construct_at<TUnion>(tu_array, C_TU_IDX)->m.name = "__C";
-    for (sz_t i{MAIN_TU_IDX}; i<num_tus; ++i) {
+    std::construct_at<TUnion>(tu_array, C_TU_ID)->m.name = "__C";
+    for (sz_t i{MAIN_TU_ID}; i<num_tus; ++i) {
       auto const id = eden::narrow<u16_t>(i);
       auto* tu = std::construct_at<TUnion>(tu_array + i, id);
 
@@ -110,7 +110,7 @@ class Globals {
         tu->m.name = module_name;
       }
 
-      if (i == MAIN_TU_IDX) {
+      if (i == MAIN_TU_ID) {
         assert(fs::exists(main_path));
         tu->m.source_files.emplace_back(main_path);
         continue; // only main.lom considered
@@ -126,7 +126,7 @@ class Globals {
     auto const end = chrono_now();
 
     // storing here cuz its empty so why not, kinda stupid but whatever
-    benchmark_times[C_TU_IDX].*init_time_bm_ptr = end - begin;
+    benchmark_times[C_TU_ID].*init_time_bm_ptr = end - begin;
   }
 
   static void resetAllState() {
@@ -184,16 +184,16 @@ public:
 
   InlineNodiscardCXPR static sz_t numTUs() noexcept { return tu_list.size(); }
   InlineNodiscardCXPR static TUnion& getTU(u16_t tu_id) noexcept { assert(tu_id < numTUs()); return tu_list[tu_id]; }
-  InlineNodiscardCXPR static std::span<TUnion> getUserTUs() noexcept { return tu_list.to_span().subspan(MAIN_TU_IDX); } // does not include the CModule TU
+  InlineNodiscardCXPR static std::span<TUnion> getUserTUs() noexcept { return tu_list.to_span().subspan(MAIN_TU_ID); } // does not include the CModule TU
 
   InlineCXPR static void addParsingBenchmark(nanoseconds t, u16_t module_id) noexcept { benchmark_times[module_id].parsing_time += t; }
   InlineCXPR static void addPeepingBenchmark(nanoseconds t, u16_t module_id) noexcept { benchmark_times[module_id].peeping_time += t; }
   InlineCXPR static void addBackendBenchmark(nanoseconds t, u16_t module_id) noexcept { benchmark_times[module_id].backend_time += t; }
-  InlineCXPR static void addFileOutputBenchmark(nanoseconds t) noexcept { benchmark_times[C_TU_IDX].*file_output_bm_ptr += t; }
+  InlineCXPR static void addFileOutputBenchmark(nanoseconds t) noexcept { benchmark_times[C_TU_ID].*file_output_bm_ptr += t; }
 
   InlineNodiscardCXPR static Benchmark getBenchmark(u16_t module_id) noexcept { return benchmark_times[module_id]; }
-  InlineNodiscardCXPR static nanoseconds getInitTime() noexcept { return benchmark_times[C_TU_IDX].*init_time_bm_ptr; }
-  InlineNodiscardCXPR static nanoseconds getFileOutputTime() noexcept { return benchmark_times[C_TU_IDX].*file_output_bm_ptr; }
+  InlineNodiscardCXPR static nanoseconds getInitTime() noexcept { return benchmark_times[C_TU_ID].*init_time_bm_ptr; }
+  InlineNodiscardCXPR static nanoseconds getFileOutputTime() noexcept { return benchmark_times[C_TU_ID].*file_output_bm_ptr; }
 
   friend void LOM::build();
   friend void compileExtern();
@@ -262,7 +262,7 @@ void LOM::addExternDeclaration(
   bool is_variadic) noexcept {
   assert(Globals::getCurrentBuildStage() == BuildStage::PARSING);
 
-  auto& cTU = Globals::getTU(C_TU_IDX).peepir_tu;
+  auto& cTU = Globals::getTU(C_TU_ID).peepir_tu;
   auto& cModule = cTU.module;
   cModule.addFunction(name, std::move(arguments), return_typeID, true, is_variadic);
 }
@@ -289,7 +289,7 @@ parseTU(Parser::TU& tu) {
 parseTUs() {
   bool has_error = false;
 
-  for (sz_t i{MAIN_TU_IDX}; i<Globals::numTUs(); ++i) {
+  for (sz_t i{MAIN_TU_ID}; i<Globals::numTUs(); ++i) {
     auto const begin_time = chrono_now();
     auto& parser_tu = Globals::getTU(eden::narrow<u16_t>(i)).parser_tu;
     has_error |= parseTU(parser_tu);
@@ -298,7 +298,7 @@ parseTUs() {
   }
   if (has_error) return true;
 
-  auto const& main_tu = Globals::getTU(MAIN_TU_IDX);
+  auto const& main_tu = Globals::getTU(MAIN_TU_ID);
   auto const main_fn = main_tu.m.module.getFunction("main");
   auto const main_file = main_tu.m.source_files[0];
   if (main_fn == nullptr) {
@@ -352,7 +352,7 @@ void outputBenchmarks(nanoseconds linking_time) noexcept {
   Benchmark totals{};
   auto print_and_sum = [] (auto time_ptr) {
     nanoseconds total{};
-    for (auto i{MAIN_TU_IDX}; i<Globals::numTUs(); ++i) {
+    for (auto i{MAIN_TU_ID}; i<Globals::numTUs(); ++i) {
       auto const ns = Globals::getBenchmark(eden::narrow<u16_t>(i)).*time_ptr;
       auto const us = to_us(ns);
       std::println("  {}\ttook\t{}, {}", getNameOfModule(i), us, ns);

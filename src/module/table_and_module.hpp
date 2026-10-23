@@ -161,7 +161,7 @@ class Module final : public SymbolTable {
   eden::swap_vector<ArrayType> array_types; // using a swap vector here is bad, we should only ever use search_noswap. TODO: Change
   eden::swap_vector<CustomType> custom_types;
   u16_t id;
-  byte_t _pad[6]{};
+//byte_t _pad[6];
 
   template <std::derived_from<Type> T>
   InlineNodiscardCXPR static TypeID
@@ -188,13 +188,6 @@ class Module final : public SymbolTable {
 
 public:
   InlineCXPR explicit Module(u16_t module_id) noexcept : id(module_id) {}
-
-  InlineNodiscardCXPR sz_t
-  totalNumberOfTypes() const noexcept {
-    return PrimitiveType::num_types +
-           array_types.size() +
-           custom_types.size();
-  }
 
   InlineNodiscardCXPR u16_t getID()           const noexcept { return id; }
   InlineNodiscardCXPR sz_t numArrayTypes()    const noexcept { return array_types.size(); }

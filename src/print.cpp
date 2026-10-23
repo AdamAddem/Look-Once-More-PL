@@ -116,7 +116,7 @@ printFunction(TU const& tu, u16_t fn_id) noexcept {
 
 NoInlineCold void
 LOM::printParsed() noexcept {
-  for (sz_t i{C_TU_IDX + 1}; i<getNumTUs(); ++i) {
+  for (sz_t i{C_TU_ID + 1}; i<getNumTUs(); ++i) {
     auto const& tu = getParserTU(i);
     std::println("\n--- Parser Output --- {}", tu.name);
     for (sz_t j{}; j<tu.functions.size(); ++j) {
@@ -132,7 +132,7 @@ namespace LOM::PeepIR { namespace {
 
 // returns number of sub expressions for indentation purposes
 sz_t printInstruction(Instruction instruction, File file, std::string_view module_name) {
-  switch (instruction.type) { using enum Instruction::InstructionType;
+  switch (instruction.type) { using enum Instruction::Enum;
   case GLOBAL: std::println("Global {}", instruction.original_string(file)); return 0;
   case FUNCTION: std::println("Function {}", instruction.original_string(file)); return 0;
 
@@ -283,7 +283,7 @@ printFunction(TU const& tu, u16_t fn_id) noexcept {
 
 NoInlineCold void
 LOM::printPeeped() noexcept {
-  for (sz_t i{C_TU_IDX + 1}; i<getNumTUs(); ++i) {
+  for (sz_t i{C_TU_ID + 1}; i<getNumTUs(); ++i) {
     auto const& tu = getPeepTU(i);
     std::println("\n--- PeepIR --- {}", tu.name);
     for (sz_t j{}; j<tu.functions.size(); ++j)

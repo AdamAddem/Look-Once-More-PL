@@ -14,9 +14,9 @@ namespace Symbol { struct Variable; }
 class Module;
 struct TypeID;
 
-static constexpr auto C_TU_IDX = 0uz;
-static constexpr auto MAIN_TU_IDX = 1uz;
-static constexpr auto USER_TU_START_IDX = 1uz;
+static constexpr auto C_TU_ID = 0uz;
+static constexpr auto MAIN_TU_ID = 1uz;
+static constexpr auto USER_TU_START_ID = 1uz;
 
 void build();
 

@@ -5,15 +5,17 @@
 #include "edenlib/typedefs.hpp"
 
 #include "build_system/build.hpp"
+#include "edenlib/casts.hpp"
 #include "module/table_and_module_sync.hpp"
+#include "module/types.hpp"
 #include "settings.hpp"
 
 #include <cassert>
 #include <cstring>
 #include <limits>
+#include <print>
 #include <span>
 #include <utility>
-#include <print>
 
 namespace LOM {
 
@@ -233,29 +235,29 @@ struct TypeID {
 class PrimitiveType final : public Type {
   friend class Module;
 public:
-  enum class PrimitiveTypeEnum : u8_t { // do not change order between I8 and BOOL, ParsePrimitiveType in parser relies on this
-    U7, U15, U31, U63, // unsigned literal whos values are compatable with both signed and unsigned
+  enum class PrimitiveTypeEnum : u8_t {
     U8, U16, U32, U64,
     I8, I16, I32, I64,
     F32, F64,
     CHAR, STRING, BOOL,
   };
   using enum PrimitiveTypeEnum;
-  
-private:
-  static constexpr sz_t num_types = 17; static_assert(std::to_underlying(BOOL) == 16);
-  PrimitiveTypeEnum primitive_type;
 
-  constexpr PrimitiveType(PrimitiveTypeEnum type) noexcept : Type(PRIMITIVE), primitive_type(type) {}
+private:
+  PrimitiveTypeEnum primitive_type;
+  bool is_smaller_literal{false}; // true only for unsigned literals which fit into both signed and unsigned of their size (ex: 5 is U8 but its value can fit in I8, 128 is U8 but cannot fit in I8)
+
+  constexpr PrimitiveType(PrimitiveTypeEnum type, bool is_smaller_literal = false) noexcept : Type(PRIMITIVE), primitive_type(type), is_smaller_literal(is_smaller_literal) {}
 
   NodiscardCXPR static PrimitiveType const&
   getTypeFromID(u32_t id) {
-    static constexpr PrimitiveType ts[num_types] {
-      {U7}, {U15}, {U31}, {U63},
+    static constexpr PrimitiveType ts[] {
       {U8}, {U16}, {U32}, {U64},
       {I8}, {I16}, {I32}, {I64},
       {F32}, {F64},
       {CHAR}, {STRING}, {BOOL},
+
+      {U8, true}, {U16, true}, {U32, true},
     };
     return ts[id];
   }
@@ -268,42 +270,22 @@ public:
 
   InlineNodiscardCXPR PrimitiveTypeEnum getUnderlyingPrimitiveType() const noexcept { return primitive_type; }
 
-  InlineNodiscardCXPR bool isIntegral()         const noexcept { return eden::enumBetween(primitive_type, U7, I64); }
+  InlineNodiscardCXPR bool isIntegral()         const noexcept { return eden::enumBetween(primitive_type, U8, I64); }
   InlineNodiscardCXPR bool isSignedIntegral()   const noexcept { return eden::enumBetween(primitive_type, I8, I64); }
-  InlineNodiscardCXPR bool isUnsignedIntegral() const noexcept { return eden::enumBetween(primitive_type, U7, U64); }
+  InlineNodiscardCXPR bool isUnsignedIntegral() const noexcept { return eden::enumBetween(primitive_type, U8, U64); }
   InlineNodiscardCXPR bool isFloating()         const noexcept { return eden::enumBetween(primitive_type, F32, F64); }
-  InlineNodiscardCXPR bool isArithmetic()       const noexcept { return eden::enumBetween(primitive_type, U7, F64); }
+  InlineNodiscardCXPR bool isArithmetic()       const noexcept { return eden::enumBetween(primitive_type, PrimitiveTypeEnum{}, F64); }
   InlineNodiscardCXPR bool isBool()             const noexcept { return primitive_type == BOOL; }
   InlineNodiscardCXPR bool isChar()             const noexcept { return primitive_type == CHAR; }
   InlineNodiscardCXPR bool isString()           const noexcept { return primitive_type == STRING; }
 
   NodiscardCXPR sz_t bitwidth() const noexcept {
     switch (primitive_type) {
-    case I8:
-    case U7:
-    case U8:
-    case BOOL:
-    case CHAR:
-      return 8;
-
-    case I16:
-    case U15:
-    case U16:
-      return 16;
-
-    case I32:
-    case U31:
-    case U32:
-    case F32:
-      return 32;
-
-    case I64:
-    case U63:
-    case U64:
-    case F64:
-      return 64;
-    default:
-      std::unreachable();
+    case I8:  case U8:  case BOOL: case CHAR: return 8;
+    case I16: case U16:           return 16;
+    case I32: case U32: case F32: return 32;
+    case I64: case U64: case F64: return 64;
+    default: Unreachable("Invalid primitive type enum.");
     }
   }
 
@@ -315,11 +297,6 @@ public:
   type_singleton_decl(i16)
   type_singleton_decl(i32)
   type_singleton_decl(i64)
-
-  type_singleton_decl(u7)
-  type_singleton_decl(u15)
-  type_singleton_decl(u31)
-  type_singleton_decl(u63)
 
   type_singleton_decl(u8)
   type_singleton_decl(u16)
@@ -350,11 +327,6 @@ public:
   type_singleton(i32, I32)
   type_singleton(i64, I64)
 
-  type_singleton(u7, U7)
-  type_singleton(u15, U15)
-  type_singleton(u31, U31)
-  type_singleton(u63, U63)
-
   type_singleton(u8, U8)
   type_singleton(u16, U16)
   type_singleton(u32, U32)
@@ -368,14 +340,14 @@ public:
   type_singleton(bool_, BOOL)
 #undef type_singleton
 
-InlineNodiscardCXPR bool TypeID::isBool()             const noexcept { return isPrimitive() and ( id == std::to_underlying(PrimitiveType::BOOL) ); }
-InlineNodiscardCXPR bool TypeID::isIntegral()         const noexcept { return isPrimitive() and eden::enumBetween(PrimitiveType::PrimitiveTypeEnum{ (u8_t) id }, PrimitiveType::U7, PrimitiveType::I64); }
-InlineNodiscardCXPR bool TypeID::isSignedIntegral()   const noexcept { return isPrimitive() and eden::enumBetween(PrimitiveType::PrimitiveTypeEnum{ (u8_t) id}, PrimitiveType::I8, PrimitiveType::I64); }
-InlineNodiscardCXPR bool TypeID::isUnsignedIntegral() const noexcept { return isPrimitive() and eden::enumBetween(PrimitiveType::PrimitiveTypeEnum{ (u8_t) id}, PrimitiveType::U7, PrimitiveType::U64); }
-InlineNodiscardCXPR bool TypeID::isFloating()         const noexcept { return isPrimitive() and eden::enumBetween(PrimitiveType::PrimitiveTypeEnum{ (u8_t) id}, PrimitiveType::F32, PrimitiveType::F64); }
-InlineNodiscardCXPR bool TypeID::isArithmetic()       const noexcept { return isPrimitive() and eden::enumBetween(PrimitiveType::PrimitiveTypeEnum{ (u8_t) id}, PrimitiveType::U7, PrimitiveType::F64); }
+InlineNodiscardCXPR bool TypeID::isBool()             const noexcept { return isPrimitive() and getPrimitiveType().isBool(); }
+InlineNodiscardCXPR bool TypeID::isIntegral()         const noexcept { return isPrimitive() and getPrimitiveType().isIntegral(); }
+InlineNodiscardCXPR bool TypeID::isSignedIntegral()   const noexcept { return isPrimitive() and getPrimitiveType().isSignedIntegral(); }
+InlineNodiscardCXPR bool TypeID::isUnsignedIntegral() const noexcept { return isPrimitive() and getPrimitiveType().isUnsignedIntegral(); }
+InlineNodiscardCXPR bool TypeID::isFloating()         const noexcept { return isPrimitive() and getPrimitiveType().isFloating(); }
+InlineNodiscardCXPR bool TypeID::isArithmetic()       const noexcept { return isPrimitive() and getPrimitiveType().isArithmetic(); }
 
-#define pre Assume(isPrimitive());
+#define pre assert(isPrimitive());
 InlineNodiscardCXPR PrimitiveType const& TypeID::getPrimitiveType() const noexcept { pre return PrimitiveType::getTypeFromID(*this); }
 #undef pre
 
@@ -408,7 +380,7 @@ public:
   InlineNodiscardCXPR TypeID getSubtypeID() const noexcept { return subtypeID; }
 
 #define pre Assume(&other != this);
-  InlineNodiscardCXPR bool operator==(ArrayType const& other) const noexcept { pre return eden::are_bitwise_equal_restrict(this, &other); }
+  InlineNodiscardCXPR bool operator==(ArrayType const& other) const noexcept { pre return eden::areBitwiseEqualRestrict(this, &other); }
 #undef pre
 
   NoInlineCold [[nodiscard]] std::string toString() const noexcept;
@@ -461,30 +433,21 @@ TypeID::bitwidth() const noexcept {
 inline constexpr TypeID devoidID{ .derived = Type::DEVOID, .id = 0 };
 inline constexpr TypeID errorID{ .derived = Type::ERROR, .id = 1 };
 
-NodiscardCXPR static TypeID getPrimitiveLiteralID(PrimitiveType::PrimitiveTypeEnum primitive_type) noexcept { return { .derived = Type::PRIMITIVE, .id = std::to_underlying(primitive_type) }; };
-
 NodiscardCXPR static TypeID
 signedToLiteralTypeID(i64_t val) noexcept {
-  val = val < 0 ? (val * -1) - 1 : val;
-  if (val <= std::numeric_limits<i8_t>::max())  return getPrimitiveLiteralID(PrimitiveType::I8);
-  if (val <= std::numeric_limits<i16_t>::max()) return getPrimitiveLiteralID(PrimitiveType::I16);
-  if (val <= std::numeric_limits<i32_t>::max()) return getPrimitiveLiteralID(PrimitiveType::I32);
-  return getPrimitiveLiteralID(PrimitiveType::I64);
+  if (std::in_range<i8_t>(val))  return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::I8)  };
+  if (std::in_range<i16_t>(val)) return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::I16) };
+  if (std::in_range<i32_t>(val)) return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::I32) };
+  return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::I64) };
 }
 
 NodiscardCXPR static TypeID
 unsignedToLiteralTypeID(u64_t val) noexcept {
-  if (val <= i8_max) return getPrimitiveLiteralID(PrimitiveType::U7);
-  if (val <= u8_max) return getPrimitiveLiteralID(PrimitiveType::U8);
-
-  if (val <= i16_max) return getPrimitiveLiteralID(PrimitiveType::U15);
-  if (val <= u16_max) return getPrimitiveLiteralID(PrimitiveType::U16);
-
-  if (val <= i32_max) return getPrimitiveLiteralID(PrimitiveType::U31);
-  if (val <= u32_max) return getPrimitiveLiteralID(PrimitiveType::U32);
-
-  if (val <= i64_max) return getPrimitiveLiteralID(PrimitiveType::U63);
-  return getPrimitiveLiteralID(PrimitiveType::U64);
+  static constexpr auto literal_offset = (u32_t) std::to_underlying(PrimitiveType::BOOL) + 1;
+  if (std::in_range<u8_t>(val))  return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::U8) + u32_t(val <= u8_t(i8_max)) * literal_offset  };
+  if (std::in_range<u16_t>(val)) return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::U16) + u32_t(val <= u8_t(i16_max)) * literal_offset  };
+  if (std::in_range<u32_t>(val)) return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::U32) + u32_t(val <= u8_t(i16_max)) * literal_offset  };
+  return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::U64) };
 }
 
-};
+}

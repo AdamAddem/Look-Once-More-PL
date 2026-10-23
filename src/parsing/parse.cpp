@@ -109,7 +109,7 @@ class ParsingContext {
 
     if (not token.is(TokenType::INTEGER_LITERAL))
       error(token, "Expected integer literal in array type."), array_size = 1;
-    else array_size = token.getInteger(current_file);
+    else array_size = token.getInt(current_file);
 
     if (not tokens.pop_if(TokenType::RBRACKET)) {
       error(tokens.peek(), "Expected ] while parsing array type.");
@@ -130,16 +130,23 @@ class ParsingContext {
 #undef pre
 
 #define pre assert(primitive_token.isPrimitive());
-  NodiscardCXPR static TypeID parsePrimitiveType(Token primitive_token) noexcept { pre
-    static constexpr sz_t TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER = std::to_underlying(TokenType::KEYWORD_u8) - std::to_underlying(PrimitiveType::U8);
-    return getPrimitiveLiteralID(
-      static_cast<PrimitiveType::PrimitiveTypeEnum>(
-        std::to_underlying(primitive_token.type) - TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER
-        )
-      );
-    static_assert( std::to_underlying(TokenType::KEYWORD_u8) - TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER == std::to_underlying(PrimitiveType::U8) );
-    static_assert( std::to_underlying(TokenType::KEYWORD_i8) - TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER == std::to_underlying(PrimitiveType::I8) );
-    static_assert( std::to_underlying(TokenType::KEYWORD_BOOL) - TOKENTYPE_TO_PRIMITIVETYPE_CONVERTER == std::to_underlying(PrimitiveType::BOOL) );
+  InlineNodiscardCXPR static TypeID parsePrimitiveType(Token primitive_token) noexcept { pre
+    switch (primitive_token.type) { using enum TokenType;
+    case KEYWORD_u8:      return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U8)};
+    case KEYWORD_u16:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U16)};
+    case KEYWORD_u32:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U32)};
+    case KEYWORD_u64:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U64)};
+    case KEYWORD_i8:      return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I8)};
+    case KEYWORD_i16:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I16)};
+    case KEYWORD_i32:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I32)};
+    case KEYWORD_i64:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I64)};
+    case KEYWORD_f32:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::F32)};
+    case KEYWORD_f64:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::F64)};
+    case KEYWORD_CHAR:    return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::CHAR)};
+    case KEYWORD_STRING:  return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::STRING)};
+    case KEYWORD_BOOL:    return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::BOOL)};
+    default: Unreachable("Invalid primitive token.");
+    }
   }
 #undef pre
 
@@ -148,8 +155,8 @@ class ParsingContext {
     auto const token = tokens.take();
 
     switch (token.type) { using enum TokenType;
-      TOKENTYPE_PRIMITIVES_CASES return parsePrimitiveType(token);
-      TOKENTYPE_POINTERS_CASES   return parsePointerType(token);
+    TOKENTYPE_PRIMITIVES_CASES return parsePrimitiveType(token);
+    TOKENTYPE_POINTERS_CASES   return parsePointerType(token);
     case LBRACKET:             return parseArrayType();
 
     case IDENTIFIER: {
@@ -195,34 +202,35 @@ class ParsingContext {
     ASTNode node = newNode(token);
 
     switch (token.type) {
-    case TokenType::INTEGER_LITERAL: {
-      if constexpr (negate) {
-        node.type = ASTNode::SIGNED_LITERAL;
-        node.signed_data.value = -static_cast<i64_t>(token.getInteger(current_file));
-        break;
-      }
-      else {
-        node.type = ASTNode::UNSIGNED_LITERAL;
-        node.unsigned_data.value = token.getInteger(current_file);
-        break;
-      }
-    }
-    case TokenType::FLOAT_LITERAL:  node.type = ASTNode::FLOAT_LITERAL;
+    case TokenType::INTEGER_LITERAL:
+      if constexpr (negate)
+        node.type = ASTNode::SIGNED_LITERAL,
+        node.signed_data.value = -token.getInt(current_file);
+      else
+        node.type = ASTNode::UNSIGNED_LITERAL,
+        node.unsigned_data.value = token.getInt(current_file);
+      break;
+
+    case TokenType::FLOAT_LITERAL:
+      node.type = ASTNode::FLOAT_LITERAL;
       node.float_data.value = negate ? -token.getFloat(current_file) : token.getFloat(current_file);
       break;
-    case TokenType::DOUBLE_LITERAL: node.type = ASTNode::DOUBLE_LITERAL;
+    case TokenType::DOUBLE_LITERAL:
+      node.type = ASTNode::DOUBLE_LITERAL;
       node.double_data.value = negate ? -token.getDouble(current_file) : token.getDouble(current_file);
       break;
-    case TokenType::BOOL_LITERAL:   node.type = ASTNode::BOOL_LITERAL;
+    case TokenType::BOOL_LITERAL:
+      node.type = ASTNode::BOOL_LITERAL;
       node.bool_data.value = negate ? not token.getBool(current_file) : token.getBool(current_file);
       break;
-    case TokenType::CHAR_LITERAL:   node.type = ASTNode::CHAR_LITERAL;
+    case TokenType::CHAR_LITERAL:
+      node.type = ASTNode::CHAR_LITERAL;
       node.char_data.value = negate ? -token.getChar(current_file) : token.getChar(current_file);
       break;
 
     case TokenType::STRING_LITERAL:           node.type = ASTNode::STRING_LITERAL; assert(not negate); break;
     case TokenType::ESCAPED_STRING_LITERAL:   node.type = ASTNode::ESCAPED_STRING_LITERAL; assert(not negate); break;
-    default: edenUnreachable("Invalid literal token type.");
+    default: Unreachable("Invalid literal token type.");
     }
 
     return expression_tree.create(node);

@@ -44,57 +44,30 @@ TypeID::toString() const noexcept {
 NodiscardCXPR static bool
 primitiveCoercibleFromTo(PrimitiveType const& from, PrimitiveType const& to) noexcept {
   switch (from.getUnderlyingPrimitiveType()) { using enum PrimitiveType::PrimitiveTypeEnum;
-  case I8:
-  case I16:
-  case I32:
-  case I64: return to.isSignedIntegral() and (to.bitwidth() > from.bitwidth());
+  case I8:       return to.isSignedIntegral() and (to.bitwidth() > 8);
+  case I16:      return to.isSignedIntegral() and (to.bitwidth() > 16);
+  case I32:      return to.isSignedIntegral() and (to.bitwidth() > 32);
+  case I64:      return to.isSignedIntegral() and (to.bitwidth() > 64);
 
-  case U8:
-  case U16:
-  case U32: //convert if other type is a greater size signed/unsigned integer
-  case U64: return to.isIntegral() and (to.bitwidth() > from.bitwidth());
-
-  case U7:
-  case U15:
-  case U31:
-  case U63: return to.isIntegral() and (to.bitwidth() >= from.bitwidth());
-
+  // convert if other type is a greater size signed/unsigned integer
+  case U8:       return to.isIntegral() and (to.bitwidth() > 8);
+  case U16:      return to.isIntegral() and (to.bitwidth() > 16);
+  case U32:      return to.isIntegral() and (to.bitwidth() > 32);
+  case U64:      return to.isIntegral() and (to.bitwidth() > 64);
 
   case F32: return to.getUnderlyingPrimitiveType() == F64;
+
   case F64:
   case BOOL:
-  case CHAR: return false; //only converts to the same type which has been checked already
-
-  case STRING: return false;
-  default:
-    Unreachable("Invalid primitive type.");
+  case CHAR:
+  case STRING: return false; // only converts to the same type which has been checked already
+  default: Unreachable("Invalid primitive type.");
   }
 }
 
-NodiscardCXPR static bool
-primitiveCastableFromTo(PrimitiveType const& from, PrimitiveType const& to) noexcept {
-  switch (from.getUnderlyingPrimitiveType()) { using enum PrimitiveType::PrimitiveTypeEnum;
-  case I8:
-  case I16:
-  case I32:
-  case I64:
-  case U7:
-  case U15:
-  case U31:
-  case U63:
-  case U8:
-  case U16:
-  case U32:
-  case U64:
-  case F32:
-  case F64:
-  case BOOL:
-  case CHAR: return eden::enumBetween(to.getUnderlyingPrimitiveType(), U7, CHAR);
-
-  case STRING: return false;
-  default:
-    Unreachable("Invalid primitive type.");
-  }
+InlineNodiscardCXPR static bool
+primitiveCastableFromTo(PrimitiveType const& from, PrimitiveType const&) noexcept {
+  return not from.isString();
 }
 
 [[nodiscard]] bool
@@ -111,8 +84,6 @@ TypeID::coercibleTo(TypeID other) const noexcept {
   }
 
   if (other.isPointer()) {
-    if (isPointer()) return true; // pointer casts are unchecked currently
-
     // bodge to accept string -> ref u8 conversion. TODO: Change
     if (not isPrimitive()) return false;
     if (not getPrimitiveType().isString()) return false;
@@ -123,7 +94,7 @@ TypeID::coercibleTo(TypeID other) const noexcept {
   if (derived != other.derived) return false;
   switch (derived) { using enum Type::DerivedType;
   case DEVOID:
-  case ERROR:      edenUnreachable("This should've returned earlier.");
+  case ERROR:      Unreachable("This should've returned earlier.");
 
   // can only coerce to same type which has been checked
   case ARRAY:      return false;
@@ -186,7 +157,6 @@ TypeID::sameAs(TypeID other) const noexcept {
 
 }
 
-
 CustomType::CustomType(std::string_view name) noexcept : Type(CUSTOM),  name_len(name.length()), name(name.data()) { std::construct_at<SymbolTable>( (SymbolTable*) symboltable_buff); }
 [[nodiscard]] SymbolTable&       CustomType::member_table()       noexcept { return *std::launder( (SymbolTable*) symboltable_buff ); }
 [[nodiscard]] SymbolTable const& CustomType::member_table() const noexcept { return *std::launder( (SymbolTable const*) symboltable_buff ); }
@@ -194,23 +164,19 @@ CustomType::CustomType(std::string_view name) noexcept : Type(CUSTOM),  name_len
 NoInlineCold [[nodiscard]] std::string
 PrimitiveType::toString() const noexcept {
   switch (primitive_type) {
-  case I8:      return "i8";
-  case I16:     return "i16";
-  case I32:     return "i32";
-  case I64:     return "i64";
-  case U7:      return  "u7";
-  case U15:     return "u15";
-  case U31:     return "u31";
-  case U63:     return "u63";
-  case U8:      return "u8";
-  case U16:     return "u16";
-  case U32:     return "u32";
-  case U64:     return "u64";
-  case F32:     return "f32";
-  case F64:     return "f64";
-  case BOOL:    return "bool";
-  case CHAR:    return "char";
-  case STRING:  return "string";
+  case I8:     return "i8";
+  case I16:    return "i16";
+  case I32:    return "i32";
+  case I64:    return "i64";
+  case U8:     return "u8";
+  case U16:    return "u16";
+  case U32:    return "u32";
+  case U64:    return "u64";
+  case F32:    return "f32";
+  case F64:    return "f64";
+  case BOOL:   return "bool";
+  case CHAR:   return "char";
+  case STRING: return "string";
   default: Unreachable("Invalid primitive type.");
   }
 }
@@ -219,33 +185,6 @@ NoInlineCold [[nodiscard]] std::string
 ArrayType::toString() const noexcept {
   return std::format("[{}]{}", getSize(), getSubtypeID().toString());
 }
-
-/*
-NoInlineCold [[nodiscard]] std::string
-FunctionType::toString() const noexcept {
-  auto const parameter_typeIDs = getParameterTypeIDs();
-  auto const return_typeID = getReturnTypeID();
-  std::string string_rep("(");
-  for (auto parameter : parameter_typeIDs) {
-    string_rep.append( parameter.toString() );
-    string_rep.append(", ");
-  }
-
-  if (isVariadic()) {
-    string_rep.append("...");
-  }
-  else if (numParameters() not_eq 0) {
-    string_rep.pop_back();
-    string_rep.pop_back();
-  }
-
-  string_rep.append(") ");
-  if (return_typeID.derived not_eq DEVOID)
-    string_rep.append(return_typeID.toString());
-
-  return string_rep;
-}
-*/
 
 NoInlineCold [[nodiscard]] std::string
 CustomType::definitionToString() const noexcept {

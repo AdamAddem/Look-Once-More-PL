@@ -20,34 +20,33 @@ using Operator = Parser::Operator;
 
 namespace {
 
-NodiscardCXPR Instruction::InstructionType
+NodiscardCXPR Instruction::Enum
 castForType(TypeID typeID) noexcept {
   if (typeID.isPointer()) return Instruction::PCAST;
   switch (typeID.derived) { using enum Type::DerivedType;
   case PRIMITIVE: {
     auto const primitive = PrimitiveType::getTypeFromID(typeID).getUnderlyingPrimitiveType();
     switch (primitive) { using enum PrimitiveType::PrimitiveTypeEnum;
-    case STRING:        return Instruction::PCAST;
-    case F32: case F64: return Instruction::FCAST;
-    case CHAR:          return Instruction::UCAST;
+    case STRING:
+      return Instruction::PCAST;
 
-    case I8:
-    case I16:
-    case I32:
-    case I64:           return Instruction::SCAST;
+    case F32: case F64:
+      return Instruction::FCAST;
 
-    case U7: case U8:
-    case U15: case U16:
-    case U31: case U32:
-    case U63: case U64: return Instruction::UCAST;
+    case I8: case I16: case I32: case I64:
+      return Instruction::SCAST;
+
+    case U8: case U16: case U32: case U64:
+    case CHAR: case BOOL:
+      return Instruction::UCAST;
 
     default:
-      edenUnreachable("Invalid primitive type.");
+      Unreachable("Invalid primitive type.");
     }
   }
 
   case ERROR: return Instruction::UCAST;
-  default: edenUnreachable("This shouldn't happen!");
+  default: Unreachable("This shouldn't happen!");
   }
 }
 
@@ -118,22 +117,69 @@ class PeepingContext {
   }
 
   // returns whether coersion was successful
+  // TODO: VERY POOPY
   constexpr bool
-  coerceIfIntegerLiteral(Instruction& possible_literal, TypeID expected_type) const noexcept {
-    if (not possible_literal.is_literal() or not expected_type.isIntegral()) return false;
-    auto const is_signed = expected_type.isSignedIntegral();
-    possible_literal.adjust_literal(expected_type.bitwidth(), is_signed);
+  coerceIfArithmeticLiteral(Instruction& possible_literal, TypeID expected_type) const noexcept {
+    if (not possible_literal.is_literal() or not expected_type.isArithmetic()) return false;
+    auto const to_signed = expected_type.isSignedIntegral();
+    auto const to_floating = expected_type.isFloating();
+    auto const to_bitwidth = expected_type.bitwidth();
+
+    auto const is_signed = eden::enumBetween(possible_literal.type, Instruction::I8_LITERAL, Instruction::I64_LITERAL);
+
+    // might be the worst switch statement of all time
+    switch (possible_literal.type) { using enum Instruction::Enum;
+    case I8_LITERAL:  case U8_LITERAL:
+    case I16_LITERAL: case U16_LITERAL:
+    case I32_LITERAL: case U32_LITERAL:
+    case I64_LITERAL: case U64_LITERAL:
+      switch (to_bitwidth) {
+      case 8:  possible_literal.type = to_signed ? I8_LITERAL : U8_LITERAL;   return true;
+      case 16: possible_literal.type = to_signed ? I16_LITERAL : U16_LITERAL; return true;
+
+      case 32:
+        if (to_floating)
+          possible_literal.type = FLOAT_LITERAL,
+          possible_literal.float_literal_data.value =
+            (f32_t) (is_signed ? possible_literal.signed_literal_data.value : possible_literal.unsigned_literal_data.value); // TODO: this branch is unnecessary
+        else
+          possible_literal.type = to_signed ? I32_LITERAL : U32_LITERAL;
+        return true;
+
+      case 64:
+        if (to_floating)
+          possible_literal.type = DOUBLE_LITERAL,
+          possible_literal.double_literal_data.value =
+            (f64_t) (is_signed ? possible_literal.signed_literal_data.value : possible_literal.unsigned_literal_data.value); // TODO: this branch is unnecessary
+        else
+          possible_literal.type = to_signed ? I32_LITERAL : U32_LITERAL;
+        return true;
+
+      default: Unreachable("Invalid destination bitwidth.");
+      }
+
+    case FLOAT_LITERAL:
+      if (to_bitwidth == 32) return true;
+      assert(to_bitwidth == 64);
+      possible_literal.type = DOUBLE_LITERAL;
+      possible_literal.double_literal_data.value = (f64_t) possible_literal.float_literal_data.value;
+      return true;
+
+    case DOUBLE_LITERAL: assert(to_bitwidth == 64); assert(to_floating); return true;
+    default: Unreachable("Invalid literal type.");
+    }
+
     return true;
   }
 
   NoInlineCold void
   error(auto err, std::string msg) noexcept { reportError(parsed_tu.source_files[err.file_idx], err.length, err.position, std::move(msg)); has_error = true; }
 
-  edenNodiscardCXPR File
+  InlineNodiscardCXPR File
   fileOf(ASTNode node) const noexcept { return parsed_tu.source_files[node.file_idx]; }
 
   InlineNodiscardCXPR static Instruction
-  makeInstruction(ASTNode node, Instruction::InstructionType type = Instruction::NOOP) noexcept {
+  makeInstruction(ASTNode node, Instruction::Enum type = Instruction::NOOP) noexcept {
     return Instruction { type, node.file_idx, node.length, node.position };
   }
 
@@ -343,7 +389,7 @@ class PeepingContext {
 
     instructions[subscript_idx] = subscript_instruction;
 
-    coerceIfIntegerLiteral(instructions[index_idx], PrimitiveType::u64ID());
+    coerceIfArithmeticLiteral(instructions[index_idx], PrimitiveType::u64ID());
     return res;
   }
 #undef pre
@@ -419,7 +465,7 @@ class PeepingContext {
       auto& argument_instr = instructions[argument_instr_index];
 
       if (argument_typeID.coercibleTo(parameter_typeID))
-        coerceIfIntegerLiteral(argument_instr, parameter_typeID);
+        coerceIfArithmeticLiteral(argument_instr, parameter_typeID);
       else {
         error(argument_instr, std::format("Cannot coerce parameter of type '{}' to type '{}'.", argument_typeID.toString(), parameter_typeID.toString()));
         res = errorID;
@@ -454,9 +500,9 @@ class PeepingContext {
 
     // TODO: THIS IS BAD AND SUCKS FIX IT NOW
     if ( not left.sameAs( (TypeID) right) ) { // if left or right is an integer literal, coerce its type to the other
-      if (coerceIfIntegerLiteral(instructions[left_idx], (TypeID) right))
+      if (coerceIfArithmeticLiteral(instructions[left_idx], (TypeID) right))
         left = right;
-      else if (coerceIfIntegerLiteral(instructions[right_idx], (TypeID) left))
+      else if (coerceIfArithmeticLiteral(instructions[right_idx], (TypeID) left))
         right = left;
       else {
         error(binary_node,
@@ -761,7 +807,7 @@ class PeepingContext {
       return;
     }
 
-    coerceIfIntegerLiteral(instructions[return_idx], return_typeID);
+    coerceIfArithmeticLiteral(instructions[return_idx], return_typeID);
     current_block.end_with_ret();
   }
 #undef pre
@@ -851,7 +897,7 @@ class PeepingContext {
       return;
     }
 
-    coerceIfIntegerLiteral(instructions[init_expr_idx], (TypeID) qualified_typeID);
+    coerceIfArithmeticLiteral(instructions[init_expr_idx], (TypeID) qualified_typeID);
     adjustAssignExpression(instructions[assign_idx], qualified_typeID, init_expr);
   }
 #undef pre

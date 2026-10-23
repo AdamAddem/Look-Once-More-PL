@@ -7,8 +7,7 @@
 #include "error.hpp"
 #include "edenlib/casts.hpp"
 
-namespace LOM::Lexer {
-namespace {
+namespace LOM::Lexer { namespace {
 
 // code to make a perfect hash function was ai generated, need to verify / optimize
 struct WordToken { std::string_view word; TokenType type; };
@@ -421,17 +420,17 @@ public:
   }
 };
 
-}
+} // namespace
 
 [[nodiscard]] bool tokenizeFile(eden::vector<Token>& out_tokens, File file) noexcept {
   return LexingContext::tokenize(out_tokens, file);
 }
 
-}
+} // namespace LOM::Lexer
+
 
 // TODO: Add more tests
-namespace LOM::LexerTest {
-namespace {
+namespace LOM::LexerTest { namespace {
 using namespace std::string_view_literals;
 
 consteval Lexer::Token request(std::string_view single_token_str) {
@@ -515,5 +514,4 @@ static_assert(CharLiterals());
 static_assert(EscapedCharLiterals());
 static_assert(StringLiterals());
 
-}
-}
+}}

@@ -60,11 +60,11 @@ struct TargetStruct {
 
 }Target;
 
-struct TU final : Backend {
+struct LLVM_Backend final : Backend {
   llvm::LLVMContext context;
   llvm::Module module;
 
-  explicit TU(std::string_view module_name) : module(module_name, context) {
+  explicit LLVM_Backend(std::string_view module_name) : context(), module(module_name, context) {
     module.setTargetTriple(Target.triple);
     module.setDataLayout(Target.data_layout);
   }
@@ -125,9 +125,9 @@ struct TU final : Backend {
   }
 };
 
-class Lowerer final {
-  TU* tu;
-  PeepIR::TU& peeped_tu;
+class LoweringContext final {
+  LLVM_Backend& backend;
+  PeepIR::TU& tu;
 
   llvm::IntegerType* i1; llvm::IntegerType* i8;
   llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
@@ -141,7 +141,6 @@ class Lowerer final {
 
   /* Variables used when lowering a function */
   llvm::Type* return_type{};
-  llvm::Function* llvm_fn{};
   llvm::IRBuilder<> builder;
   eden::vector<llvm::AllocaInst*> locals;
 
@@ -149,6 +148,8 @@ class Lowerer final {
   eden::vector16<PeepIR::Block> peepir_blocks;
   eden::vector<llvm::BasicBlock*> llvm_blocks;
   /* Variables used when lowering a function */
+
+  using TemporaryStringCat = llvm::SmallString<128>; // why do so many things just not take a twine
 
   [[nodiscard]] llvm::Value*
   getFunctionImport(PeepIR::Instruction module_fn) {
@@ -160,21 +161,11 @@ class Lowerer final {
     auto const& imported_module_name = imported_tu.name;
     auto const  imported_fn_name = imported_fn_symbol.nameof();
 
-    // TODO: this is atrocious please fix this IMMEDIATELY
-    std::string_view full_function_name;
-    std::string tmp;
-    if (imported_module_name == "__C")
-      full_function_name = imported_fn_name;
-    else {
-      tmp.append(imported_module_name);
-      tmp.push_back('.');
-      tmp.append(imported_fn_name);
-      full_function_name = tmp;
-    }
+    TemporaryStringCat full_function_name{imported_module_name, "::"};
+    if (imported_module_name == "__C") full_function_name.clear();
+    full_function_name += imported_fn_name;
 
-    auto const function_type = translateFunctionType(imported_fn_symbol);
-    auto const res = tu->module.getOrInsertFunction(full_function_name, function_type).getCallee();
-    return res;
+    return backend.module.getOrInsertFunction(full_function_name, translateFunctionType(imported_fn_symbol)).getCallee();
   }
 
   [[nodiscard]] llvm::FunctionType*
@@ -212,10 +203,13 @@ class Lowerer final {
         case STRING:        Unreachable("WIP");
         case F32: return f32;
         case F64: return f64;
-        case U7: case U8: case I8: case CHAR: case BOOL: return i8;
-        case U15: case U16: case I16:                    return i16;
-        case U31: case U32: case I32:                    return i32;
-        case U63: case U64: case I64:                    return i64;
+
+        case U8: case I8: case CHAR: case BOOL:
+          return i8;
+
+        case U16: case I16: return i16;
+        case U32: case I32: return i32;
+        case U64: case I64: return i64;
         default:
           Unreachable("Invalid primitive type.");
         }
@@ -249,7 +243,7 @@ class Lowerer final {
       member_types[i] = translateType(member_typeID);
     }
 
-    auto const res = llvm::StructType::create(tu->context, llvm::ArrayRef(member_types, i), custom_type.nameof());
+    auto const res = llvm::StructType::create(backend.context, llvm::ArrayRef(member_types, i), custom_type.nameof());
     custom_type_map.emplace_back(key, res);
     return res;
   }
@@ -267,10 +261,10 @@ class Lowerer final {
   { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value); }
 
   [[nodiscard]] llvm::Value*
-  genUnary(PeepIR::Instruction::InstructionType type) noexcept {
+  genUnary(PeepIR::Instruction::Enum type) noexcept {
     llvm::Value* res{};
     switch (type) {
-    using enum PeepIR::Instruction::InstructionType;
+    using enum PeepIR::Instruction::Enum;
     case PRE_INC: {
       auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
       auto const var_type = var->getAllocatedType();
@@ -353,11 +347,11 @@ class Lowerer final {
   }
 
   [[nodiscard]] llvm::Value*
-  genBinary(PeepIR::Instruction::InstructionType type) noexcept {
+  genBinary(PeepIR::Instruction::Enum type) noexcept {
     auto const left = genValueExpression();
     auto const right = genValueExpression();
 
-    switch (type) { using enum PeepIR::Instruction::InstructionType;
+    switch (type) { using enum PeepIR::Instruction::Enum;
     case ADD:   return builder.CreateAdd(left, right);
     case FADD:  return builder.CreateFAdd(left, right);
 
@@ -417,19 +411,19 @@ class Lowerer final {
   }
 
   [[nodiscard]] llvm::Value*
-  genAssign(PeepIR::Instruction::InstructionType type, u64_t bitwidth = 0) noexcept {
+  genAssign(PeepIR::Instruction::Enum type, u64_t bitwidth = 0) noexcept {
     auto const left = genRefExpression();
     llvm::Value* right;
     switch (type) {
-      using enum PeepIR::Instruction::InstructionType;
+      using enum PeepIR::Instruction::Enum;
     case ASSIGN:
       right = genValueExpression();
       break;
     case UCAST_ASSIGN:
-      right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, bitwidth));
+      right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(backend.context, bitwidth));
       break;
     case SCAST_ASSIGN:
-      right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, bitwidth));
+      right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(backend.context, bitwidth));
       break;
 
     default:
@@ -443,11 +437,11 @@ class Lowerer final {
   genValueExpression() noexcept { // only relevant for that which can be used by value, with the addition of functions
     auto const& instruction = instructions[instruction_idx++];
     switch (instruction.type) {
-      using enum PeepIR::Instruction::InstructionType;
+      using enum PeepIR::Instruction::Enum;
     case NOOP: return nullptr;
 
     case FUNCTION: {
-      auto const function = tu->module.getFunction(instruction.original_string(peeped_tu.source_files[instruction.file_idx])); assert(function);
+      auto const function = backend.module.getFunction(instruction.original_string(tu.source_files[instruction.file_idx])); assert(function);
       return function;
     }
     case LOCAL: {
@@ -481,8 +475,8 @@ class Lowerer final {
     case DOUBLE_LITERAL:          return llvm::ConstantFP::get(f64, instruction.double_literal_data.value);
     case BOOL_LITERAL:            return instruction.bool_literal_data.value ? bool_true : bool_false;
     case CHAR_LITERAL:            return llvm::ConstantInt::get(i8, instruction.char_literal_data.value);
-    case STRING_LITERAL:          return builder.CreateGlobalString(instruction.original_string(peeped_tu.source_files[instruction.file_idx]));
-    case ESCAPED_STRING_LITERAL:  return builder.CreateGlobalString(instruction.escaped_string_value(peeped_tu.source_files[instruction.file_idx]));
+    case STRING_LITERAL:          return builder.CreateGlobalString(instruction.original_string(tu.source_files[instruction.file_idx]));
+    case ESCAPED_STRING_LITERAL:  return builder.CreateGlobalString(instruction.escaped_string_value(tu.source_files[instruction.file_idx]));
 
     case ADD: case FADD:
     case SUB: case FSUB:
@@ -569,12 +563,11 @@ class Lowerer final {
 
       return builder.CreateCall(
         llvm::cast<llvm::Function>(fn),
-        {parameters, instruction.call_data.num_parameters}
+        llvm::ArrayRef{parameters, instruction.call_data.num_parameters}
         );
     }
 
-    default:
-      Unreachable("Invalid peep instruction type.");
+    default: Unreachable("Invalid peep instruction type.");
     }
   }
 
@@ -582,9 +575,12 @@ class Lowerer final {
   genRefExpression() noexcept { // only relevant for that which can be referenced
     auto const& instruction = instructions[instruction_idx++];
     switch (instruction.type) {
-    using enum PeepIR::Instruction::InstructionType;
+    using enum PeepIR::Instruction::Enum;
     case FUNCTION: {
-      auto const function = tu->module.getFunction(instruction.original_string(peeped_tu.source_files[instruction.file_idx])); assert(function);
+      auto const str = instruction.original_string(tu.source_files[instruction.file_idx]);
+      auto const function = backend.module.getFunction(
+        TemporaryStringCat{ tu.name, "::", str }
+        ); assert(function);
       return function;
     }
     case MODULE_FUNCTION:
@@ -616,12 +612,12 @@ class Lowerer final {
     }
     case UCAST_ASSIGN: {
       auto const left = genRefExpression();
-      auto const right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_data.bitwidth));
+      auto const right = builder.CreateZExt(genValueExpression(), llvm::IntegerType::get(backend.context, instruction.cast_assign_data.bitwidth));
       return builder.CreateStore(right, left);
     }
     case SCAST_ASSIGN: {
       auto const left = genRefExpression();
-      auto const right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(tu->context, instruction.cast_assign_data.bitwidth));
+      auto const right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(backend.context, instruction.cast_assign_data.bitwidth));
       return builder.CreateStore(right, left);
     }
 
@@ -672,38 +668,32 @@ class Lowerer final {
     }
   }
 
-  llvm::Function* compileFunction(u16_t fn_id) {
+  void genFunction(u16_t fn_id, llvm::Function* llvm_fn) {
 
     // reset state
     {
       instruction_idx = 0;
       locals.clear();
       llvm_blocks.clear();
+
+      auto& fn = tu.functions[fn_id];
+      instructions = std::move(fn.instructions);
+      peepir_blocks = std::move(fn.blocks);
+      return_type = llvm_fn->getReturnType();
     }
 
     // initialize state for new function
     {
-      auto& fn = peeped_tu.functions[fn_id];
-      instructions = std::move(fn.instructions);
-      peepir_blocks = std::move(fn.blocks);
-
-      auto const& fn_symbol = peeped_tu.module.getFunction(fn_id);
-      auto const llvm_fn_type = translateFunctionType(fn_symbol);
-      return_type = llvm_fn_type->getReturnType();
-
-      auto const linkage = fn_symbol.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage;
-      llvm_fn = llvm::Function::Create(
-        llvm_fn_type, linkage, 0,
-        fn_symbol.nameof(),
-        &tu->module);
+      auto const& fn_symbol = tu.module.getFunction(fn_id);
 
       llvm_blocks.reserve(peepir_blocks.size());
       for (sz_t i{}; i<peepir_blocks.size(); ++i)
-        llvm_blocks.emplace_back_unchecked(llvm::BasicBlock::Create(tu->context, "", llvm_fn));
+        llvm_blocks.emplace_back_unchecked(llvm::BasicBlock::Create(backend.context, "", llvm_fn));
       builder.SetInsertPoint(llvm_blocks.front());
 
       locals.reserve(fn_symbol.locals.size());
 
+      auto const llvm_fn_type = llvm_fn->getFunctionType();
       auto const param_types = llvm_fn_type->param_begin();
       auto const num_params = llvm_fn_type->getNumParams();
       auto arg = llvm_fn->arg_begin();
@@ -729,69 +719,61 @@ class Lowerer final {
       genBlock(i);
     }
 
-    /*
-    builder.SetInsertPoint(&llvmfunc->back());
-
-    return_type->isVoidTy()
-    ? builder.CreateRetVoid()
-    : builder.CreateRet( builder.CreateLoad(locals[0]->getAllocatedType(), locals[0]) ); */
-
     if (verifyFunction(*llvm_fn, &llvm::errs())) {
-      tu->module.print(llvm::outs(), nullptr);
+      backend.module.print(llvm::outs(), nullptr);
       std::quick_exit(1);
     }
-
-    return llvm_fn;
   }
 
 public:
 
-  void lowerToLLVM(PeepIR::TU& tu) {
+  static std::unique_ptr<LLVM_Backend>
+  lowerToLLVM(PeepIR::TU& peeped_tu) {
+    auto backend = std::make_unique<LLVM_Backend>(peeped_tu.name);
+    LoweringContext codegen(*backend, peeped_tu);
 
-    // TODO: Very bad not good.
-    char buff[256];
-    auto const module_name = tu.name;
-    sz_t fn_name_start{};
-    if (not module_name.empty()) {
-      auto const module_name_len = module_name.size();
-      std::memcpy(buff, module_name.data(), module_name_len);
-      fn_name_start = module_name_len;
+    llvm::SmallVector<llvm::Function*, 128> llvm_fns;
+    auto const num_fns = peeped_tu.functions.size();
 
-      buff[fn_name_start] = '.';
-      ++fn_name_start;
+    // add all functions to llvm table
+    for (sz_t i{}; i<num_fns; ++i) {
+      auto const& fn_symbol = peeped_tu.module.getFunction(eden::narrow<u16_t>(i));
+      llvm_fns.emplace_back(
+        llvm::Function::Create(
+          codegen.translateFunctionType(fn_symbol),
+          fn_symbol.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage,
+          /*AddrSpace=*/0,
+          llvm::Twine(peeped_tu.name) + "::" + fn_symbol.nameof(),
+          &backend->module)
+        );
     }
 
-    for (sz_t i{}; i<tu.functions.size(); ++i) {
-      auto const fn_id = eden::narrow<u16_t>(i);
-      auto const llvm_fn = compileFunction(fn_id);
-      auto const& fn_symbol = tu.module.getFunction(fn_id);
-      if (not fn_symbol.is_public) continue;
+    // actual codegen
+    for (sz_t i{}; i<num_fns; ++i)
+      codegen.genFunction(eden::narrow<u16_t>(i), llvm_fns[i]);
 
-      auto const fn_name = fn_symbol.nameof();
-      if (fn_name == "main") [[unlikely]] continue;
-
-      auto const fn_name_len = fn_name.size();
-      // set public functions name in the binary to module_name + '.' + func_name
-      std::memcpy(buff + fn_name_start, fn_name.data(), fn_name_len);
-
-      llvm_fn->setName( std::string_view{buff, fn_name_start + fn_name_len} );
+    if (peeped_tu.module.getID() == MAIN_TU_ID) [[unlikely]] {
+      auto const main_fn = backend->module.getFunction( TemporaryStringCat{peeped_tu.name, "::main"} );
+      assert(main_fn); // should've been checked for existence after parsing
+      main_fn->setName("main");
     }
+
+    return backend;
   }
 
-  explicit Lowerer(TU* tu, PeepIR::TU& peeped_tu)
-  : tu(tu), peeped_tu(peeped_tu), builder(tu->context) {
-    auto& context = tu->context;
-    i1 = llvm::Type::getInt1Ty(context);
-    i8 = llvm::Type::getInt8Ty(context);
+  explicit LoweringContext(LLVM_Backend& backend, PeepIR::TU& peeped_tu)
+  : backend(backend), tu(peeped_tu), builder(backend.context) {
+    i1 = llvm::Type::getInt1Ty(backend.context);
+    i8 = llvm::Type::getInt8Ty(backend.context);
     bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0);
 
-    i16 = llvm::Type::getInt16Ty(context);
-    i32 = llvm::Type::getInt32Ty(context);
-    i64 = llvm::Type::getInt64Ty(context); i64_0 = llvm::ConstantInt::get(i64, 0);
-    f32 = llvm::Type::getFloatTy(context);
-    f64 = llvm::Type::getDoubleTy(context);
-    devoid = llvm::Type::getVoidTy(context);
-    ptr = llvm::PointerType::get(context, 0);
+    i16 = llvm::Type::getInt16Ty(backend.context);
+    i32 = llvm::Type::getInt32Ty(backend.context);
+    i64 = llvm::Type::getInt64Ty(backend.context); i64_0 = llvm::ConstantInt::get(i64, 0);
+    f32 = llvm::Type::getFloatTy(backend.context);
+    f64 = llvm::Type::getDoubleTy(backend.context);
+    devoid = llvm::Type::getVoidTy(backend.context);
+    ptr = llvm::PointerType::get(backend.context, 0);
 
     auto const num_custom_types = peeped_tu.module.numCustomTypes();
     custom_type_map.reserve(num_custom_types);
@@ -806,9 +788,7 @@ std::unique_ptr<Backend> ToLLVM::codegen(PeepIR::TU& peeped_tu) {
   auto const begin_time = std::chrono::high_resolution_clock::now();
 #endif
 
-  auto backend = std::make_unique<TU>(peeped_tu.name);
-  Lowerer codegen(backend.get(), peeped_tu);
-  codegen.lowerToLLVM(peeped_tu);
+  auto backend = LoweringContext::lowerToLLVM(peeped_tu);
 
 #ifdef STAGE_BENCHMARKS
   auto const end_time = std::chrono::high_resolution_clock::now();

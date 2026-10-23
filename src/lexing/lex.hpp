@@ -32,7 +32,7 @@ struct Token {
 
   // expensive
   NodiscardCXPR u64_t
-  getInteger(File const& file) const noexcept {
+  getInt(File const& file) const noexcept {
     assert(type == TokenType::INTEGER_LITERAL);
     auto const begin = file.getText().data() + position;
     u64_t res;

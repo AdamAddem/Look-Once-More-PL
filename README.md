@@ -87,12 +87,13 @@ Compilation speed is also a priority, speeds of >250k lines of code per second h
 ---
 ### How to Build
 Currently the only dependencies are LLVM 22 and my own library which is included as a submodule. <br>
+Clang or GCC is required in the system which runs the executable in order to support linking and compiling external objects. <br>
+
 Clone and compile as such:
 ```
 git clone --recurse-submodules https://github.com/AdamAddem/Look-Once-More-PL
 mkdir build && cd build && cmake .. && make
 ```
-Must compile with either clang or gcc to support linking objects into an executable or compiling within the 'extern' folder. <br>
 
 ### Running
 The executable can be ran with the following arguments:
@@ -106,7 +107,8 @@ The executable can be ran with the following arguments:
     --emit-llvm        Produces the LLVM IR representation of the source code.
     --emit-asm         Produces the assembly representation of the source code.
     
-    --extern_flags:    Will pass all remaining flags to the compiler used for linking / compiling files within the 'extern' folder.
+    --link-flags       Will pass all remaining flags as written to the compiler used for linking.
+                       Ex: --link-flags -lraylib
 ```
 Visit [GettingStarted](GettingStarted.md) for more information on setting up a project.
 

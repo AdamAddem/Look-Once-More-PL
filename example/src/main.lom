@@ -11,7 +11,7 @@ pub main: () i32 {
     bg_color: u32 = 0;
     text_color: u32 = cast<u32>(0) - 1; # set to all 1's, aka black
 
-    res: i32 = Math::bar();
+    res: i32 = Math::fib(8);
     while not __C::WindowShouldClose() {
         __C::BeginDrawing(); __C::ClearBackground(bg_color);
 

@@ -83,7 +83,7 @@ void setArgs(int _argc, const char** argv) {
     auto const arg_view = std::string_view(argv[i]);
     auto const arg_iter = stringToArgs.find(arg_view);
     if (arg_iter == stringToArgs.end()) {
-      if (arg_view != "--extern_flags:") throw std::runtime_error(std::format("Unrecognized argument {}.", arg_view));
+      if (arg_view != "--link-flags") throw std::runtime_error(std::format("Unrecognized argument {}.", arg_view));
 
       while (++i < argc) { extern_flags += argv[i]; extern_flags.push_back(' '); }
       break;

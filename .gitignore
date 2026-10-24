@@ -1,8 +1,7 @@
 builds/
 example/
 tests/
-.idea/
-compile_flags.txt
-.codex/
-.agents/
-src/ToDo.txt
+scripts/
+.*
+!.gitignore
+!.gitmodules

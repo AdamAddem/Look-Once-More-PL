@@ -1,9 +1,6 @@
 #include "build_system/build.hpp"
 #include "settings.hpp"
-
-#include <filesystem>
 #include <print>
-#include <chrono>
 
 int main(int argc, char const* argv[]) {
   if (argc < 2) {

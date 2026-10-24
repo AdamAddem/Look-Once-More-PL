@@ -2,7 +2,6 @@
 #include "file.hpp"
 
 #include <string>
-#include <filesystem>
 
 namespace LOM::Lexer {
 struct Token;

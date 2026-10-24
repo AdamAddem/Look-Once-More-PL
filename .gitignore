@@ -2,6 +2,7 @@ builds/
 example/
 tests/
 scripts/
+compile_flags.txt
 .*
 !.gitignore
 !.gitmodules

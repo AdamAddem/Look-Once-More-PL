@@ -25,7 +25,7 @@ void Backend::linkObjects() {
   command += Settings::getExternFlags();
 
   if (system(command.c_str())) {
-    std::cerr << "Error calling compiler with command: " << command;
+    std::cerr << "Error calling compiler with command: " << command << std::endl;
     std::quick_exit(1);
   }
 }

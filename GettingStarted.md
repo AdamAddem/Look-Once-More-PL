@@ -44,7 +44,6 @@ C Interop using structs or arrays passed by value is incorrect won't function as
 
 ### Missing Features and Known Bugs
 - Globals are unsupported until a constant evaluator is made to enforce constant initialization.
-- Private functions (and public functions within main.lom) with the same name as one declared with the __C keyword will be all sorts of messed up. Avoid for now.
 - _= operators do not exist yet (+=, -=, etc).
 - Strings are accessable only through ref u8.
 - No support for creating or importing precompiled libraries directly.
@@ -55,7 +54,6 @@ C Interop using structs or arrays passed by value is incorrect won't function as
 - No nothing.
 
 ### Code Limitations
-- Functions may not have greater than 8 parameters.
 - Modules may not have greater than 256 files.
 - Modules / Structs may not have greater than u16_max globals/member variables.
 - Modules may not have greater than u16_max functions.

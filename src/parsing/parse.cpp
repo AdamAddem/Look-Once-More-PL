@@ -842,11 +842,7 @@ class ParsingContext {
       arguments.emplace_back(typeID, qualifiers, identifier_token.originalString(current_file), false, parameter_idx);
 
       if (not tokens.pop_if(TokenType::COMMA)) break;
-      if (parameter_idx + 1 == Settings::MAX_FUNCTION_PARAMETERS) {
-        error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
-        syncToSemicolon();
-        return;
-      }
+
     }
 
     end_params:
@@ -876,10 +872,7 @@ class ParsingContext {
         auto const parameter_idx = parameters.size();
         parameters.emplace_back(typeID, qualifiers, name_token.originalString(current_file), false, parameter_idx);
         if (not tokens.pop_if(TokenType::COMMA)) break;
-        if (parameter_idx + 1 == Settings::MAX_FUNCTION_PARAMETERS) {
-          error(tokens.peek(), std::format("Functions may have no more than {} parameters.", Settings::MAX_FUNCTION_PARAMETERS));
-          break;
-        }
+
       }
       if(not tokens.pop_if(TokenType::RPAREN)) error(tokens.peek(), "Expected closing parenthesis in parameter list.");
     }

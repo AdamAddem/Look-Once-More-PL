@@ -200,7 +200,7 @@ public:
 };
 
 void compileExtern() {
-  if (not Settings::do_output_obj) return;
+  if (not Settings::do_linking) return;
   if (not fs::exists(extern_path) or is_empty(fs::directory_entry(extern_path))) return;
 
 
@@ -339,7 +339,7 @@ void lowerTUs() {
       auto const file_output_begin = chrono_now();
       if (Settings::do_output_asm)    compiled->createASMFile();
       if (Settings::do_output_llvmir) compiled->createIRFile();
-      if (Settings::do_output_obj)    compiled->createObjectFile();
+      if (Settings::do_linking)    compiled->createObjectFile();
       auto const file_output_end = chrono_now();
       Globals::addFileOutputBenchmark(file_output_end - file_output_begin);
     }
@@ -395,13 +395,13 @@ void LOM::build() {
   Globals::progressStageTo<BuildStage::PARSING>();
   {
     if (parseTUs()) [[unlikely]] return;
-    if (Settings::do_output_parser) [[unlikely]] { Globals::setErrorStage(); return printParsed(); }
+    if (Settings::do_output_ast) [[unlikely]] { Globals::setErrorStage(); return printParsed(); }
   }
 
   Globals::progressStageTo<BuildStage::PEEPING>();
   {
     if (peepTUs()) [[unlikely]] return;
-    if (Settings::do_output_peep) [[unlikely]] { Globals::setErrorStage(); return printPeeped(); }
+    if (Settings::do_output_peepir) [[unlikely]] { Globals::setErrorStage(); return printPeeped(); }
   }
 
   Globals::progressStageTo<BuildStage::LOWERING>();

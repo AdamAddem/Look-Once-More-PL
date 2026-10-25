@@ -3,10 +3,6 @@
 #include <print>
 
 int main(int argc, char const* argv[]) {
-  if (argc < 2) {
-    std::println("LookOnceMore: Arguments required.");
-    return 1;
-  }
 
   try {
     LOM::Settings::setArgs(argc, argv);
@@ -16,6 +12,14 @@ int main(int argc, char const* argv[]) {
   catch (std::exception const& e) {
     std::println(stderr, "LookOnceMore: {}", e.what());
     return 1;
+  }
+
+  if constexpr (not LOM::Settings::do_profile) {
+    if(LOM::Settings::do_run) {
+      system("clear");
+      std::string cmd{"./build/"}; cmd += LOM::Settings::getExecutableName().data();
+      system(cmd.data());
+    }
   }
 
   return 0;

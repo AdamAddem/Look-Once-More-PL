@@ -171,15 +171,16 @@ class LoweringContext final {
   [[nodiscard]] llvm::FunctionType*
   translateFunctionType(Symbol::Function const& fn) noexcept {
     auto const num_params = fn.num_parameters;
-    llvm::Type* arg_types[Settings::MAX_FUNCTION_PARAMETERS];
+
+    llvm::SmallVector<llvm::Type*, 8> arg_types;
     for (sz_t i{}; i<num_params; ++i)
-      arg_types[i] = translateType( fn.getLocal(i).typeID );
+      arg_types.push_back(translateType( fn.getLocal(i).typeID ));
 
     // hack
     auto const return_typeID = fn.return_typeID;
     auto const llvm_return_type = return_typeID.isBool() ? i1 : translateType(return_typeID);
 
-    auto const res = llvm::FunctionType::get(llvm_return_type, {arg_types, num_params}, fn.is_variadic);
+    auto const res = llvm::FunctionType::get(llvm_return_type, arg_types, fn.is_variadic);
     return res;
   }
 
@@ -235,15 +236,14 @@ class LoweringContext final {
     auto const& custom_type = typeID.getCustomType();
     auto const& member_table = custom_type.member_table();
     auto const num_members = member_table.num_variables();
-    llvm::Type* member_types[Settings::MAX_STRUCT_MEMBER_VARIABLES];
-    sz_t i{};
-    for (; i<num_members; ++i) {
-      auto const member = member_table.getVariable(i);
-      auto const member_typeID = member.typeID;
-      member_types[i] = translateType(member_typeID);
-    }
 
-    auto const res = llvm::StructType::create(backend.context, llvm::ArrayRef(member_types, i), custom_type.nameof());
+    llvm::SmallVector<llvm::Type*, 64> member_types;
+    for (sz_t i{}; i<num_members; ++i)
+      member_types.push_back(
+        translateType(member_table.getVariable(i).typeID)
+      );
+
+    auto const res = llvm::StructType::create(backend.context, llvm::ArrayRef(member_types), custom_type.nameof());
     custom_type_map.emplace_back(key, res);
     return res;
   }
@@ -557,13 +557,14 @@ class LoweringContext final {
 
     case CALL: {
       auto const fn = genRefExpression();
-      llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
+
+      llvm::SmallVector<llvm::Value*, 8> parameters;
       for (sz_t i{}; i<instruction.call_data.num_parameters; ++i)
-        parameters[i] = genValueExpression();
+        parameters.push_back(genValueExpression());
 
       return builder.CreateCall(
         llvm::cast<llvm::Function>(fn),
-        llvm::ArrayRef{parameters, instruction.call_data.num_parameters}
+        parameters
         );
     }
 
@@ -626,13 +627,14 @@ class LoweringContext final {
 
     case CALL: {
       auto const fn = genRefExpression();
-      llvm::Value* parameters[Settings::MAX_FUNCTION_PARAMETERS];
+      
+      llvm::SmallVector<llvm::Value*, 8> parameters;
       for (sz_t i{}; i<instruction.call_data.num_parameters; ++i)
-        parameters[i] = genValueExpression();
+        parameters.push_back(genValueExpression());
 
       return builder.CreateCall(
         llvm::cast<llvm::Function>(fn),
-        {parameters, instruction.call_data.num_parameters}
+        parameters
         );
     }
 

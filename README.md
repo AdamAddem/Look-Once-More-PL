@@ -88,6 +88,7 @@ Compilation speed is also a priority, speeds of >250k lines of code per second h
 ### How to Build
 Currently the only dependencies are LLVM 22 and my own library which is included as a submodule. <br>
 Clang or GCC is required in the system which runs the executable in order to support linking and compiling external objects. <br>
+Windows is not very well supported, and probably won't work. I'll get around to it! <br>
 
 Clone and compile as such:
 ```
@@ -96,18 +97,21 @@ mkdir build && cd build && cmake .. && make
 ```
 
 ### Running
-The executable can be ran with the following arguments:
+The compiler can be ran with the following arguments:
 ```
     init               Creates a project template.
-    build              Builds, compiles, and links the project.
+    run                Builds then runs the executable.
+    
     -o <output>        Specifies output file name.
     -O0, O1, O2, O3    Sets optimization levels (No effect currently).
+
+    --emit-ast         Prints a the AST of each module to the terminal.
+    --emit-peepir      Prints a the PEEPIR of each module to the terminal.
     
-    --emit-obj         Produces object files.
-    --emit-llvm        Produces the LLVM IR representation of the source code.
-    --emit-asm         Produces the assembly representation of the source code.
+    --emit-llvm        Produces LLVM IR for each module into build/llvmir.
+    --emit-asm         Produces assembly for each module into build/asm.
     
-    --link-flags       Will pass all remaining flags as written to the compiler used for linking.
+    --link-flags       Passes remaining flags to the linking compiler.
                        Ex: --link-flags -lraylib
 ```
 Visit [GettingStarted](GettingStarted.md) for more information on setting up a project.

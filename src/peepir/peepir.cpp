@@ -2,6 +2,7 @@
 
 #include "build_system/build.hpp"
 #include "error.hpp"
+#include "module/types.hpp"
 #include "parsing/ast.hpp"
 #include "parsing/parse.hpp"
 #include "module/table_and_module.hpp"
@@ -57,6 +58,7 @@ struct TreeView {
   InlineNodiscardCXPR ASTNode peek(i64_t i = 0) const noexcept { return *(begin + i); }
   InlineNodiscardCXPR ASTNode previous() const noexcept { return *(begin-1); }
   InlineNodiscardCXPR ASTNode take() noexcept { return *(begin++); }
+  InlineNodiscardCXPR sz_t size() noexcept { return end - begin; }
   InlineCXPR void undo() noexcept { --begin; }
 
   InlineNodiscardCXPR bool empty() const noexcept { return begin == end; }
@@ -239,7 +241,6 @@ class PeepingContext {
     auto const member_name = module_access_node.module_member_name( fileOf(module_access_node) );
 
     if (auto const member_function = imported_module.getFunction(member_name)) {
-      assert(member_function->id not_eq Symbol::INVALID_ID);
       if (not member_function->is_public) error(module_access_node, "Identifier not a public member of module.");
 
       access_instr.type = Instruction::MODULE_FUNCTION;
@@ -250,7 +251,6 @@ class PeepingContext {
     }
     else if (auto const member_variable = imported_module.getVariable(member_name)) {
       edenUnreachable("Globals unimplemented.");
-      assert(member_variable->id not_eq Symbol::INVALID_ID);
       if (not member_variable->is_public) error(module_access_node, "Identifier not a public member of module.");
 
       access_instr.type = Instruction::MODULE_GLOBAL;
@@ -270,46 +270,43 @@ class PeepingContext {
   }
 #undef pre
 
-#define pre Assume(member_access_node.type == ASTNode::MEMBER_ACCESS);
+#define pre Assume(custom_access_node.type == ASTNode::MEMBER_ACCESS);
   NodiscardCXPR QualifiedTypeID
-  peepMemberAccess(ASTNode member_access_node) noexcept { pre
-    Instruction type_member = makeInstruction(member_access_node, Instruction::TYPE_VARIABLE);
+  peepCustomMemberAccess(ASTNode custom_access_node) noexcept { pre
+    Instruction type_member = makeInstruction(custom_access_node, Instruction::TYPE_VARIABLE);
     auto const instruction_idx = instructions.size();
     addInstruction();
     QualifiedTypeID res;
 
-    auto const member_expression = peepExpression();
-    res = member_expression;
+    auto const custom_expression = peepExpression();
 
-    type_member.type_member_data.custom_type_module_id = member_expression.module_id;
-    type_member.type_member_data.custom_type_id = member_expression.id;
+    type_member.type_member_data.custom_type_module_id = custom_expression.module_id;
+    type_member.type_member_data.custom_type_id = custom_expression.id;
 
-    if (not member_expression.isCustom()) {
-      if (not member_expression.isError())
-        error(member_access_node, "Attempt to access member of non-custom type.");
+    if (not custom_expression.isCustom()) {
+      if (not custom_expression.isError())
+        error(custom_access_node, "Attempt to access member of non-custom type.");
       return res = errorID;
     }
 
-    auto const& custom_type = member_expression.getCustomType();
+    auto const& custom_type = custom_expression.getCustomType();
     auto const& member_table = custom_type.member_table();
     auto const identifier_node = nodes.take();
     auto const identifier = identifier_node.identifier_val( fileOf(identifier_node) );
 
-    if (auto const member_variable = member_table.getPublicVariable(identifier)) {
-      assert(member_variable->id not_eq Symbol::INVALID_ID);
-      type_member.type_member_data.member_id = member_variable->id;
-      auto const var_typeID = member_variable->typeID;
-      res = var_typeID;
-      if (member_expression.qualifiers.writable) res.qualifiers = member_variable->qualifiers;
-    }
-    else if (auto const member_function = member_table.getPublicFunction(identifier)) {
-      Unreachable("Member functions unimplemented."); assert(member_function->id not_eq Symbol::INVALID_ID);
+    if (auto const member_variable = member_table.getPublicVariable(identifier))
+      type_member.type_member_data.member_id = member_variable->id,
+      res = member_variable->typeID,
+      res.qualifiers = member_variable->qualifiers,
+      res.qualifiers.writable = custom_expression.qualifiers.writable ? true : res.qualifiers.writable;
+      
+    else if (auto const member_function = member_table.getPublicFunction(identifier))
+      Unreachable("Member functions unimplemented."),
       (void)member_function;
-    }
-    else {
-      error(identifier_node, "Identifier is not a public member of type.");
+      
+    else
+      error(identifier_node, "Identifier is not a public member of type."),
       res = errorID;
-    }
 
     instructions[instruction_idx] = type_member;
     return res;
@@ -323,22 +320,27 @@ class PeepingContext {
     auto const identifier = identifier_node.identifier_val( fileOf(identifier_node) );
     QualifiedTypeID res;
 
-    if (auto const variable = current_function->getLocal(identifier)) {
-      identifier_instructon.type = Instruction::LOCAL;
-      res = variable->typeID;
-      identifier_instructon.local_data.idx = variable->id;
-    }
-    else if (auto const function = parsed_tu.module.getFunction(identifier)) {
-      identifier_instructon.type = Instruction::FUNCTION;
-      res.module_id = parsed_tu.module.getID();
-      res.id = function->id;
+    if (auto const variable = current_function->getLocal(identifier))
+      identifier_instructon.type = Instruction::LOCAL,
+      identifier_instructon.local_data.id = variable->id,
+      res = variable->typeID,
+      res.qualifiers = variable->qualifiers;
+      
+    else if (auto const function = parsed_tu.module.getFunction(identifier))
+      identifier_instructon.type = Instruction::FUNCTION,
+      identifier_instructon.function_data.id = function->id,
+      res.module_id = parsed_tu.module.getID(),
+      res.id = function->id,
       res.is_function = true;
-    }
-    else if (auto const global = parsed_tu.module.getVariable(identifier)) {
-      identifier_instructon.type = Instruction::GLOBAL;
-      res = global->typeID;
-    }
+      
+    else if (auto const global = parsed_tu.module.getVariable(identifier))
+      Unreachable("Globals unimplemented."),
+      identifier_instructon.type = Instruction::GLOBAL,
+      res = global->typeID,
+      res.qualifiers = global->qualifiers;
+      
     else {
+      res = errorID;
       auto const possible_module = getModule(identifier);
       if (possible_module) {
         if (nodes.peek(-2).type == ASTNode::MEMBER_ACCESS)
@@ -346,10 +348,8 @@ class PeepingContext {
         else
           error(identifier_node, std::format("Module name used in invalid context.", identifier));
       }
-      else {
+      else
         error(identifier_node, std::format("Unrecognized identifier {}", identifier));
-      }
-      res = errorID;
     }
 
     addInstruction(identifier_instructon);
@@ -639,8 +639,7 @@ class PeepingContext {
       break;
     }
 
-    default:
-      edenUnreachable("Invalid binary operator.");
+    default: Unreachable("Invalid binary operator.");
     }
 
     instructions[binary_idx] = binary_instruction;
@@ -755,7 +754,7 @@ class PeepingContext {
   peepExpression() noexcept {
     auto const node = nodes.take();
     switch (node.type) { using enum ASTNode::NodeType;
-    case MEMBER_ACCESS:    return peepMemberAccess(node);
+    case MEMBER_ACCESS:    return peepCustomMemberAccess(node);
     case MODULE_ACCESS:    return peepModuleAccess(node);
     case UNARY:            return peepUnaryExpression(node);
     case BINARY:           return peepBinaryExpression(node);
@@ -886,7 +885,7 @@ class PeepingContext {
 
     {
       Instruction local_instruction = makeInstruction(decl_node, Instruction::LOCAL);
-      local_instruction.local_data.idx = current_local_idx; ++current_local_idx;
+      local_instruction.local_data.id = current_local_idx; ++current_local_idx;
       addInstruction(local_instruction);
     }
 
@@ -929,6 +928,7 @@ class PeepingContext {
     case STRING_LITERAL:
       return (void)peepLiteral(node);
 
+    case EMPTY: [[unlikely]] return;
     default: Unreachable("Invalid ASTNode while peeping statement.");
     }
   }
@@ -943,8 +943,11 @@ class PeepingContext {
     makeNewBlock(); // flush the last block
     previous_blocks_total_instructions = 0;
 
-    if (blocks.back().terminator_type == Block::Terminator::NONE)
-      error(nodes.previous(), "Expected return at end of function body.");
+    auto const returns_devoid = current_function->return_typeID.isDevoid();
+    auto const no_return_at_end = blocks.empty() or blocks.back().terminator_type == Block::Terminator::NONE;
+    if (not returns_devoid and no_return_at_end) {
+      error(nodes.previous(), "Expected return at end of function body which returns type.");
+    }
   }
 
   static constexpr void transmutate_tu(Parser::TU& parsed_tu) {

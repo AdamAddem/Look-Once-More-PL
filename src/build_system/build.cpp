@@ -5,9 +5,9 @@
 #include "parsing/parse.hpp"
 #include "peepir/peepir.hpp"
 #include "print.hpp"
+#include "error.hpp"
 
 #include "edenlib/owned.hpp"
-#include "edenlib/multi_iter.hpp"
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -296,22 +296,8 @@ parseTUs() {
     auto const end_time = chrono_now();
     Globals::addParsingBenchmark(end_time - begin_time, parser_tu.module.getID());
   }
-  if (has_error) return true;
 
-  auto const& main_tu = Globals::getTU(MAIN_TU_ID);
-  auto const main_fn = main_tu.m.module.getFunction("main");
-  auto const main_file = main_tu.m.source_files[0];
-  if (main_fn == nullptr) {
-    reportError(main_file, 0, 0, "Main function not defined.");
-    printFileErrors(main_file); return true;
-  }
-  if (not main_fn->is_public) {
-    auto [len, pos] = main_file.lenPosFromView(main_fn->nameof());
-    reportError(main_file, len, pos, "Main function not public.");
-    printFileErrors(main_file); return true;
-  }
-
-  return false;
+  return has_error;
 }
 
 // returns true if compilation should stop (due to error or outputing peep)
@@ -404,6 +390,19 @@ void LOM::build() {
     if (Settings::do_output_peepir) [[unlikely]] { Globals::setErrorStage(); return printPeeped(); }
   }
 
+  // make sure main exists
+  // if so, set to public so backend can set its linkage correctly
+  {
+    auto const& main_tu = Globals::getTU(MAIN_TU_ID);
+    auto const main_fn = main_tu.m.module.getFunction("main");
+    auto const main_file = main_tu.m.source_files[0];
+    if (main_fn == nullptr) {
+      reportError(main_file, 0, 0, "Main function not defined.");
+      return printFileErrors(main_file);
+    }
+    const_cast<Symbol::Function*>(main_fn)->is_public = true;
+  }
+
   Globals::progressStageTo<BuildStage::LOWERING>();
   lowerTUs();
 
@@ -414,6 +413,12 @@ void LOM::build() {
       if (compile_extern.joinable()) compile_extern.join();
       Backend::linkObjects();
       outputBenchmarks(chrono_now() - begin);
+      
+      if(LOM::Settings::do_run) {
+        system("clear");
+        std::string cmd{"./build/"}; cmd += LOM::Settings::getExecutableName().data();
+        system(cmd.data());
+      }
     }
   }
 

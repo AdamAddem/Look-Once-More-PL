@@ -2,10 +2,8 @@
 #include "edenlib/typedefs.hpp"
 #include "edenlib/vectors/vector.hpp"
 
-#include "error.hpp"
 #include "file.hpp"
 #include "generic_tu.hpp"
-#include "module/table_and_module.hpp"
 
 namespace LOM::Parser {
 struct TU;
@@ -83,8 +81,9 @@ struct Instruction {
   using enum Enum;
 
   struct ModuleAccessData    { u16_t module_id; u16_t member_id; /* byte_t _pad[4]; */ };
-  struct TypeAccessData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; /* byte_t _pad[2]; */ };
-  struct LocalData           { u32_t idx; /* byte_t _pad[4]; */ };
+  struct TypeAccessData      { u32_t custom_type_id; u16_t custom_type_module_id; u16_t member_id; };
+  struct LocalData           { u16_t id; /* byte_t _pad[6]; */ };
+  struct FunctionData        { u16_t id; /* byte_t _pad[6]; */ };
   struct SignedLiteralData   { i64_t value; };
   struct UnsignedLiteralData { u64_t value; };
   struct FloatLiteralData    { f32_t value; /* byte_t _pad[4]; */ };
@@ -103,6 +102,7 @@ struct Instruction {
     ModuleAccessData    module_member_data;
     TypeAccessData      type_member_data;
     LocalData           local_data;
+    FunctionData        function_data;
     SignedLiteralData   signed_literal_data;
     UnsignedLiteralData unsigned_literal_data;
     FloatLiteralData    float_literal_data;

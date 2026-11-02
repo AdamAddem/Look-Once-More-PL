@@ -1,11 +1,8 @@
 #include "types.hpp"
 
-#include "edenlib/macros.hpp"
-
-#include "error.hpp"
-#include "lexing/lex.hpp"
 #include "table_and_module.hpp"
 
+#include "edenlib/macros.hpp"
 #include <format>
 #include <utility>
 
@@ -33,11 +30,11 @@ TypeID::toString() const noexcept {
   }
 }
 
-#define pre Assume(isArray());
+#define pre assert(isArray());
 [[nodiscard]] ArrayType const& TypeID::getArrayType() const noexcept { pre return getModule(module_id).getArrayType(*this); }
 #undef pre
 
-#define pre Assume(isCustom());
+#define pre assert(isCustom());
 [[nodiscard]] CustomType const& TypeID::getCustomType() const noexcept { pre return getModule(module_id).getCustomType(*this); }
 #undef pre
 

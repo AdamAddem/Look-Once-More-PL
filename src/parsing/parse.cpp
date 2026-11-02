@@ -1,5 +1,6 @@
 #include "parse.hpp"
 
+#include "edenlib/shortened_macros.hpp"
 #include "edenlib/vectors/swap_vector.hpp"
 
 #include "ast.hpp"
@@ -52,7 +53,6 @@ struct ExpressionTree {
 };
 
 class ParsingContext {
-  // static constexpr auto name_search = [] (std::string_view e, std::string_view key) static { return e == key; };
   eden::vector<ASTNode> nodes;
   TokenView tokens;
   File current_file;
@@ -180,9 +180,7 @@ class ParsingContext {
     return tokens.take().originalString(tu.source_files.back());
   }
 
-  // opening parenthesis must be popped, and the next token must not be closing parenthesis (?) commented out cause idk if this is true TODO: check
-  //#define pre assert(tokens.previous().is(TokenType::LPAREN));
-  NodiscardCXPR u32_t generateParameters() { //pre
+  NodiscardCXPR u32_t generateParameters() {
     auto const parameter = generateAssignmentExpression();
     if (tokens.pop_if(TokenType::RPAREN))
       return expression_tree.create(PLACEHOLDER_NODE, parameter, 0);
@@ -193,7 +191,6 @@ class ParsingContext {
     error(tokens.peek(), "Expected comma in call expression.");
     return expression_tree.create(PLACEHOLDER_NODE, parameter, generateParameters());
   }
-  //#undef pre
 
 #define pre assert(tokens.peek().isLiteral());
   template <bool negate = false>
@@ -550,7 +547,7 @@ class ParsingContext {
       nodes.emplace_back(expression.node);
       return;
 
-    default: edenUnreachable("Invalid ast node type in expression translation.");
+    default: Unreachable("Invalid ast node type in expression translation.");
     }
   }
 #undef pre
@@ -588,8 +585,7 @@ class ParsingContext {
     }
   }
 
-
-  // parses  `name  : or $  type`
+  // parses  `name  (: or $) type`
   // returns name token, qualifiers, and typeID
   template <bool is_parameter = false>
   NodiscardCXPR std::tuple<Token, Type::Qualifiers, TypeID>
@@ -623,26 +619,24 @@ class ParsingContext {
       module.addLocal(typeID, qualifiers, decl_name);
 
     {
-    auto& node = nodes[decl_node_idx];
-    node.declaration_data.typeID = typeID;
-    node.file_idx = current_file_idx();
-    node.length = identifier_token.length;
-    node.position = identifier_token.position;
-
-    if (not tokens.pop_if(TokenType::ASSIGN)) {
-      auto const err = tokens.peek();
-      error(err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
-      syncToSemicolon();
-      return err;
-    }
-
-    if (tokens.pop_if(TokenType::KEYWORD_JUNK)) {
-      node.type = qualifiers.writable ? ASTNode::DECLARATION_JUNK_RW : ASTNode::DECLARATION_JUNK_RO;
-    }
-    else {
-      node.type = qualifiers.writable ? ASTNode::DECLARATION_RW : ASTNode::DECLARATION_RO;
-      parseExpression();
-    }
+      auto& node = nodes[decl_node_idx];
+      node.declaration_data.typeID = typeID;
+      node.file_idx = current_file_idx();
+      node.length = identifier_token.length;
+      node.position = identifier_token.position;
+  
+      if (not tokens.pop_if(TokenType::ASSIGN)) {
+        auto const err = tokens.peek();
+        error(err, "Expected assignment in variable declaration. Use = junk; if you'd like to keep the variable uninitialized.");
+        syncToSemicolon();
+        return err;
+      }
+  
+      if (tokens.pop_if(TokenType::KEYWORD_JUNK))
+        node.type = qualifiers.writable ? ASTNode::DECLARATION_JUNK_RW : ASTNode::DECLARATION_JUNK_RO;
+      else
+        node.type = qualifiers.writable ? ASTNode::DECLARATION_RW : ASTNode::DECLARATION_RO,
+        parseExpression();
     }
 
     if (not tokens.peek_is(TokenType::SEMI_COLON)) {
@@ -815,7 +809,13 @@ class ParsingContext {
     if (not tokens.pop_if(TokenType::RBRACE))
       error(tokens.peek(), "Expected closing curly brace after struct definition.");
 
-    (void)module.addCustomType(name, std::move(members));
+    if (module.getCustomTypeID(name) == devoidID) 
+      (void)module.addCustomType(name, std::move(members));
+    else {
+      auto [len, pos] = current_file.lenPosFromView(name);
+      error( Token{ Lexer::TokenType::INVALID_TOKEN, len, pos }, "Duplicated custom type name." );
+    }
+    
   }
 #undef pre
 
@@ -872,7 +872,6 @@ class ParsingContext {
         auto const parameter_idx = parameters.size();
         parameters.emplace_back(typeID, qualifiers, name_token.originalString(current_file), false, parameter_idx);
         if (not tokens.pop_if(TokenType::COMMA)) break;
-
       }
       if(not tokens.pop_if(TokenType::RPAREN)) error(tokens.peek(), "Expected closing parenthesis in parameter list.");
     }
@@ -884,17 +883,24 @@ class ParsingContext {
     auto const function_id = module.addFunction( name, std::move(parameters), return_typeID, is_public );
     module.enterFunctionScope(function_id);
 
-    if (not tokens.pop_if(TokenType::LBRACE)) {
-      error(tokens.peek(), "Expected function definition.");
-      tu.functions.emplace_back(std::move(current_function));
-      return;
-    }
-
-    // body
-    {
+    if (tokens.pop_if(TokenType::LBRACE)) {
       parseStatementsBetweenBraces();
+      if(nodes.empty()) [[unlikely]] {
+        auto const p = tokens.previous();
+        nodes.emplace_back(
+          ASTNode {
+            .type = ASTNode::EMPTY,
+            .file_idx = current_file_idx(),
+            .length = p.length,
+            .position = p.position,
+            ._ = 0
+          }
+        );
+      }
       current_function.body = std::move(nodes);
     }
+    else
+      error(tokens.peek(), "Expected '{' to start function definition.");
 
     tu.functions.emplace_back(std::move(current_function));
   }

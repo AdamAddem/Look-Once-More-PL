@@ -1,5 +1,6 @@
 #include "tollvm.hpp"
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
@@ -12,20 +13,15 @@
 #include <llvm/TargetParser/Host.h>
 
 #include "build_system/build.hpp"
-#include "error.hpp"
-#include "parsing/ast.hpp"
 #include "peepir/peepir.hpp"
 #include "settings.hpp"
 
-#include "edenlib/vectors/swap_vector.hpp"
-
-#include <cassert>
-#include <chrono>
-#include <filesystem>
-#include <print>
-
-
 #include "edenlib/shortened_macros.hpp"
+#include "edenlib/vectors/swap_vector.hpp"
+#include <cassert>
+#include <filesystem>
+
+
 using namespace LOM;
 
 namespace {
@@ -129,16 +125,12 @@ class LoweringContext final {
   LLVM_Backend& backend;
   PeepIR::TU& tu;
 
-  llvm::IntegerType* i1; llvm::IntegerType* i8;
-  llvm::IntegerType* i16; llvm::IntegerType* i32; llvm::IntegerType* i64;
-  llvm::Type* f32; llvm::Type* f64; llvm::Type* devoid; llvm::PointerType* ptr;
-  llvm::Value* i64_0;
-  llvm::Value* bool_true; llvm::Value* bool_false;
-
   // aligned and removed padding to make operator== faster
   struct alignas(8) TypeMapKey { u16_t module_id; u16_t _pad{}; u32_t type_id; bool operator==(TypeMapKey const&) const noexcept = default; };
   eden::swap_map<TypeMapKey, llvm::Type*> custom_type_map;
 
+  eden::vector<llvm::Function*> llvm_fns;
+  
   /* Variables used when lowering a function */
   llvm::Type* return_type{};
   llvm::IRBuilder<> builder;
@@ -149,7 +141,7 @@ class LoweringContext final {
   eden::vector<llvm::BasicBlock*> llvm_blocks;
   /* Variables used when lowering a function */
 
-  using TemporaryStringCat = llvm::SmallString<128>; // why do so many things just not take a twine
+  using TemporaryStringCat = llvm::SmallString<128>; // why do so many things not take a twine
 
   [[nodiscard]] llvm::Value*
   getFunctionImport(PeepIR::Instruction module_fn) {
@@ -176,12 +168,7 @@ class LoweringContext final {
     for (sz_t i{}; i<num_params; ++i)
       arg_types.push_back(translateType( fn.getLocal(i).typeID ));
 
-    // hack
-    auto const return_typeID = fn.return_typeID;
-    auto const llvm_return_type = return_typeID.isBool() ? i1 : translateType(return_typeID);
-
-    auto const res = llvm::FunctionType::get(llvm_return_type, arg_types, fn.is_variadic);
-    return res;
+    return llvm::FunctionType::get( translateType(fn.return_typeID), arg_types, fn.is_variadic);
   }
 
   [[nodiscard]] llvm::Type*
@@ -189,10 +176,11 @@ class LoweringContext final {
 
     // translate non-custom types
     {
-      if (typeID.isPointer()) return ptr;
+      if (typeID.isPointer()) return llvm::PointerType::get(backend.context, 0);
 
       switch (typeID.derived) { using enum Type::DerivedType;
-      case DEVOID: return devoid;
+      case DEVOID: return llvm::Type::getVoidTy(backend.context);
+        
       case ARRAY: {
         auto const& array_type = typeID.getArrayType();
         return llvm::ArrayType::get( translateType(array_type.getSubtypeID()), array_type.getSize() );
@@ -202,17 +190,18 @@ class LoweringContext final {
         auto const& primitive = typeID.getPrimitiveType();
         switch (primitive.getUnderlyingPrimitiveType()) { using enum PrimitiveType::PrimitiveTypeEnum;
         case STRING:        Unreachable("WIP");
-        case F32: return f32;
-        case F64: return f64;
+        case F32: return llvm::Type::getFloatTy(backend.context);
+        case F64: return llvm::Type::getDoubleTy(backend.context);
 
-        case U8: case I8: case CHAR: case BOOL:
-          return i8;
+        case U8: case I8: case CHAR: 
+          return llvm::Type::getInt8Ty(backend.context);
+          
+        case BOOL: return llvm::Type::getInt1Ty(backend.context);
 
-        case U16: case I16: return i16;
-        case U32: case I32: return i32;
-        case U64: case I64: return i64;
-        default:
-          Unreachable("Invalid primitive type.");
+        case U16: case I16: return llvm::Type::getInt16Ty(backend.context);
+        case U32: case I32: return llvm::Type::getInt32Ty(backend.context);
+        case U64: case I64: return llvm::Type::getInt64Ty(backend.context);
+        default: Unreachable("Invalid primitive type.");
         }
       }
 
@@ -248,17 +237,9 @@ class LoweringContext final {
     return res;
   }
 
-  [[nodiscard]] llvm::Constant*
-  fpConstant(llvm::Type* t, double value) const noexcept
-  { return llvm::ConstantFP::get(t, value); }
-
-  [[maybe_unused]] [[nodiscard]] llvm::Constant*
-  signedConstant(llvm::Type* t, i64_t value) const noexcept
-  { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value, true); }
-
-  [[nodiscard]] llvm::Constant*
-  unsignedConstant(llvm::Type* t, u64_t value) const noexcept
-  { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value); }
+  [[nodiscard]] llvm::Constant* fpConstant(llvm::Type* t, double value) const noexcept { return llvm::ConstantFP::get(t, value); }
+  [[nodiscard]] llvm::Constant* signedConstant(llvm::Type* t, i64_t value) const noexcept { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value, true); }
+  [[nodiscard]] llvm::Constant* unsignedConstant(llvm::Type* t, u64_t value) const noexcept { return llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(t), value); }
 
   [[nodiscard]] llvm::Value*
   genUnary(PeepIR::Instruction::Enum type) noexcept {
@@ -301,14 +282,11 @@ class LoweringContext final {
       builder.CreateStore(res, var);
       return var;
     }
-    case ADDRESS_OF:
-      return genRefExpression();
-    case NEGATE:
-      return builder.CreateNeg(genValueExpression());
-    case FNEGATE:
-      return builder.CreateFNeg(genValueExpression());
-    case BITNOT:
-      return builder.CreateNot(genValueExpression());
+
+    case ADDRESS_OF: return genRefExpression();
+    case NEGATE:     return builder.CreateNeg(genValueExpression());
+    case FNEGATE:    return builder.CreateFNeg(genValueExpression());
+    case BITNOT:     return builder.CreateNot(genValueExpression());
     case POST_INC: {
       auto const var = llvm::cast<llvm::AllocaInst>(genRefExpression());
       auto const var_type = var->getAllocatedType();
@@ -341,8 +319,8 @@ class LoweringContext final {
       builder.CreateStore(res, var);
       return load;
     }
-    default:
-      Unreachable("Invalid unary peep instruction type.");
+    
+    default: Unreachable("Invalid unary peep instruction type.");
     }
   }
 
@@ -367,8 +345,7 @@ class LoweringContext final {
     case SMOD: return builder.CreateSRem(left, right);
     case FMOD: return builder.CreateFRem(left, right);
 
-    case ASSIGN:
-      Unreachable("Assign shouldn't be called here.");
+    case ASSIGN: Unreachable("Assign shouldn't be called here.");
 
     case ULESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_ULT, left, right);
     case SLESS: return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SLT, left, right);
@@ -386,8 +363,8 @@ class LoweringContext final {
     case SGEQ:  return builder.CreateCmp(llvm::CmpInst::Predicate::ICMP_SGE, left, right);
     case FGEQ:  return builder.CreateCmp(llvm::CmpInst::Predicate::FCMP_OGE, left, right);
 
-    case AND:    return builder.CreateLogicalAnd(builder.CreateTrunc(left, i1), builder.CreateTrunc(right, i1));
-    case OR:     return builder.CreateLogicalOr(builder.CreateTrunc(left, i1), builder.CreateTrunc(right, i1));
+    case AND:    return builder.CreateLogicalAnd(builder.CreateTrunc(left, llvm::Type::getInt1Ty(backend.context)), builder.CreateTrunc(right, llvm::Type::getInt1Ty(backend.context)));
+    case OR:     return builder.CreateLogicalOr(builder.CreateTrunc(left, llvm::Type::getInt1Ty(backend.context)), builder.CreateTrunc(right, llvm::Type::getInt1Ty(backend.context)));
 
     case BITAND: return builder.CreateAnd(left, right);
     case BITOR:  return builder.CreateOr(left, right);
@@ -414,8 +391,7 @@ class LoweringContext final {
   genAssign(PeepIR::Instruction::Enum type, u64_t bitwidth = 0) noexcept {
     auto const left = genRefExpression();
     llvm::Value* right;
-    switch (type) {
-      using enum PeepIR::Instruction::Enum;
+    switch (type) { using enum PeepIR::Instruction::Enum;
     case ASSIGN:
       right = genValueExpression();
       break;
@@ -426,29 +402,21 @@ class LoweringContext final {
       right = builder.CreateSExt(genValueExpression(), llvm::IntegerType::get(backend.context, bitwidth));
       break;
 
-    default:
-      Unreachable("Invalid assign peep instruction type.");
+    default: Unreachable("Invalid assign peep instruction type.");
     }
 
     return builder.CreateStore(right, left);
   }
 
   [[nodiscard]] llvm::Value*
-  genValueExpression() noexcept { // only relevant for that which can be used by value, with the addition of functions
+  genValueExpression() noexcept { // only relevant for that which can be used by value
     auto const& instruction = instructions[instruction_idx++];
-    switch (instruction.type) {
-      using enum PeepIR::Instruction::Enum;
+    switch (instruction.type) { using enum PeepIR::Instruction::Enum;
     case NOOP: return nullptr;
 
-    case FUNCTION: {
-      auto const function = backend.module.getFunction(instruction.original_string(tu.source_files[instruction.file_idx])); assert(function);
-      return function;
-    }
     case LOCAL: {
-      assert(instruction.local_data.idx < locals.size());
-      auto const local = locals[instruction.local_data.idx];
-      auto const local_type = local->getAllocatedType();
-      return builder.CreateLoad(local_type, local);
+      auto const local = locals[instruction.local_data.id];
+      return builder.CreateLoad(local->getAllocatedType(), local);
     }
 
     case TYPE_VARIABLE: {
@@ -460,21 +428,20 @@ class LoweringContext final {
       auto const member_ptr = builder.CreateStructGEP(translateType(custom_typeID), genRefExpression(), id);
       return builder.CreateLoad(translateType(member.typeID), member_ptr);
     }
-    case MODULE_FUNCTION:
-      return getFunctionImport(instruction);
+    case MODULE_FUNCTION: return getFunctionImport(instruction);
 
-    case I8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.signed_literal_data.value, true);
-    case I16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.signed_literal_data.value, true);
-    case I32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.signed_literal_data.value, true);
-    case I64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.signed_literal_data.value, true);
-    case U8_LITERAL:              return llvm::ConstantInt::get(i8, instruction.unsigned_literal_data.value);
-    case U16_LITERAL:             return llvm::ConstantInt::get(i16, instruction.unsigned_literal_data.value);
-    case U32_LITERAL:             return llvm::ConstantInt::get(i32, instruction.unsigned_literal_data.value);
-    case U64_LITERAL:             return llvm::ConstantInt::get(i64, instruction.unsigned_literal_data.value);
-    case FLOAT_LITERAL:           return llvm::ConstantFP::get(f32, instruction.float_literal_data.value);
-    case DOUBLE_LITERAL:          return llvm::ConstantFP::get(f64, instruction.double_literal_data.value);
-    case BOOL_LITERAL:            return instruction.bool_literal_data.value ? bool_true : bool_false;
-    case CHAR_LITERAL:            return llvm::ConstantInt::get(i8, instruction.char_literal_data.value);
+    case I8_LITERAL:              return llvm::ConstantInt::get(llvm::Type::getInt8Ty(backend.context), instruction.signed_literal_data.value, true);
+    case I16_LITERAL:             return llvm::ConstantInt::get(llvm::Type::getInt16Ty(backend.context), instruction.signed_literal_data.value, true);
+    case I32_LITERAL:             return llvm::ConstantInt::get(llvm::Type::getInt32Ty(backend.context), instruction.signed_literal_data.value, true);
+    case I64_LITERAL:             return llvm::ConstantInt::get(llvm::Type::getInt64Ty(backend.context), instruction.signed_literal_data.value, true);
+    case U8_LITERAL:              return llvm::ConstantInt::get(llvm::Type::getInt8Ty(backend.context), instruction.unsigned_literal_data.value);
+    case U16_LITERAL:             return llvm::ConstantInt::get(llvm::Type::getInt16Ty(backend.context), instruction.unsigned_literal_data.value);
+    case U32_LITERAL:             return llvm::ConstantInt::get(llvm::Type::getInt32Ty(backend.context), instruction.unsigned_literal_data.value);
+    case U64_LITERAL:             return llvm::ConstantInt::get(llvm::Type::getInt64Ty(backend.context), instruction.unsigned_literal_data.value);
+    case FLOAT_LITERAL:           return llvm::ConstantFP::get(llvm::Type::getFloatTy(backend.context), instruction.float_literal_data.value);
+    case DOUBLE_LITERAL:          return llvm::ConstantFP::get(llvm::Type::getDoubleTy(backend.context), instruction.double_literal_data.value);
+    case BOOL_LITERAL:            return llvm::ConstantInt::getBool(backend.context, instruction.bool_literal_data.value);   
+    case CHAR_LITERAL:            return llvm::ConstantInt::get(llvm::Type::getInt8Ty(backend.context), instruction.char_literal_data.value);
     case STRING_LITERAL:          return builder.CreateGlobalString(instruction.original_string(tu.source_files[instruction.file_idx]));
     case ESCAPED_STRING_LITERAL:  return builder.CreateGlobalString(instruction.escaped_string_value(tu.source_files[instruction.file_idx]));
 
@@ -495,13 +462,18 @@ class LoweringContext final {
     case BITOR:
     case BITXOR:
       return genBinary(instruction.type);
+      
     case SUBSCRIPT: {
       auto const array = genRefExpression();
       auto const array_typeID = instruction.subscript_data.array_typeID;
       auto const& array_type = array_typeID.getArrayType();
 
       auto const index = genValueExpression();
-      auto const element_ptr = builder.CreateGEP( translateType(array_typeID), array, {i64_0, index} );
+      auto const element_ptr = builder.CreateGEP( translateType(array_typeID), array, {
+        llvm::ConstantInt::get(llvm::Type::getInt64Ty(backend.context), 0), 
+        index
+      } 
+      );
 
       return builder.CreateLoad( translateType(array_type.getSubtypeID()), element_ptr );
     }
@@ -577,19 +549,10 @@ class LoweringContext final {
     auto const& instruction = instructions[instruction_idx++];
     switch (instruction.type) {
     using enum PeepIR::Instruction::Enum;
-    case FUNCTION: {
-      auto const str = instruction.original_string(tu.source_files[instruction.file_idx]);
-      auto const function = backend.module.getFunction(
-        TemporaryStringCat{ tu.name, "::", str }
-        ); assert(function);
-      return function;
-    }
-    case MODULE_FUNCTION:
-      return getFunctionImport(instruction);
+    case MODULE_FUNCTION: return getFunctionImport(instruction);
 
-    case LOCAL:
-      assert(instruction.local_data.idx < locals.size());
-      return locals[instruction.local_data.idx];
+    case FUNCTION: return llvm_fns[instruction.function_data.id];
+    case LOCAL: return locals[instruction.local_data.id];
 
     case TYPE_VARIABLE: {
       auto const custom_typeID = instruction.custom_typeID();
@@ -600,7 +563,11 @@ class LoweringContext final {
     case SUBSCRIPT: {
       auto const array = genRefExpression(); auto const array_type = instruction.subscript_data.array_typeID;
       auto const index = genValueExpression();
-      return builder.CreateGEP( translateType(array_type), array, {i64_0, index} );
+      return builder.CreateGEP( translateType(array_type), array, {
+        llvm::ConstantInt::get(llvm::Type::getInt64Ty(backend.context), 0),
+        index
+      } 
+      );
     }
 
     case PRE_INC: case FPRE_INC:
@@ -623,7 +590,7 @@ class LoweringContext final {
     }
 
     case DEREFERENCE:
-      return builder.CreateLoad(ptr, genRefExpression());
+      return builder.CreateLoad(llvm::PointerType::get(backend.context, 0), genRefExpression());
 
     case CALL: {
       auto const fn = genRefExpression();
@@ -653,24 +620,22 @@ class LoweringContext final {
 
     switch (block.terminator_type) { using enum PeepIR::Block::Terminator;
     case BR:
-      builder.CreateBr(
-        llvm_blocks[block.br.next_block_offset + (i16_t)block_idx]);
+      builder.CreateBr( llvm_blocks[block.br.next_block_offset + eden::narrow<i16_t>(block_idx)] );
       break;
     case BRC:
       builder.CreateCondBr(
-        builder.CreateTrunc(branch_value, i1),
-        llvm_blocks[block.brc.true_block_offset + (i16_t)block_idx],
-        llvm_blocks[block.brc.false_block_offset + (i16_t)block_idx]);
+        builder.CreateTrunc(branch_value, llvm::Type::getInt1Ty(backend.context)),
+        llvm_blocks[block.brc.true_block_offset + eden::narrow<i16_t>(block_idx)],
+        llvm_blocks[block.brc.false_block_offset + eden::narrow<i16_t>(block_idx)]);
       break;
-    case RET:
-      builder.CreateRet(branch_value);
-      break;
-    default:
-      Unreachable("Invalid block terminator type.");
+    case RET: builder.CreateRet(branch_value); break;
+      
+    default: Unreachable("Invalid block terminator type.");
     }
   }
 
-  void genFunction(u16_t fn_id, llvm::Function* llvm_fn) {
+  void genFunction(u16_t fn_id) {
+    auto const llvm_fn = llvm_fns[fn_id];
 
     // reset state
     {
@@ -732,27 +697,27 @@ public:
   static std::unique_ptr<LLVM_Backend>
   lowerToLLVM(PeepIR::TU& peeped_tu) {
     auto backend = std::make_unique<LLVM_Backend>(peeped_tu.name);
+    
     LoweringContext codegen(*backend, peeped_tu);
-
-    llvm::SmallVector<llvm::Function*, 128> llvm_fns;
     auto const num_fns = peeped_tu.functions.size();
-
-    // add all functions to llvm table
+    codegen.llvm_fns.reserve(num_fns);
+    
+    // add all functions to llvm first
     for (sz_t i{}; i<num_fns; ++i) {
       auto const& fn_symbol = peeped_tu.module.getFunction(eden::narrow<u16_t>(i));
-      llvm_fns.emplace_back(
+      auto const llvm_fn = 
         llvm::Function::Create(
           codegen.translateFunctionType(fn_symbol),
           fn_symbol.is_public ? llvm::Function::ExternalLinkage : llvm::Function::InternalLinkage,
           /*AddrSpace=*/0,
           llvm::Twine(peeped_tu.name) + "::" + fn_symbol.nameof(),
-          &backend->module)
-        );
+          &backend->module);
+      codegen.llvm_fns.emplace_back_unchecked(llvm_fn);
     }
 
-    // actual codegen
+    // codegen after all fns added
     for (sz_t i{}; i<num_fns; ++i)
-      codegen.genFunction(eden::narrow<u16_t>(i), llvm_fns[i]);
+      codegen.genFunction(eden::narrow<u16_t>(i));
 
     if (peeped_tu.module.getID() == MAIN_TU_ID) [[unlikely]] {
       auto const main_fn = backend->module.getFunction( TemporaryStringCat{peeped_tu.name, "::main"} );
@@ -765,18 +730,6 @@ public:
 
   explicit LoweringContext(LLVM_Backend& backend, PeepIR::TU& peeped_tu)
   : backend(backend), tu(peeped_tu), builder(backend.context) {
-    i1 = llvm::Type::getInt1Ty(backend.context);
-    i8 = llvm::Type::getInt8Ty(backend.context);
-    bool_true = llvm::ConstantInt::get(i8, 1); bool_false = llvm::ConstantInt::get(i8, 0);
-
-    i16 = llvm::Type::getInt16Ty(backend.context);
-    i32 = llvm::Type::getInt32Ty(backend.context);
-    i64 = llvm::Type::getInt64Ty(backend.context); i64_0 = llvm::ConstantInt::get(i64, 0);
-    f32 = llvm::Type::getFloatTy(backend.context);
-    f64 = llvm::Type::getDoubleTy(backend.context);
-    devoid = llvm::Type::getVoidTy(backend.context);
-    ptr = llvm::PointerType::get(backend.context, 0);
-
     auto const num_custom_types = peeped_tu.module.numCustomTypes();
     custom_type_map.reserve(num_custom_types);
   }

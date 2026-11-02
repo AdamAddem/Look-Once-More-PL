@@ -1,2 +1,5 @@
 -std=c++23
 -Isrc/
+-Wall
+-Werror
+-Wpedantic

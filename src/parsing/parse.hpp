@@ -12,14 +12,13 @@ namespace LOM::Parser {
 
 struct Function {
   eden::vector<ASTNode> body;
-  byte_t _pad[ FUNCTION_SIZE - sizeof(body) ]; // TODO: check whether this is being initialized
+  byte_t _pad[ FUNCTION_SIZE - sizeof(body) ];
 }; static_assert(sizeof(Function) == FUNCTION_SIZE); static_assert(alignof(Function) == FUNCTION_ALIGN);
 
 struct TU {
   GENERIC_TU_DEF
   eden::vector<Function> functions;
   InlineCXPR explicit TU(u16_t tu_id) : module(tu_id) {}
-
 }; static_assert(sizeof(TU) == TU_SIZE); static_assert(alignof(TU) == TU_ALIGN);
 
 void printTU(TU const&) noexcept;

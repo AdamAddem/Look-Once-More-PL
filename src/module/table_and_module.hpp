@@ -10,7 +10,6 @@ namespace LOM {
 
 namespace Symbol {
 
-static constexpr u16_t INVALID_ID = u16_max;
 static constexpr auto name_search = [] (auto const& e, std::string_view key) static { return e.nameof() == key; };
 static constexpr auto id_search = [] (auto const& e, u16_t id) static { return e.id == id; };
 static constexpr auto get_id_of = [] (auto const& e) static { return e.id; };
@@ -23,9 +22,9 @@ struct Variable {
   Type::Qualifiers qualifiers;
   bool is_public;
 
-  constexpr Variable(TypeID typeID, Type::Qualifiers qualifiers, std::string_view name, bool is_public, sz_t variable_insert_order) noexcept
+  constexpr Variable(TypeID typeID, Type::Qualifiers qualifiers, std::string_view name, bool is_public, u16_t variable_insert_order) noexcept
   : typeID(typeID), name(name.data()), name_len(name.length()), id(variable_insert_order), qualifiers(qualifiers), is_public(is_public)
-  { assert(variable_insert_order <= u16_max); }
+  { }
 
   InlineNodiscardCXPR std::string_view nameof() const noexcept { return std::string_view(name, name_len); }
 };
@@ -37,7 +36,7 @@ struct Function {
   mutable eden::swap_vector16<Variable> locals;
   char const* name;
   u32_t name_len;
-  u16_t id{INVALID_ID};
+  u16_t id;
   bool is_public : 1;
   bool is_variadic : 1;
   u8_t num_parameters : 6;
@@ -59,18 +58,13 @@ struct Function {
   InlineNodiscardCXPR sz_t getNumParameters() const noexcept { return num_parameters; }
 
 private:
-  constexpr Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, TypeID return_typeID, bool is_public, bool is_variadic, sz_t functon_insert_order)
+  constexpr Function(std::string_view name, eden::swap_vector16<Variable>&& parameters, TypeID return_typeID, bool is_public, bool is_variadic, u16_t functon_insert_order)
   : return_typeID(return_typeID), locals(std::move(parameters)),
     name(name.data()), name_len(name.length()),
     id(functon_insert_order), is_public(is_public), is_variadic(is_variadic) {
+    assert(locals.size() <= 63);
     num_parameters = eden::narrow<u8_t>(locals.size());
-    Assume(functon_insert_order not_eq INVALID_ID);
     assert(locals.is_ordered(get_id_of));
-
-#ifndef NDEBUG
-    (void) eden::narrow<u16_t>(functon_insert_order);
-    for (auto const& param : locals) assert(param.id not_eq INVALID_ID);
-#endif
   }
 };
 
@@ -85,7 +79,7 @@ class SymbolTable {
   static constexpr auto id_search = Symbol::id_search;
   static constexpr auto get_id_of = Symbol::get_id_of;
 
-  // function vector preserves backmost element, whi  alignas(SYMBOL_TABLE_ALIGNMENT)
+  // function vector preserves backmost element
   mutable eden::swap_vector<Function, eden::swap_vector_settings<4, true>{}> functions;
   mutable eden::swap_vector<Variable> variables;
 
@@ -93,7 +87,7 @@ class SymbolTable {
 public:
 
 #define pre assert(not variables.search_noswap(name_search, var_name));
-  InlineCXPR void addVariable(TypeID var_typeID, Type::Qualifiers var_qualifiers, std::string_view var_name, bool is_public) noexcept { pre variables.emplace_back( Variable{var_typeID, var_qualifiers, var_name, is_public, variables.size()} ); }
+  InlineCXPR void addVariable(TypeID var_typeID, Type::Qualifiers var_qualifiers, std::string_view var_name, bool is_public) noexcept { pre variables.emplace_back( Variable{var_typeID, var_qualifiers, var_name, is_public, eden::narrow<u16_t>(variables.size())} ); }
 #undef pre
 
   // returns nullptr if non-existent. pointer is not stable and may be invalidated if another global is added or searched.
@@ -101,7 +95,7 @@ public:
 
   // Reference is stable unless another variable is added or searched not using ID.
 #define pre assert(variables.search_noswap(id_search, variable_id));
-  NodiscardCXPR Variable const& getVariable(u16_t variable_id) const noexcept { pre  return variables.gradual_sort_search(get_id_of, variable_id); }
+  NodiscardCXPR Variable const& getVariable(u16_t variable_id) const noexcept { pre return variables.gradual_sort_search(get_id_of, variable_id); }
 #undef pre
 
   // returns nullptr if non-existent / not public. pointer is not stable and may be invalidated if another global is added or searched.
@@ -136,7 +130,7 @@ public:
 #define pre assert(not functions.search_noswap(name_search, function_name));
   InlineCXPR u16_t
   addFunction(std::string_view function_name, eden::swap_vector16<Variable>&& parameters, TypeID return_typeID, bool is_public, bool is_variadic = false) noexcept { pre
-    auto const function_id = (u16_t) functions.size();
+    auto const function_id = eden::narrow<u16_t>(functions.size());
     functions.emplace_back( Function{ function_name, std::move(parameters), return_typeID, is_public, is_variadic, function_id } );
     return function_id;
   }
@@ -172,18 +166,9 @@ class Module final : public SymbolTable {
   template <std::derived_from<Type> T>
   InlineNodiscardCXPR static TypeID
   makeNew(eden::swap_vector<T>& type_vector, u16_t module_id, T&& type) noexcept {
-    auto const fn_type_id = (u16_t) type_vector.size();
+    auto const id = eden::narrow<u16_t>(type_vector.size());
     type_vector.emplace_back(std::move(type));
-    return {.derived = Type::corresponding_derived_type<T>(), .module_id = module_id, .id = fn_type_id};
-  }
-
-  template <std::derived_from<Type> T>
-  InlineNodiscardCXPR static TypeID
-  returnExistingOrNew(eden::swap_vector<T>& type_vector, u16_t module_id, auto... args) noexcept {
-    T tmp(args...);
-    auto const res = type_vector.search_noswap(search_pred, tmp);
-    if (res) return getExisting(res, type_vector, module_id);
-    return makeNew(type_vector, module_id, std::move(tmp));
+    return {.derived = Type::corresponding_derived_type<T>(), .module_id = module_id, .id = id};
   }
 
 public:
@@ -193,7 +178,12 @@ public:
   InlineNodiscardCXPR sz_t numArrayTypes()    const noexcept { return array_types.size(); }
   InlineNodiscardCXPR sz_t numCustomTypes()   const noexcept { return custom_types.size(); }
 
-  InlineNodiscardCXPR TypeID addArrayType(TypeID subtypeID, u64_t array_size) noexcept { return returnExistingOrNew(array_types, id, subtypeID, array_size); }
+  InlineNodiscardCXPR TypeID addArrayType(TypeID subtypeID, u64_t array_size) noexcept {
+    ArrayType tmp{subtypeID, array_size};
+    auto const res = array_types.search_noswap(search_pred, tmp);
+    if (res) return getExisting(res, array_types, id);
+    return makeNew(array_types, id, std::move(tmp)); 
+  }
 
 #define pre assert(getCustomTypeID(type_name) == devoidID);
   InlineNodiscardCXPR TypeID

@@ -1,7 +1,11 @@
 #include "print.hpp"
+
+#include "error.hpp"
 #include "build_system/build.hpp"
 #include "parsing/parse.hpp"
 #include "peepir/peepir.hpp"
+
+#include <print>
 
 using namespace LOM;
 namespace {
@@ -109,7 +113,7 @@ printFunction(TU const& tu, u16_t fn_id) noexcept {
     indents.add(printNode(node, tu.source_files[node.file_idx]));
   }
 
-  std::print("\n}} ");
+  std::println("}}");
 }
 
 }}
@@ -150,7 +154,7 @@ sz_t printInstruction(Instruction instruction, File file, std::string_view modul
   // this doesn't have to be one line but its really funny
   case TYPE_VARIABLE: std::println("Type Variable {}", getModule(instruction.type_member_data.custom_type_module_id).getCustomType( TypeID{ .derived = Type::CUSTOM, .module_id = instruction.type_member_data.custom_type_module_id, .id = instruction.type_member_data.custom_type_id } ).member_table().getVariable(instruction.type_member_data.member_id).nameof()); return 0;
 
-  case LOCAL: std::println("Local {}", instruction.local_data.idx); return 0;
+  case LOCAL: std::println("Local {}", instruction.local_data.id); return 0;
 
   case I8_LITERAL: std::println("i8 literal {}", instruction.signed_literal_data.value); return 0;
   case I16_LITERAL: std::println("i16 literal {}", instruction.signed_literal_data.value); return 0;
@@ -256,7 +260,8 @@ void printBlocks(std::span<Block const> blocks, std::span<Instruction const> ins
 
 NoInlineCold void
 printFunction(TU const& tu, u16_t fn_id) noexcept {
-  std::print("{}", functionToString( tu.module.getFunction(fn_id)) );
+  auto const& fn_symbol = tu.module.getFunction(fn_id);
+  std::print("{}", functionToString(fn_symbol));
 
   auto const& fn = tu.functions[fn_id];
   std::println("Block count: {}", fn.blocks.size());
@@ -267,16 +272,14 @@ printFunction(TU const& tu, u16_t fn_id) noexcept {
 
   std::print("Locals: ");
 
-  auto const& fn_symbol = tu.module.getFunction(fn_id);
   auto const num_locals = fn_symbol.locals.size();
   for (sz_t i{}; i<num_locals; ++i) {
-    std::print("{}: {} | ", i, fn_symbol.locals[i].typeID.toString());
+    std::print("{}: {}, ", fn_symbol.getLocal(i).nameof(), fn_symbol.getLocal(i).typeID.toString());
   }
-
-  std::println();
+  std::println("\n");
 
   printBlocks(fn.blocks.to_span(), fn.instructions.to_span(), tu.source_files.to_span(), tu.name);
-  std::println("}}");
+  std::println("}}\n");
 }
 
 }}

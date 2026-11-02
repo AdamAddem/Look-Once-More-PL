@@ -1,4 +1,5 @@
 #pragma once
+#include "edenlib/typedefs.hpp"
 
 // This exists to solve the cyclic dependency between symbol_table.hpp and types.hpp.
 // symbol_table.hpp static_asserts that these properties hold true.

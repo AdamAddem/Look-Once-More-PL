@@ -95,8 +95,8 @@ void setArgs(int _argc, const char** argv) {
 
     auto const arg = arg_iter->second;
     switch (arg) {
-    case Args::OUTPUT_AST:  setIfNotSet(output_ast_flag, "Output parser flag duplicated."); break;
-    case Args::OUTPUT_PEEPIR:    setIfNotSet(output_peepir_flag, "Output peep flag duplicated."); break;
+    case Args::OUTPUT_AST:     setIfNotSet(output_ast_flag, "Output parser flag duplicated."); break;
+    case Args::OUTPUT_PEEPIR:  setIfNotSet(output_peepir_flag, "Output peep flag duplicated."); break;
     case Args::OUTPUT_LLVMIR:  setIfNotSet(output_llvmir_flag, "Output llvmir flag duplicated."); break;
     case Args::OUTPUT_ASM:     setIfNotSet(output_asm_flag, "Output asm flag duplicated."); break;
       

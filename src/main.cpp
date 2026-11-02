@@ -14,13 +14,5 @@ int main(int argc, char const* argv[]) {
     return 1;
   }
 
-  if constexpr (not LOM::Settings::do_profile) {
-    if(LOM::Settings::do_run) {
-      system("clear");
-      std::string cmd{"./build/"}; cmd += LOM::Settings::getExecutableName().data();
-      system(cmd.data());
-    }
-  }
-
   return 0;
 }

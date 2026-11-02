@@ -1,20 +1,16 @@
 #pragma once
+#include "build_system/build.hpp"
+#include "edenlib/shortened_macros.hpp"
+#include "module/table_and_module_sync.hpp"
+#include "settings.hpp"
+
+#include "edenlib/casts.hpp"
 #include "edenlib/bitwise_utils.hpp"
 #include "edenlib/enum_utils.hpp"
 #include "edenlib/macros.hpp"
 #include "edenlib/typedefs.hpp"
 
-#include "build_system/build.hpp"
-#include "edenlib/casts.hpp"
-#include "module/table_and_module_sync.hpp"
-#include "module/types.hpp"
-#include "settings.hpp"
-
 #include <cassert>
-#include <cstring>
-#include <limits>
-#include <print>
-#include <span>
 #include <utility>
 
 namespace LOM {
@@ -406,8 +402,8 @@ public:
   [[nodiscard]] SymbolTable const& member_table() const noexcept;
 
   InlineNodiscardCXPR std::string_view nameof()   const noexcept { return {name, name_len}; }
-  InlineNodiscardCXPR std::string      toString() const noexcept { return std::string(nameof()); }
-
+  
+  NoInlineCold [[nodiscard]] std::string toString() const noexcept { return std::string(nameof()); }
   [[nodiscard]] std::string definitionToString() const noexcept;
 };
 

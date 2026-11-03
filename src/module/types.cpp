@@ -18,7 +18,7 @@ TypeID::toString() const noexcept {
     return "ref " + x.toString();
   }
 
-  switch (derived) { using enum Type::DerivedType;
+  switch (derived) {
   case DEVOID:      return "devoid";
   case ERROR:       return "!ERROR!";
 
@@ -89,7 +89,7 @@ TypeID::coercibleTo(TypeID other) const noexcept {
   }
 
   if (derived != other.derived) return false;
-  switch (derived) { using enum Type::DerivedType;
+  switch (derived) {
   case DEVOID:
   case ERROR:      Unreachable("This should've returned earlier.");
 
@@ -119,7 +119,7 @@ TypeID::castableTo(TypeID other) const noexcept {
 
   if (derived != other.derived) return false;
 
-  switch (derived) { using enum Type::DerivedType;
+  switch (derived) {
   case PRIMITIVE:   return primitiveCastableFromTo( this->getPrimitiveType(), other.getPrimitiveType() );
 
   // can only cast to self which has been checked earlier
@@ -141,7 +141,7 @@ TypeID::sameAs(TypeID other) const noexcept {
     return getMostPointedTypeID().sameAs(other.getMostPointedTypeID());
   }
 
-  switch (derived) { using enum Type::DerivedType;
+  switch (derived) {
   case DEVOID:
   case ERROR:
   case CUSTOM:
@@ -154,7 +154,7 @@ TypeID::sameAs(TypeID other) const noexcept {
 
 }
 
-CustomType::CustomType(std::string_view name) noexcept : Type(CUSTOM),  name_len(name.length()), name(name.data()) { std::construct_at<SymbolTable>( (SymbolTable*) symboltable_buff); }
+CustomType::CustomType(std::string_view name) noexcept : name_len(name.length()), name(name.data()) { std::construct_at<SymbolTable>( (SymbolTable*) symboltable_buff); }
 [[nodiscard]] SymbolTable&       CustomType::member_table()       noexcept { return *std::launder( (SymbolTable*) symboltable_buff ); }
 [[nodiscard]] SymbolTable const& CustomType::member_table() const noexcept { return *std::launder( (SymbolTable const*) symboltable_buff ); }
 

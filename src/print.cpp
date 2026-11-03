@@ -41,7 +41,7 @@ std::string functionToString(Symbol::Function const& fn) noexcept {
 
   auto const return_typeID = fn.return_typeID;
   res.append(") ");
-  if (return_typeID.derived not_eq Type::DEVOID)
+  if (return_typeID.derived not_eq TypeID::DEVOID)
     res.append( std::format("{} ", return_typeID.toString()) );
 
   res.append("{\n");
@@ -152,7 +152,7 @@ sz_t printInstruction(Instruction instruction, File file, std::string_view modul
   }
 
   // this doesn't have to be one line but its really funny
-  case TYPE_VARIABLE: std::println("Type Variable {}", getModule(instruction.type_member_data.custom_type_module_id).getCustomType( TypeID{ .derived = Type::CUSTOM, .module_id = instruction.type_member_data.custom_type_module_id, .id = instruction.type_member_data.custom_type_id } ).member_table().getVariable(instruction.type_member_data.member_id).nameof()); return 0;
+  case TYPE_VARIABLE: std::println("Type Variable {}", getModule(instruction.type_member_data.custom_type_module_id).getCustomType( TypeID{ .derived = TypeID::CUSTOM, .module_id = instruction.type_member_data.custom_type_module_id, .id = instruction.type_member_data.custom_type_id } ).member_table().getVariable(instruction.type_member_data.member_id).nameof()); return 0;
 
   case LOCAL: std::println("Local {}", instruction.local_data.id); return 0;
 

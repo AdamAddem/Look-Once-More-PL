@@ -19,68 +19,6 @@ class PrimitiveType;
 class ArrayType;
 class CustomType;
 
-class Type {
-  friend class Module;
-public:
-  enum class DerivedType : u8_t {DEVOID, ERROR, PRIMITIVE, ARRAY, CUSTOM};
-  using enum DerivedType;
-private:
-  DerivedType derived_type{DEVOID};
-
-  // should only be called for the error type
-  consteval Type() : derived_type(ERROR) {}
-
-protected: constexpr explicit Type(DerivedType derived_type) : derived_type(derived_type) {}
-public:
-  InlineNodiscardCXPR DerivedType getDerivedType() const noexcept { return derived_type; }
-
-  struct Qualifiers {
-    bool writable : 1 = false;
-    bool nullable : 1 = false;
-    u8_t _pad : 6 = 0;
-
-    edenNodiscardCXPR bool operator==(Qualifiers const&) const noexcept = default;
-  }; static_assert(sizeof(Qualifiers) == 1, "If increased this would make stuff fatter than intended");
-
-  template<std::derived_from<Type> T>
-  static consteval DerivedType corresponding_derived_type() {
-    if      constexpr(eden::same_c<T, PrimitiveType>) return PRIMITIVE;
-    else if constexpr(eden::same_c<T, ArrayType>)     return ARRAY;
-    else if constexpr(eden::same_c<T, CustomType>)    return CUSTOM;
-    else { static_assert(false); return {}; }
-  }
-
-  [[nodiscard]] static consteval Type const& devoid() noexcept  { static constexpr Type devoid{DEVOID}; return devoid; }
-  [[nodiscard]] static consteval Type const& error()  noexcept  { static constexpr Type error;          return error; }
-
-  InlineNodiscardCXPR bool isDevoid()     const noexcept { return derived_type == DEVOID;}
-  InlineNodiscardCXPR bool isError()      const noexcept { return derived_type == ERROR;}
-  InlineNodiscardCXPR bool isPrimitive()  const noexcept { return derived_type == PRIMITIVE;}
-  InlineNodiscardCXPR bool isArray()      const noexcept { return derived_type == ARRAY;}
-  InlineNodiscardCXPR bool isCustom()     const noexcept { return derived_type == CUSTOM;}
-
-  NodiscardCXPR bool isBool()             const noexcept;
-  NodiscardCXPR bool isIntegral()         const noexcept;
-  NodiscardCXPR bool isUnsignedIntegral() const noexcept;
-  NodiscardCXPR bool isSignedIntegral()   const noexcept;
-  NodiscardCXPR bool isFloating()         const noexcept;
-  NodiscardCXPR bool isArithmetic()       const noexcept;
-
-  // InlineNodiscardCXPR PrimitiveType const& castToPrimitive() const noexcept;
-  // InlineNodiscardCXPR ArrayType     const& castToArray()     const noexcept;
-  // InlineNodiscardCXPR CustomType    const& castToCustom()    const noexcept;
-
-  InlineNodiscardCXPR PrimitiveType const& castToPrimitive() const noexcept { Assume(derived_type == PRIMITIVE); return (PrimitiveType const&)(*this); }
-  InlineNodiscardCXPR ArrayType     const& castToArray()     const noexcept { Assume(derived_type == ARRAY);     return (ArrayType     const&)(*this); }
-  InlineNodiscardCXPR CustomType    const& castToCustom()    const noexcept { Assume(derived_type == CUSTOM);    return (CustomType    const&)(*this); }
-
-  Type(const Type&) = delete;
-  void operator=(const Type&) = delete;
-
-  Type(Type&&) noexcept = default;
-  Type& operator=(Type &&) noexcept = default;
-};
-
 struct PtrBits {
   constexpr PtrBits() noexcept = default;
 
@@ -165,8 +103,21 @@ private:
   u8_t flags{};
 };
 
+struct Qualifiers {
+  bool writable : 1 = false;
+  bool nullable : 1 = false;
+  u8_t _pad : 6 = 0;
+
+  NodiscardCXPR bool operator==(Qualifiers const&) const noexcept = default;
+}; static_assert(sizeof(Qualifiers) == 1, "If increased this would make stuff fatter than intended");
+
 struct TypeID {
-  Type::DerivedType derived{}; // the derived type of the most pointed thing. for a pointer to int, derived is primitive. for pointer to pointer to array, derived is array
+  enum class PointedType : u8_t {
+    DEVOID, ERROR, PRIMITIVE, ARRAY, CUSTOM
+  };
+  using enum PointedType;
+  
+  PointedType derived{}; // the derived type of the most pointed thing. for a pointer to int, derived is primitive. for pointer to pointer to array, derived is array
   PtrBits ptr_specs{};
   u16_t module_id{};
   u32_t id{};
@@ -175,16 +126,16 @@ struct TypeID {
   InlineCXPR void addPointer(bool is_raw) noexcept { ptr_specs.addLevel(is_raw); }
   InlineCXPR void removePointer() noexcept { ptr_specs.removeLevel(); }
 
-#define pre Assume(isPointer());
+#define pre assert(isPointer());
   InlineNodiscardCXPR bool isTopLevelPtrRaw() const noexcept { pre return ptr_specs.isTopLevelRaw(); }
 #undef pre
 
   InlineNodiscardCXPR bool isPointer()    const noexcept { return ptr_specs.pointer_level() != 0; }
-  InlineNodiscardCXPR bool isDevoid()     const noexcept { return not isPointer() and derived == Type::DEVOID;}
-  InlineNodiscardCXPR bool isError()      const noexcept { return not isPointer() and derived == Type::ERROR;}
-  InlineNodiscardCXPR bool isPrimitive()  const noexcept { return not isPointer() and derived == Type::PRIMITIVE; }
-  InlineNodiscardCXPR bool isArray()      const noexcept { return not isPointer() and derived == Type::ARRAY; }
-  InlineNodiscardCXPR bool isCustom()     const noexcept { return not isPointer() and derived == Type::CUSTOM; }
+  InlineNodiscardCXPR bool isDevoid()     const noexcept { return not isPointer() and derived == DEVOID;}
+  InlineNodiscardCXPR bool isError()      const noexcept { return not isPointer() and derived == ERROR;}
+  InlineNodiscardCXPR bool isPrimitive()  const noexcept { return not isPointer() and derived == PRIMITIVE; }
+  InlineNodiscardCXPR bool isArray()      const noexcept { return not isPointer() and derived == ARRAY; }
+  InlineNodiscardCXPR bool isCustom()     const noexcept { return not isPointer() and derived == CUSTOM; }
 
   NodiscardCXPR bool isBool()             const noexcept;
   NodiscardCXPR bool isIntegral()         const noexcept;
@@ -200,8 +151,9 @@ struct TypeID {
   InlineNodiscardCXPR PrimitiveType const& getPrimitiveType() const noexcept;
 
   // if this is raw pointer to ref pointer to i32, returns TypeID(ref pointer to i32)
-#define pre Assume(isPointer());
-  InlineNodiscardCXPR TypeID getPointedTypeID() const noexcept { pre
+#define pre assert(isPointer());
+  InlineNodiscardCXPR TypeID 
+  getPointedTypeID() const noexcept { pre
     auto cpy = *this;
     cpy.ptr_specs.removeLevel();
     return cpy;
@@ -209,7 +161,7 @@ struct TypeID {
 #undef pre
 
   // if this is raw pointer to ref pointer to i32, returns TypeID(i32)
-#define pre Assume(isPointer());
+#define pre assert(isPointer());
   InlineNodiscardCXPR TypeID getMostPointedTypeID() const noexcept { pre
     auto cpy = *this;
     cpy.ptr_specs.removeAllLevels();
@@ -224,12 +176,11 @@ struct TypeID {
   [[nodiscard]] bool castableTo(TypeID) const noexcept;
   [[nodiscard]] bool sameAs(TypeID) const noexcept;
 
-
   NoInlineCold [[nodiscard]] std::string toString() const noexcept;
 };
 
-class PrimitiveType final : public Type {
-  friend class Module;
+class PrimitiveType final {
+friend class Module;
 public:
   enum class PrimitiveTypeEnum : u8_t {
     U8, U16, U32, U64,
@@ -243,7 +194,7 @@ private:
   PrimitiveTypeEnum primitive_type;
   bool is_smaller_literal{false}; // true only for unsigned literals which fit into both signed and unsigned of their size (ex: 5 is U8 but its value can fit in I8, 128 is U8 but cannot fit in I8)
 
-  constexpr PrimitiveType(PrimitiveTypeEnum type, bool is_smaller_literal = false) noexcept : Type(PRIMITIVE), primitive_type(type), is_smaller_literal(is_smaller_literal) {}
+  constexpr PrimitiveType(PrimitiveTypeEnum type, bool is_smaller_literal = false) noexcept : primitive_type(type), is_smaller_literal(is_smaller_literal) {}
 
   NodiscardCXPR static PrimitiveType const&
   getTypeFromID(u32_t id) {
@@ -260,7 +211,7 @@ private:
 
 public:
 
-#define pre Assume(typeID.derived == Type::PRIMITIVE);
+#define pre Assume(typeID.derived == TypeID::PRIMITIVE);
   NodiscardCXPR static PrimitiveType const& getTypeFromID(TypeID typeID) { pre return getTypeFromID(typeID.id); }
 #undef pre
 
@@ -313,7 +264,7 @@ public:
 #define type_singleton(type_name, type_enum) \
   [[nodiscard]] consteval TypeID \
   PrimitiveType::type_name ## ID() noexcept \
-  { return { .derived = Type::PRIMITIVE, .id = std::to_underlying(type_enum) }; } \
+  { return { .derived = TypeID::PRIMITIVE, .id = std::to_underlying(type_enum) }; } \
   [[nodiscard]] consteval PrimitiveType const& \
   PrimitiveType:: type_name() noexcept \
   { return PrimitiveType::getTypeFromID(PrimitiveType::type_name ## ID ()); }
@@ -347,32 +298,23 @@ InlineNodiscardCXPR bool TypeID::isArithmetic()       const noexcept { return is
 InlineNodiscardCXPR PrimitiveType const& TypeID::getPrimitiveType() const noexcept { pre return PrimitiveType::getTypeFromID(*this); }
 #undef pre
 
-InlineNodiscardCXPR bool Type::isBool()             const noexcept { return this == &PrimitiveType::i8(); }
-InlineNodiscardCXPR bool Type::isIntegral()         const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isIntegral();}
-InlineNodiscardCXPR bool Type::isUnsignedIntegral() const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isUnsignedIntegral();}
-InlineNodiscardCXPR bool Type::isSignedIntegral()   const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isSignedIntegral();}
-InlineNodiscardCXPR bool Type::isFloating()         const noexcept { return this == &PrimitiveType::f32() or this == &PrimitiveType::f64(); }
-InlineNodiscardCXPR bool Type::isArithmetic()       const noexcept { return derived_type == PRIMITIVE and (PrimitiveType const*)(this)->isArithmetic(); }
-
-class ArrayType final : public Type {
+class ArrayType final {
   friend class Module;
-  byte_t _pad[3]{};
   TypeID subtypeID;
-  u32_t array_size_upper; // stupid but reduces alignment and shaves 4bytes
-  u32_t array_size;
+  u64_t size;
 
 #define pre Assume(array_size not_eq 0);
-  constexpr explicit ArrayType(TypeID subtypeID, u64_t array_size) noexcept : Type(ARRAY), subtypeID(subtypeID), array_size_upper(array_size >> 32), array_size(array_size) { pre }
+  constexpr explicit ArrayType(TypeID subtypeID, u64_t array_size) noexcept : subtypeID(subtypeID), size(array_size) { pre }
 #undef pre
 
 public:
 
   InlineNodiscardCXPR bool sameAs(ArrayType const& other) const noexcept {
-    if (getSize() != other.getSize()) return false;
+    if (size != other.size) return false;
     return subtypeID.sameAs( other.subtypeID );
   }
 
-  InlineNodiscardCXPR u64_t  getSize()      const noexcept { return (u64_t(array_size_upper) << 32) | u64_t(array_size); }
+  InlineNodiscardCXPR u64_t  getSize()      const noexcept { return size; }
   InlineNodiscardCXPR TypeID getSubtypeID() const noexcept { return subtypeID; }
 
 #define pre Assume(&other != this);
@@ -383,10 +325,10 @@ public:
 };
 
 class SymbolTable;
-class CustomType final : public Type {
+class CustomType final {
   friend class SymbolTable; friend class Module;
 
-  byte_t _pad[3]{};
+//byte_t _pad[4];
   u32_t name_len;
   char const* name;
 
@@ -394,14 +336,12 @@ class CustomType final : public Type {
   std::byte symboltable_buff[SYMBOL_TABLE_SIZE];
 
   [[nodiscard]] SymbolTable& member_table() noexcept;
-
 public:
+  [[nodiscard]] SymbolTable const& member_table() const noexcept;
 
   explicit CustomType(std::string_view name) noexcept;
 
-  [[nodiscard]] SymbolTable const& member_table() const noexcept;
-
-  InlineNodiscardCXPR std::string_view nameof()   const noexcept { return {name, name_len}; }
+  InlineNodiscardCXPR std::string_view nameof() const noexcept { return {name, name_len}; }
   
   NoInlineCold [[nodiscard]] std::string toString() const noexcept { return std::string(nameof()); }
   [[nodiscard]] std::string definitionToString() const noexcept;
@@ -411,7 +351,7 @@ NodiscardCXPR sz_t
 TypeID::bitwidth() const noexcept {
   if (isPointer()) return sizeof(void*) * 8;
 
-  switch (derived) { using enum Type::DerivedType;
+  switch (derived) {
   case ERROR:     return sizeof(void*) * 8;
   case PRIMITIVE: return getPrimitiveType().bitwidth();
 
@@ -426,24 +366,24 @@ TypeID::bitwidth() const noexcept {
   }
 }
 
-inline constexpr TypeID devoidID{ .derived = Type::DEVOID, .id = 0 };
-inline constexpr TypeID errorID{ .derived = Type::ERROR, .id = 1 };
+inline constexpr TypeID devoidID{ .derived = TypeID::DEVOID, .id = 0 };
+inline constexpr TypeID errorID{ .derived = TypeID::ERROR, .id = 1 };
 
 NodiscardCXPR static TypeID
 signedToLiteralTypeID(i64_t val) noexcept {
-  if (std::in_range<i8_t>(val))  return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::I8)  };
-  if (std::in_range<i16_t>(val)) return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::I16) };
-  if (std::in_range<i32_t>(val)) return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::I32) };
-  return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::I64) };
+  if (std::in_range<i8_t>(val))  return { .derived = TypeID::PRIMITIVE, .id = u32_t(PrimitiveType::I8)  };
+  if (std::in_range<i16_t>(val)) return { .derived = TypeID::PRIMITIVE, .id = u32_t(PrimitiveType::I16) };
+  if (std::in_range<i32_t>(val)) return { .derived = TypeID::PRIMITIVE, .id = u32_t(PrimitiveType::I32) };
+  return { .derived = TypeID::PRIMITIVE, .id = u32_t(PrimitiveType::I64) };
 }
 
 NodiscardCXPR static TypeID
 unsignedToLiteralTypeID(u64_t val) noexcept {
   static constexpr auto literal_offset = (u32_t) std::to_underlying(PrimitiveType::BOOL) + 1;
-  if (std::in_range<u8_t>(val))  return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::U8) + u32_t(val <= u8_t(i8_max)) * literal_offset  };
-  if (std::in_range<u16_t>(val)) return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::U16) + u32_t(val <= u8_t(i16_max)) * literal_offset  };
-  if (std::in_range<u32_t>(val)) return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::U32) + u32_t(val <= u8_t(i16_max)) * literal_offset  };
-  return { .derived = Type::PRIMITIVE, .id = u32_t(PrimitiveType::U64) };
+  if (std::in_range<u8_t>(val))  return { .derived = TypeID::PRIMITIVE, .id = u32_t(PrimitiveType::U8) + u32_t(val <= u8_t(i8_max)) * literal_offset  };
+  if (std::in_range<u16_t>(val)) return { .derived = TypeID::PRIMITIVE, .id = u32_t(PrimitiveType::U16) + u32_t(val <= u8_t(i16_max)) * literal_offset  };
+  if (std::in_range<u32_t>(val)) return { .derived = TypeID::PRIMITIVE, .id = u32_t(PrimitiveType::U32) + u32_t(val <= u8_t(i16_max)) * literal_offset  };
+  return { .derived = TypeID::PRIMITIVE, .id = u32_t(PrimitiveType::U64) };
 }
 
 }

@@ -132,19 +132,19 @@ class ParsingContext {
 #define pre assert(primitive_token.isPrimitive());
   InlineNodiscardCXPR static TypeID parsePrimitiveType(Token primitive_token) noexcept { pre
     switch (primitive_token.type) { using enum TokenType;
-    case KEYWORD_u8:      return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U8)};
-    case KEYWORD_u16:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U16)};
-    case KEYWORD_u32:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U32)};
-    case KEYWORD_u64:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U64)};
-    case KEYWORD_i8:      return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I8)};
-    case KEYWORD_i16:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I16)};
-    case KEYWORD_i32:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I32)};
-    case KEYWORD_i64:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I64)};
-    case KEYWORD_f32:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::F32)};
-    case KEYWORD_f64:     return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::F64)};
-    case KEYWORD_CHAR:    return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::CHAR)};
-    case KEYWORD_STRING:  return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::STRING)};
-    case KEYWORD_BOOL:    return {.derived = Type::PRIMITIVE, .id = std::to_underlying(PrimitiveType::BOOL)};
+    case KEYWORD_u8:      return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U8)};
+    case KEYWORD_u16:     return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U16)};
+    case KEYWORD_u32:     return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U32)};
+    case KEYWORD_u64:     return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::U64)};
+    case KEYWORD_i8:      return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I8)};
+    case KEYWORD_i16:     return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I16)};
+    case KEYWORD_i32:     return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I32)};
+    case KEYWORD_i64:     return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::I64)};
+    case KEYWORD_f32:     return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::F32)};
+    case KEYWORD_f64:     return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::F64)};
+    case KEYWORD_CHAR:    return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::CHAR)};
+    case KEYWORD_STRING:  return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::STRING)};
+    case KEYWORD_BOOL:    return {.derived = TypeID::PRIMITIVE, .id = std::to_underlying(PrimitiveType::BOOL)};
     default: Unreachable("Invalid primitive token.");
     }
   }
@@ -588,10 +588,10 @@ class ParsingContext {
   // parses  `name  (: or $) type`
   // returns name token, qualifiers, and typeID
   template <bool is_parameter = false>
-  NodiscardCXPR std::tuple<Token, Type::Qualifiers, TypeID>
+  NodiscardCXPR std::tuple<Token, Qualifiers, TypeID>
   parseHalfDeclaration() noexcept {
     auto const identifier_token = tokens.take();
-    Type::Qualifiers qualifiers;
+    Qualifiers qualifiers;
 
     if (not identifier_token.isIdentifier())  error(identifier_token, "Expected identifier.");
 

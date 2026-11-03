@@ -24,7 +24,7 @@ namespace {
 NodiscardCXPR Instruction::Enum
 castForType(TypeID typeID) noexcept {
   if (typeID.isPointer()) return Instruction::PCAST;
-  switch (typeID.derived) { using enum Type::DerivedType;
+  switch (typeID.derived) { using enum TypeID::PointedType;
   case PRIMITIVE: {
     auto const primitive = PrimitiveType::getTypeFromID(typeID).getUnderlyingPrimitiveType();
     switch (primitive) { using enum PrimitiveType::PrimitiveTypeEnum;
@@ -65,7 +65,7 @@ struct TreeView {
 };
 
 struct QualifiedTypeID : TypeID {
-  Type::Qualifiers qualifiers{};
+  Qualifiers qualifiers{};
   bool is_function{false}; // if is function, id and module_id should be interpreted as the function id and the module_id for the containing module
 
   edenInlineCXPR QualifiedTypeID& operator=(TypeID other) noexcept { TypeID::operator=(other); return *this; }

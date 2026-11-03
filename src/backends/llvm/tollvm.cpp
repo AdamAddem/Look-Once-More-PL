@@ -178,7 +178,7 @@ class LoweringContext final {
     {
       if (typeID.isPointer()) return llvm::PointerType::get(backend.context, 0);
 
-      switch (typeID.derived) { using enum Type::DerivedType;
+      switch (typeID.derived) { using enum TypeID::PointedType;
       case DEVOID: return llvm::Type::getVoidTy(backend.context);
         
       case ARRAY: {

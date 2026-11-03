@@ -146,7 +146,7 @@ struct Instruction {
 #undef pre
 
 #define pre Assume(type == TYPE_VARIABLE);
-  InlineNodiscardCXPR TypeID custom_typeID() const noexcept { pre return TypeID{ .derived = Type::CUSTOM, .module_id = type_member_data.custom_type_module_id, .id = type_member_data.custom_type_id }; }
+  InlineNodiscardCXPR TypeID custom_typeID() const noexcept { pre return TypeID{ .derived = TypeID::CUSTOM, .module_id = type_member_data.custom_type_module_id, .id = type_member_data.custom_type_id }; }
 #undef pre
 
 };

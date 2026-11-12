@@ -1,13 +1,10 @@
 #pragma once
 #include "build_system/build.hpp"
-#include "edenlib/shortened_macros.hpp"
 #include "module/table_and_module_sync.hpp"
 #include "settings.hpp"
 
-#include "edenlib/casts.hpp"
-#include "edenlib/bitwise_utils.hpp"
-#include "edenlib/enum_utils.hpp"
-#include "edenlib/macros.hpp"
+#include "edenlib/shortened_macros.hpp"
+#include "edenlib/utils.hpp"
 #include "edenlib/typedefs.hpp"
 
 #include <cassert>
@@ -328,10 +325,6 @@ class SymbolTable;
 class CustomType final {
   friend class SymbolTable; friend class Module;
 
-//byte_t _pad[4];
-  u32_t name_len;
-  char const* name;
-
   alignas(SYMBOL_TABLE_ALIGNMENT)
   std::byte symboltable_buff[SYMBOL_TABLE_SIZE];
 
@@ -339,12 +332,7 @@ class CustomType final {
 public:
   [[nodiscard]] SymbolTable const& member_table() const noexcept;
 
-  explicit CustomType(std::string_view name) noexcept;
-
-  InlineNodiscardCXPR std::string_view nameof() const noexcept { return {name, name_len}; }
-  
-  NoInlineCold [[nodiscard]] std::string toString() const noexcept { return std::string(nameof()); }
-  [[nodiscard]] std::string definitionToString() const noexcept;
+  CustomType() noexcept;
 };
 
 NodiscardCXPR sz_t

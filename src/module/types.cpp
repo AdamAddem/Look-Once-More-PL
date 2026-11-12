@@ -19,14 +19,15 @@ TypeID::toString() const noexcept {
   }
 
   switch (derived) {
-  case DEVOID:      return "devoid";
-  case ERROR:       return "!ERROR!";
+  case DEVOID:    return "devoid";
+  case ERROR:     return "!ERROR!";
 
-  case PRIMITIVE:   return getPrimitiveType().toString();
-  case ARRAY:       return getArrayType().toString();
-  case CUSTOM:      return getCustomType().toString();
-  default:
-    edenUnreachable("Invalid derived type.");
+  case PRIMITIVE: return getPrimitiveType().toString();
+  case ARRAY:     return getArrayType().toString();
+    
+  case CUSTOM:    return std::string(getModule(module_id).getCustomTypeName(*this));
+    
+  default: Unreachable("Invalid derived type.");
   }
 }
 
@@ -154,7 +155,7 @@ TypeID::sameAs(TypeID other) const noexcept {
 
 }
 
-CustomType::CustomType(std::string_view name) noexcept : name_len(name.length()), name(name.data()) { std::construct_at<SymbolTable>( (SymbolTable*) symboltable_buff); }
+CustomType::CustomType() noexcept { std::construct_at<SymbolTable>( (SymbolTable*) symboltable_buff); }
 [[nodiscard]] SymbolTable&       CustomType::member_table()       noexcept { return *std::launder( (SymbolTable*) symboltable_buff ); }
 [[nodiscard]] SymbolTable const& CustomType::member_table() const noexcept { return *std::launder( (SymbolTable const*) symboltable_buff ); }
 
@@ -181,28 +182,4 @@ PrimitiveType::toString() const noexcept {
 NoInlineCold [[nodiscard]] std::string
 ArrayType::toString() const noexcept {
   return std::format("[{}]{}", getSize(), getSubtypeID().toString());
-}
-
-NoInlineCold [[nodiscard]] std::string
-CustomType::definitionToString() const noexcept {
-  std::string string_rep("struct ");
-  string_rep.append(nameof());
-  string_rep.append(" {");
-
-  auto const& table = member_table();
-  auto const num_members = table.num_variables();
-  for (sz_t i{}; i<num_members; ++i) {
-    auto const& member = table.getVariable(i);
-    string_rep.append("\n\t");
-    string_rep.append(member.typeID.toString());
-    string_rep.push_back(' ');
-    string_rep.append(member.nameof());
-    string_rep.push_back(',');
-  }
-
-  if (num_members not_eq 0)
-    string_rep.pop_back();
-  string_rep.append("\n}");
-
-  return string_rep;
 }

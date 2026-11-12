@@ -6,6 +6,6 @@
 namespace LOM {
 static constexpr sz_t SYMBOL_TABLE_SIZE = 48;
 static constexpr sz_t SYMBOL_TABLE_ALIGNMENT = 8;
-static constexpr sz_t MODULE_SIZE = 104;
+static constexpr sz_t MODULE_SIZE = 112;
 static constexpr sz_t MODULE_ALIGNMENT = 8;
 }

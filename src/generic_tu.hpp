@@ -20,7 +20,7 @@ struct GenericTU {
 };
 
 // By making Parser::TU and PeepIR::TU the same size and alignment, we can transmutate Parser::TU into PeepIR::TU within the same memory
-static constexpr sz_t TU_SIZE = 168;
+static constexpr sz_t TU_SIZE = 176;
 static constexpr sz_t TU_ALIGN = 8;
 
 // By making Parser::Function and PeepIR::Function the same size and alignment, we can reuse Parser::TU::functions as PeepIR::TU::functions w/ the same memory

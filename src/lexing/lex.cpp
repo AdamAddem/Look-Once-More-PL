@@ -1,17 +1,26 @@
 #include "lex.hpp"
-#include "edenlib/shortened_macros.hpp"
 #include "tokentype.hpp"
+#include "error.hpp"
+
+#include "edenlib/macros.hpp"
+#include "edenlib/shortened_macros.hpp"
+#include "edenlib/utils.hpp"
 #include <cctype>
 #include <cstdlib>
 #include <string_view>
-#include "error.hpp"
-#include "edenlib/casts.hpp"
 
 namespace LOM::Lexer { namespace {
 
 // code to make a perfect hash function was ai generated, need to verify / optimize
-struct WordToken { std::string_view word; TokenType type; };
-inline constexpr WordToken wordTokens[]{
+class WordToken { 
+  char const* word_ptr; u32_t word_len; 
+public:
+  TokenType type; 
+  consteval WordToken(std::string_view str, TokenType type) : word_ptr(str.data()), word_len(str.size()), type(type) {}
+
+  edenInlineNodiscardCXPR std::string_view strview() const noexcept { return {word_ptr, word_len}; }
+};
+inline constexpr WordToken word_tokens[] {
   {"!", TokenType::INVALID_TOKEN},
   {"fn", TokenType::KEYWORD_FN},
   {"if", TokenType::KEYWORD_IF},
@@ -58,33 +67,33 @@ inline constexpr WordToken wordTokens[]{
   {"__C", TokenType::DUNDER_CEXTERN},
   {"__va", TokenType::DUNDER_VA},
 };
-constexpr sz_t numWordTokens = std::size(wordTokens);
-constexpr sz_t INVALID_TOKEN_IDX = 0; static_assert(wordTokens[INVALID_TOKEN_IDX].type == TokenType::INVALID_TOKEN);
+constexpr sz_t num_word_tokens = std::size(word_tokens);
+constexpr sz_t INVALID_TOKEN_IDX = 0; static_assert(word_tokens[INVALID_TOKEN_IDX].type == TokenType::INVALID_TOKEN);
 
 struct WordHash {
-  u32_t firstWeight;
-  u32_t lastWeight;
+  u32_t first_weight;
+  u32_t last_weight;
 
   std::array<u8_t, 256> indices;
-  constexpr WordHash(u32_t a, u32_t b) : firstWeight(a), lastWeight(b) {
+  constexpr WordHash(u32_t a, u32_t b) : first_weight(a), last_weight(b) {
     indices.fill(INVALID_TOKEN_IDX);
   }
 
   constexpr sz_t bucket(std::string_view word) const noexcept {
-    auto const a = firstWeight * (u8_t) word.front();
-    auto const b = lastWeight * (u8_t) word.back();
+    auto const a = first_weight * (u8_t) word.front();
+    auto const b = last_weight * (u8_t) word.back();
     return (word.size() + a + b) & 255u;
   }
 };
 
-constexpr auto wordHash = [] consteval {
-  static_assert(numWordTokens < 256);
+constexpr auto word_hash = [] consteval {
+  static_assert(num_word_tokens < 256);
   for (u32_t first{1}; first < 128; first += 2) {
     for (u32_t last{1}; last < 128; last += 2) {
       WordHash hash{first, last};
       bool collision = false;
-      for (sz_t i{}; i < numWordTokens; ++i) {
-        auto& index = hash.indices[ hash.bucket(wordTokens[i].word) ];
+      for (sz_t i{}; i < num_word_tokens; ++i) {
+        auto& index = hash.indices[ hash.bucket(word_tokens[i].strview()) ];
         if (index != INVALID_TOKEN_IDX) { collision = true; break; }
         index = u8_t(i);
       }
@@ -96,17 +105,17 @@ constexpr auto wordHash = [] consteval {
 
 InlineNodiscardCXPR TokenType
 classifyWord(std::string_view word) noexcept {
-  auto const index = wordHash.indices[wordHash.bucket(word)];
-  auto const& candidate = wordTokens[index];
+  auto const index = word_hash.indices[word_hash.bucket(word)];
+  auto const& candidate = word_tokens[index];
 
-  auto const condition = word == candidate.word;
+  auto const condition = word == candidate.strview();
   auto res = TokenType::IDENTIFIER;
   res = condition ? candidate.type : res;
   return res;
 }
 
 namespace Category {
-enum CategoryEnum: u8_t {
+enum CategoryEnum : u8_t {
    IDENT_START = 1 << 0,
 IDENT_CONTINUE = 1 << 1,
          DIGIT = 1 << 2,

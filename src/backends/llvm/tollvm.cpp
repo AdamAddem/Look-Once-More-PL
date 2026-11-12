@@ -232,7 +232,7 @@ class LoweringContext final {
         translateType(member_table.getVariable(i).typeID)
       );
 
-    auto const res = llvm::StructType::create(backend.context, llvm::ArrayRef(member_types), custom_type.nameof());
+    auto const res = llvm::StructType::create(backend.context, llvm::ArrayRef(member_types));
     custom_type_map.emplace_back(key, res);
     return res;
   }

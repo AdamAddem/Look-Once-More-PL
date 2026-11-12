@@ -1,11 +1,12 @@
 #pragma once
+#include "types.hpp"
+
 #include "edenlib/macros.hpp"
 #include "edenlib/metaprogramming/concepts.hpp"
+#include "edenlib/utils.hpp"
 #include "edenlib/typedefs.hpp"
 #include "edenlib/vectors/swap_vector.hpp"
-
-#include "edenlib/casts.hpp"
-#include "types.hpp"
+#include "edenlib/flat_map.hpp"
 
 namespace LOM {
 
@@ -154,7 +155,7 @@ class Module final : public SymbolTable {
   static constexpr auto named_search_pred = [] (auto const& type, std::string_view name) { return type.nameof() == name; };
 
   eden::swap_vector<ArrayType> array_types; // using a swap vector here is bad, we should only ever use search_noswap. TODO: Change
-  eden::swap_vector<CustomType> custom_types;
+  eden::small_flat_map<std::string_view, CustomType> custom_types;
   u16_t id;
 //byte_t _pad[6];
 
@@ -165,7 +166,8 @@ public:
   InlineNodiscardCXPR sz_t numArrayTypes()  const noexcept { return array_types.size(); }
   InlineNodiscardCXPR sz_t numCustomTypes() const noexcept { return custom_types.size(); }
 
-  InlineNodiscardCXPR TypeID addArrayType(TypeID subtypeID, u64_t array_size) noexcept {
+  InlineNodiscardCXPR TypeID 
+  addArrayType(TypeID subtypeID, u64_t array_size) noexcept {
     ArrayType tmp{subtypeID, array_size};
     auto const arr = array_types.search_noswap(search_pred, tmp);
 
@@ -179,31 +181,37 @@ public:
     return res;
   }
 
-#define pre assert(getCustomTypeID(type_name) == devoidID);
+  // returns errorID if type already exists
   InlineNodiscardCXPR TypeID
-  addCustomType(std::string_view type_name, eden::swap_vector<Variable>&& members) noexcept { pre
-    auto& custom_type = custom_types.emplace_back(CustomType{type_name});
-    custom_type.member_table().variables = std::move(members);
-    return TypeID{ .derived = TypeID::CUSTOM, .module_id = id, .id = eden::narrow<u16_t>(custom_types.size()) };
+  addCustomType(std::string_view type_name, eden::swap_vector<Variable>&& members) noexcept {
+    auto const [idx, success] = custom_types.emplace(std::move(type_name), CustomType{});
+    if(not success) return errorID;
+    
+    custom_types.getFromIndex(idx).member_table().variables = std::move(members);
+    return TypeID{ .derived = TypeID::CUSTOM, .module_id = id, .id = eden::narrow<u16_t>(idx) };
   }
-#undef pre
 
 #define pre assert(arrayTypeID.module_id == id); assert(arrayTypeID.derived == TypeID::ARRAY); assert(not arrayTypeID.isPointer());
   InlineNodiscardCXPR ArrayType const& getArrayType(TypeID arrayTypeID) const noexcept { pre return array_types[arrayTypeID.id]; }
 #undef pre
 
-#define pre assert(customTypeID.module_id == id); assert(customTypeID.derived == TypeID::CUSTOM); assert(not customTypeID.isPointer());
-  InlineNodiscardCXPR CustomType const& getCustomType(TypeID customTypeID) const noexcept { pre return custom_types[customTypeID.id]; }
+#define pre assert(customTypeID.module_id == id); assert(customTypeID.isCustom());
+  InlineNodiscardCXPR CustomType const& getCustomType(TypeID customTypeID) const noexcept { pre return custom_types.getFromIndex(customTypeID.id); }
 #undef pre
 
-  // returns devoidID if not found
+#define pre assert(customTypeID.module_id == id); assert(customTypeID.isCustom());
+  InlineNodiscardCXPR std::string_view 
+  getCustomTypeName(TypeID customTypeID) const noexcept { pre return custom_types.getKeyOf(customTypeID.id); }
+#undef pre
+
+  // returns errorID if not found
   InlineNodiscardCXPR TypeID
   getCustomTypeID(std::string_view name) noexcept {
-    auto const custom = custom_types.search_noswap(named_search_pred, name);
+    auto const custom = custom_types.find(name);
     if(custom)
       return {.derived = TypeID::CUSTOM, .module_id = id, .id = eden::narrow<u16_t>(custom_types.index_of(custom))};
     else
-      return devoidID;
+      return errorID;
   }
 
 };

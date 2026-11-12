@@ -1,8 +1,4 @@
 #include "parse.hpp"
-
-#include "edenlib/shortened_macros.hpp"
-#include "edenlib/vectors/swap_vector.hpp"
-
 #include "ast.hpp"
 #include "build_system/build.hpp"
 #include "error.hpp"
@@ -10,6 +6,8 @@
 #include "module/table_and_module.hpp"
 #include "module/types.hpp"
 
+#include "edenlib/shortened_macros.hpp"
+#include "edenlib/vectors/swap_vector.hpp"
 #include <numeric>
 #include <utility>
 
@@ -161,7 +159,7 @@ class ParsingContext {
 
     case IDENTIFIER: {
       auto const type = module.getCustomTypeID(token.originalString(current_file));
-      if (type == devoidID)
+      if (type == errorID)
         error(token, "Expected typename.");
       return type;
     }
@@ -797,21 +795,18 @@ class ParsingContext {
 
 #define pre assert(tokens.previous().is(TokenType::LBRACE));
   constexpr void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
-    if (tokens.pop_if(TokenType::RBRACE))
-      return (void)module.addCustomType(name, {});
 
     eden::swap_vector<Symbol::Variable> members{eden::flags::reserve_initial<2>};
-    do { // makes it so structs must have a member, which is lowk dumb but whatever. TODO: Change
+    while(true) {
+      if(tokens.pop_if(TokenType::RBRACE)) break;
+      if(tokens.peek_is(TokenType::INVALID_TOKEN)) { error(tokens.peek(), "Expected closing curly brace after struct definition."); break; }
+      
       auto const [member_name, member_qualifiers, member_type] = parseHalfDeclaration();
       members.emplace_back(member_type, member_qualifiers, member_name.originalString(current_file), true, members.size());
-    } while (tokens.pop_if(TokenType::SEMI_COLON) and not tokens.peek_is(TokenType::RBRACE));
+      if(not tokens.pop_if(TokenType::SEMI_COLON)) error(tokens.peek(), "Expected semi-colon after struct member declaration.");
+    }
 
-    if (not tokens.pop_if(TokenType::RBRACE))
-      error(tokens.peek(), "Expected closing curly brace after struct definition.");
-
-    if (module.getCustomTypeID(name) == devoidID) 
-      (void)module.addCustomType(name, std::move(members));
-    else {
+    if(module.addCustomType(name, std::move(members)) == errorID) {
       auto [len, pos] = current_file.lenPosFromView(name);
       error( Token{ Lexer::TokenType::INVALID_TOKEN, len, pos }, "Duplicated custom type name." );
     }

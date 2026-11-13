@@ -14,7 +14,6 @@
 
 #include "build_system/build.hpp"
 #include "peepir/peepir.hpp"
-#include "settings.hpp"
 
 #include "edenlib/shortened_macros.hpp"
 #include "edenlib/vectors/swap_vector.hpp"
@@ -655,7 +654,7 @@ class LoweringContext final {
 
       llvm_blocks.reserve(peepir_blocks.size());
       for (sz_t i{}; i<peepir_blocks.size(); ++i)
-        llvm_blocks.emplace_back_unchecked(llvm::BasicBlock::Create(backend.context, "", llvm_fn));
+        llvm_blocks.emplace_back_unchecked(eden::unsafe, llvm::BasicBlock::Create(backend.context, "", llvm_fn));
       builder.SetInsertPoint(llvm_blocks.front());
 
       locals.reserve(fn_symbol.locals.size());
@@ -669,14 +668,14 @@ class LoweringContext final {
       for (; i<num_params; ++i) {
         auto const param_alloca = builder.CreateAlloca(param_types[i]);
         builder.CreateStore(arg, param_alloca);
-        locals.emplace_back_unchecked(param_alloca);
+        locals.emplace_back_unchecked(eden::unsafe, param_alloca);
         ++arg;
       }
 
       // we don't reset i here because locals includes parameters
       auto const num_locals = fn_symbol.locals.size();
       for (; i<num_locals; ++i)
-        locals.emplace_back_unchecked( builder.CreateAlloca(translateType(fn_symbol.getLocal(i).typeID)) );
+        locals.emplace_back_unchecked(eden::unsafe, builder.CreateAlloca(translateType(fn_symbol.getLocal(i).typeID)) );
 
     }
 
@@ -712,7 +711,7 @@ public:
           /*AddrSpace=*/0,
           llvm::Twine(peeped_tu.name) + "::" + fn_symbol.nameof(),
           &backend->module);
-      codegen.llvm_fns.emplace_back_unchecked(llvm_fn);
+      codegen.llvm_fns.emplace_back_unchecked(eden::unsafe, llvm_fn);
     }
 
     // codegen after all fns added

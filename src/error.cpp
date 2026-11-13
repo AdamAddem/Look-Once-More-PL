@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
+namespace LOM {
 namespace {
 struct Error {
   std::string message;
@@ -27,7 +28,6 @@ std::unordered_map< char const*, std::vector<Error> > file_to_errors_map;
 
 // TODO: make all of this thread safe
 static_assert(LOM::Settings::MULTITHREADING_SUPPORT == false);
-namespace LOM {
 
 edenNoInlineCold [[nodiscard]] bool doesFileHaveErrors(File file) {
   auto const error_iter = file_to_errors_map.find(file.getText().data());

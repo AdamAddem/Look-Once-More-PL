@@ -7,10 +7,10 @@
 
 #include <print>
 
-using namespace LOM;
+namespace LOM {
 namespace {
 class IndentationManager {
-  eden::vector<sz_t> indents{eden::flags::reserve_initial<4>};
+  eden::vector<sz_t> indents{eden::reserve_initial<4>};
 public:
 
   NoInlineCold void
@@ -49,7 +49,7 @@ std::string functionToString(Symbol::Function const& fn) noexcept {
 }
 }
 
-namespace LOM::Parser { namespace {
+namespace Parser { namespace {
 
 NoInlineCold NodiscardCXPR
 char const* operatorToString(Operator e) noexcept {
@@ -119,7 +119,7 @@ printFunction(TU const& tu, u16_t fn_id) noexcept {
 }}
 
 NoInlineCold void
-LOM::printParsed() noexcept {
+printParsed() noexcept {
   for (sz_t i{C_TU_ID + 1}; i<getNumTUs(); ++i) {
     auto const& tu = getParserTU(i);
     std::println("\n--- Parser Output --- {}", tu.name);
@@ -131,8 +131,7 @@ LOM::printParsed() noexcept {
   }
 }
 
-
-namespace LOM::PeepIR { namespace {
+namespace PeepIR { namespace {
 
 // returns number of sub expressions for indentation purposes
 sz_t printInstruction(Instruction instruction, File file, std::string_view module_name) {
@@ -285,7 +284,7 @@ printFunction(TU const& tu, u16_t fn_id) noexcept {
 }}
 
 NoInlineCold void
-LOM::printPeeped() noexcept {
+printPeeped() noexcept {
   for (sz_t i{C_TU_ID + 1}; i<getNumTUs(); ++i) {
     auto const& tu = getPeepTU(i);
     std::println("\n--- PeepIR --- {}", tu.name);
@@ -296,10 +295,12 @@ LOM::printPeeped() noexcept {
 }
 
 NoInlineCold void
-LOM::printFileErrors(File file) noexcept {
+printFileErrors(File file) noexcept {
   if (not doesFileHaveErrors(file)) return;
 
   std::println("\n--- Errors --- {}", file.path());
   std::println("{}", getFileErrors(file));
   std::println("\n--- Errors ---");
+}
+
 }

@@ -8,7 +8,7 @@
 #include "module/table_and_module.hpp"
 
 #include "edenlib/utils.hpp"
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp"
 
 #include <cassert>
 #include <format>
@@ -959,7 +959,7 @@ class PeepingContext {
     auto const begin = parsed_tu.functions.data();
     auto const size = parsed_tu.functions.size();
     auto const cap = parsed_tu.functions.capacity();
-    parsed_tu.functions.unsafe_zero_members();
+    parsed_tu.functions.zero_members(eden::unsafe);
     parsed_tu.~TU();
 
     auto const new_begin = std::start_lifetime_as_array<Function>(begin, size);
@@ -969,7 +969,7 @@ class PeepingContext {
       .name = name,
       .functions = {}
     };
-    peeped_tu.functions.unsafe_set_members(new_begin, new_begin + size, new_begin + cap, {});
+    peeped_tu.functions.set_members(eden::unsafe, new_begin, new_begin + size, new_begin + cap, {});
   }
 
 public:

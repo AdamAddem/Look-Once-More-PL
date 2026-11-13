@@ -796,7 +796,7 @@ class ParsingContext {
 #define pre assert(tokens.previous().is(TokenType::LBRACE));
   constexpr void parseStructDecl(std::string_view name, [[maybe_unused]] bool is_public) noexcept { pre
 
-    eden::swap_vector<Symbol::Variable> members{eden::flags::reserve_initial<2>};
+    eden::swap_vector<Symbol::Variable> members{eden::reserve_initial<2>};
     while(true) {
       if(tokens.pop_if(TokenType::RBRACE)) break;
       if(tokens.peek_is(TokenType::INVALID_TOKEN)) { error(tokens.peek(), "Expected closing curly brace after struct definition."); break; }

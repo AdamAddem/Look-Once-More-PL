@@ -7,6 +7,7 @@
 #include <optional>
 
 namespace LOM {
+using namespace eden::type_aliases;
 
 namespace Parser { struct TU; }
 namespace PeepIR { struct TU; }

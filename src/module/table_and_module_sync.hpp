@@ -1,11 +1,10 @@
 #pragma once
-#include "edenlib/typedefs.hpp"
 
-// This exists to solve the cyclic dependency between symbol_table.hpp and types.hpp.
-// symbol_table.hpp static_asserts that these properties hold true.
+// This exists to solve the cyclic dependency between table_and_module.hpp and types.hpp.
+// table_and_module.hpp static_asserts that these properties hold true.
 namespace LOM {
-static constexpr sz_t SYMBOL_TABLE_SIZE = 48;
-static constexpr sz_t SYMBOL_TABLE_ALIGNMENT = 8;
-static constexpr sz_t MODULE_SIZE = 112;
-static constexpr sz_t MODULE_ALIGNMENT = 8;
+static constexpr auto SYMBOL_TABLE_SIZE = 48;
+static constexpr auto SYMBOL_TABLE_ALIGNMENT = 8;
+static constexpr auto MODULE_SIZE = 112;
+static constexpr auto MODULE_ALIGNMENT = 8;
 }

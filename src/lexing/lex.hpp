@@ -1,5 +1,5 @@
 #pragma once
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp"
 #include "file.hpp"
 #include "tokentype.hpp"
 

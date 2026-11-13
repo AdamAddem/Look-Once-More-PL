@@ -3,13 +3,14 @@
 #include "module/types.hpp"
 
 #include "edenlib/macros.hpp"
-#include "edenlib/vectors/vector.hpp"
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp"
 #include <cassert>
 #include <string>
 #include <utility>
 
 namespace LOM::Parser {
+using namespace eden::type_aliases;
+
 enum class Operator : u8_t {
   ADD,
   SUBTRACT,

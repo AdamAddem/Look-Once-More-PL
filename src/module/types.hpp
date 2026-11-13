@@ -1,11 +1,10 @@
 #pragma once
 #include "build_system/build.hpp"
 #include "module/table_and_module_sync.hpp"
-#include "settings.hpp"
 
 #include "edenlib/shortened_macros.hpp"
 #include "edenlib/utils.hpp"
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp"
 
 #include <cassert>
 #include <utility>
@@ -310,13 +309,10 @@ public:
     if (size != other.size) return false;
     return subtypeID.sameAs( other.subtypeID );
   }
-
   InlineNodiscardCXPR u64_t  getSize()      const noexcept { return size; }
   InlineNodiscardCXPR TypeID getSubtypeID() const noexcept { return subtypeID; }
 
-#define pre Assume(&other != this);
-  InlineNodiscardCXPR bool operator==(ArrayType const& other) const noexcept { pre return eden::areBitwiseEqualRestrict(this, &other); }
-#undef pre
+  InlineNodiscardCXPR bool operator==(ArrayType const& other) const noexcept { return eden::areBitwiseEqual(this, &other); }
 
   NoInlineCold [[nodiscard]] std::string toString() const noexcept;
 };

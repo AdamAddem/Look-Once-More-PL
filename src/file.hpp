@@ -1,16 +1,15 @@
 #pragma once
 #include "edenlib/shortened_macros.hpp"
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp"
 #include <cassert>
 #include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <string>
-#include <print>
-#include <chrono>
 
 namespace LOM {
+using namespace eden::type_aliases;
 class File {
   std::string_view text;
 public:

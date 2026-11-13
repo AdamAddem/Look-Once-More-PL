@@ -1,5 +1,4 @@
 #include "settings.hpp"
-#include "edenlib/typedefs.hpp"
 #include "edenlib/shortened_macros.hpp"
 
 #include <cassert>

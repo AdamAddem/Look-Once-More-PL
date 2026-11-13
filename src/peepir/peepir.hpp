@@ -1,5 +1,5 @@
 #pragma once
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp"
 #include "edenlib/vectors/vector.hpp"
 
 #include "file.hpp"

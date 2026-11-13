@@ -3,6 +3,7 @@
 #include <print>
 
 int main(int argc, char const* argv[]) {
+  using namespace eden::type_aliases;
 
   try {
     LOM::Settings::setArgs(argc, argv);

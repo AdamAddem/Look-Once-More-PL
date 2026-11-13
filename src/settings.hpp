@@ -1,8 +1,9 @@
 #pragma once
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp" 
 #include <string_view>
 
 namespace LOM::Settings {
+using namespace eden::type_aliases;
 
 extern bool const& do_output_ast;
 extern bool const& do_output_peepir;

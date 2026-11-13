@@ -77,8 +77,8 @@ class Globals {
     auto const begin = chrono_now();
 
     module_paths.reserve(4);
-    module_paths.emplace_back_unchecked(extern_path);
-    module_paths.emplace_back_unchecked(src_path);
+    module_paths.emplace_back_unchecked(eden::unsafe, extern_path);
+    module_paths.emplace_back_unchecked(eden::unsafe, src_path);
     for (auto const& entry : fs::directory_iterator{src_path}) {
       if (not entry.is_directory()) continue;
       if (is_empty(entry)) continue;
@@ -272,7 +272,7 @@ namespace {
 // populates tu and returns whether an error was encountered
 [[nodiscard]] bool
 parseTU(Parser::TU& tu) {
-  eden::vector<Lexer::Token> tokens{eden::flags::reserve_initial<32>};
+  eden::vector<Lexer::Token> tokens{eden::reserve_initial<32>};
   bool has_error = false;
   for (auto const file : tu.source_files) {
     if (Lexer::tokenizeFile(tokens, file) ||

@@ -2,13 +2,13 @@
 #include "types.hpp"
 
 #include "edenlib/macros.hpp"
-#include "edenlib/metaprogramming/concepts.hpp"
 #include "edenlib/utils.hpp"
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp"
 #include "edenlib/vectors/swap_vector.hpp"
 #include "edenlib/flat_map.hpp"
 
 namespace LOM {
+using namespace eden::type_aliases;
 
 namespace Symbol {
 
@@ -173,7 +173,7 @@ public:
 
     TypeID res{.derived = TypeID::ARRAY, .module_id = id, .id = 0};
     if(arr)
-      res.id = eden::narrow<u16_t>(array_types.index_of(arr));
+      res.id = eden::narrow<u16_t>(array_types.index_of(eden::unsafe, arr));
     else
       array_types.emplace_back(std::move(tmp)),
       res.id = eden::narrow<u16_t>(array_types.size() - 1);
@@ -209,7 +209,7 @@ public:
   getCustomTypeID(std::string_view name) noexcept {
     auto const custom = custom_types.find(name);
     if(custom)
-      return {.derived = TypeID::CUSTOM, .module_id = id, .id = eden::narrow<u16_t>(custom_types.index_of(custom))};
+      return {.derived = TypeID::CUSTOM, .module_id = id, .id = eden::narrow<u16_t>(custom_types.index_of(eden::unsafe, custom))};
     else
       return errorID;
   }

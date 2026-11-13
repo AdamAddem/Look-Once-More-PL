@@ -1,8 +1,6 @@
 #pragma once
 #include "edenlib/shortened_macros.hpp"
 #include "file.hpp"
-
-#include "edenlib/typedefs.hpp"
 #include <span>
 
 namespace LOM {

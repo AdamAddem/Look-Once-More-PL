@@ -1,8 +1,9 @@
 #pragma once
-#include "edenlib/typedefs.hpp"
+#include "edenlib/type_aliases.hpp"
 #include <utility>
 
 namespace LOM::Lexer {
+using namespace eden::type_aliases;
 enum class TokenType : u8_t {
 	INVALID_TOKEN,
 	IDENTIFIER,
